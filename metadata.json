@@ -1,0 +1,6 @@
+{
+  "name": "Vedic & Chaldean Numerology & Mobile Harmony",
+  "description": "Comprehensive Vedic and Chaldean numerology platform for auspicious name spelling and mobile number harmony, live numeric vibration validation, birth charts, transit alerts, and compatibility.",
+  "requestFramePermissions": ["notifications"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

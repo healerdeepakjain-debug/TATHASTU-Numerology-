@@ -1,0 +1,601 @@
+{
+  "entities": {
+    "AccountRecord": {
+      "title": "AccountRecord",
+      "description": "Represents a registered Client, Healer, or Admin account in TATHASTU The Divine Light.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["client", "healer", "admin"],
+          "maxLength": 20
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "mobile": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 24
+        },
+        "passwordHash": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128
+        },
+        "planId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "planName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "planPrice": {
+          "type": "number"
+        },
+        "isFoc": {
+          "type": "boolean"
+        },
+        "maxProfiles": {
+          "type": "number"
+        },
+        "canDownloadShare": {
+          "type": "boolean"
+        },
+        "subscriptionStart": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "subscriptionExpiry": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "healerBrandName": {
+          "type": "string",
+          "maxLength": 140
+        },
+        "healerLogoUrl": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "healerInstagram": {
+          "type": "string",
+          "maxLength": 140
+        },
+        "healerFacebook": {
+          "type": "string",
+          "maxLength": 140
+        },
+        "healerYoutube": {
+          "type": "string",
+          "maxLength": 140
+        },
+        "healerWebsite": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "healerAddress": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "notificationPrefsJson": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "createdAtIso": {
+          "type": "string",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "id",
+        "ownerUid",
+        "role",
+        "name",
+        "email",
+        "mobile",
+        "passwordHash",
+        "planId",
+        "planName",
+        "planPrice",
+        "isFoc",
+        "maxProfiles",
+        "canDownloadShare",
+        "subscriptionStart",
+        "subscriptionExpiry",
+        "createdAtIso"
+      ]
+    },
+    "AstroProfileRecord": {
+      "title": "AstroProfileRecord",
+      "description": "Represents an individual natal/numerology profile belonging to a Client (Self or Family) or Healer's Client.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "accountId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerRole": {
+          "type": "string",
+          "enum": ["client", "healer", "admin"],
+          "maxLength": 20
+        },
+        "relationTag": {
+          "type": "string",
+          "enum": ["self", "family", "healer-client"],
+          "maxLength": 30
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "dob": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 20
+        },
+        "tob": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "pob": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "mobile": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 24
+        },
+        "gender": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "isLocked": {
+          "type": "boolean"
+        },
+        "notificationsEnabled": {
+          "type": "boolean"
+        },
+        "notificationChannelsJson": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "partnerName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "partnerDob": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "partnerTob": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "partnerPob": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "partnerLat": {
+          "type": "number"
+        },
+        "partnerLng": {
+          "type": "number"
+        },
+        "includePartnerMilan": {
+          "type": "boolean"
+        },
+        "healthConcerns": {
+          "type": "array",
+          "description": "Bounded list of up to 10 selected health concern IDs for Yoga & Pranayama prescriptions."
+        },
+        "originalName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "selectedNameA": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "selectedNameB": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "originalMobile": {
+          "type": "string",
+          "maxLength": 24
+        },
+        "selectedMobileA": {
+          "type": "string",
+          "maxLength": 24
+        },
+        "selectedMobileB": {
+          "type": "string",
+          "maxLength": 24
+        },
+        "createdAtIso": {
+          "type": "string",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "id",
+        "accountId",
+        "ownerUid",
+        "ownerRole",
+        "relationTag",
+        "name",
+        "dob",
+        "tob",
+        "pob",
+        "lat",
+        "lng",
+        "email",
+        "mobile",
+        "gender",
+        "isLocked",
+        "notificationsEnabled",
+        "createdAtIso"
+      ]
+    },
+    "SharedReportRecord": {
+      "title": "SharedReportRecord",
+      "description": "PII-isolated public report snapshot and signed PDF URL record enabling external mobile browsers to read and download shared PDF reports by exact reportId without 403 Forbidden errors.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "profileId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerRole": {
+          "type": "string",
+          "enum": ["client", "healer", "admin"],
+          "maxLength": 20
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "clientName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "dob": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 20
+        },
+        "tob": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "pob": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        },
+        "gender": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "mobile": {
+          "type": "string",
+          "maxLength": 24
+        },
+        "partnerName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "partnerDob": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "partnerTob": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "partnerPob": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "partnerLat": {
+          "type": "number"
+        },
+        "partnerLng": {
+          "type": "number"
+        },
+        "includePartnerMilan": {
+          "type": "boolean"
+        },
+        "healthConcerns": {
+          "type": "array",
+          "description": "Bounded list of up to 25 selected health concern IDs."
+        },
+        "originalName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "selectedNameA": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "selectedNameB": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "originalMobile": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "selectedMobileA": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "selectedMobileB": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "healerName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "healerDisplayName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "healerBrandName": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "healerMobile": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "healerEmail": {
+          "type": "string",
+          "maxLength": 150
+        },
+        "signedPdfUrl": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "createdAtIso": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "updatedAtIso": {
+          "type": "string",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "id",
+        "ownerUid",
+        "name",
+        "dob",
+        "tob",
+        "pob",
+        "lat",
+        "lng",
+        "gender",
+        "createdAtIso"
+      ]
+    },
+    "FeedbackSuggestionRecord": {
+      "title": "FeedbackSuggestionRecord",
+      "description": "Represents a real-time feedback, suggestion, or appreciation message submitted by a Client or Healer to Healer Ddeepak Jain and the Master Admin dashboard.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "accountId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "senderRole": {
+          "type": "string",
+          "enum": ["client", "healer", "admin"],
+          "maxLength": 20
+        },
+        "senderName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "senderMobile": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 24
+        },
+        "senderEmail": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "category": {
+          "type": "string",
+          "enum": ["feedback", "suggestion", "appreciation", "support"],
+          "maxLength": 30
+        },
+        "rating": {
+          "type": "number"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 1500
+        },
+        "adminReply": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "createdAtIso": {
+          "type": "string",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "id",
+        "accountId",
+        "ownerUid",
+        "senderRole",
+        "senderName",
+        "senderMobile",
+        "senderEmail",
+        "category",
+        "rating",
+        "message",
+        "createdAtIso"
+      ]
+    },
+    "BroadcastNotificationRecord": {
+      "title": "BroadcastNotificationRecord",
+      "description": "Represents a Master Admin live push notification, app update alert, or discount coupon announcement synced to all Client and Healer devices.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1200
+        },
+        "category": {
+          "type": "string",
+          "enum": ["update", "offer", "muhurat", "announcement"],
+          "maxLength": 30
+        },
+        "targetAudience": {
+          "type": "string",
+          "enum": ["all", "client", "healer"],
+          "maxLength": 20
+        },
+        "couponCode": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "createdAtIso": {
+          "type": "string",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "message",
+        "category",
+        "targetAudience",
+        "createdAtIso"
+      ]
+    }
+  },
+  "firestore": {
+    "/tathastu_accounts/{accountId}": {
+      "schema": {
+        "$ref": "#/entities/AccountRecord"
+      },
+      "description": "Stores registered Client, Healer, and Admin account metadata synced in real time."
+    },
+    "/tathastu_profiles/{profileId}": {
+      "schema": {
+        "$ref": "#/entities/AstroProfileRecord"
+      },
+      "description": "Stores natal profiles (1+1 for Clients, up to plan limit for Healers, unlimited for Admin)."
+    },
+    "/tathastu_shared_reports/{reportId}": {
+      "schema": {
+        "$ref": "#/entities/SharedReportRecord"
+      },
+      "description": "PII-isolated public report snapshot readable via single-document get by external mobile browsers opening shared report links or QR codes."
+    },
+    "/tathastu_feedbacks/{feedbackId}": {
+      "schema": {
+        "$ref": "#/entities/FeedbackSuggestionRecord"
+      },
+      "description": "Stores real-time Client and Healer feedbacks and suggestions synced to the Master Admin portal."
+    },
+    "/tathastu_broadcasts/{broadcastId}": {
+      "schema": {
+        "$ref": "#/entities/BroadcastNotificationRecord"
+      },
+      "description": "Stores Master Admin broadcast notifications and live app updates synced across mobile and desktop devices."
+    }
+  }
+}

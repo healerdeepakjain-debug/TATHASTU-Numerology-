@@ -1,0 +1,47 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        (request.auth.token.email == 'healer.deepak.jain@gmail.com' ||
+         request.auth.token.email == 'healer.ddeepak.jain@gmail.com' ||
+         request.auth.token.email == 'contact@tathastulight.com');
+    }
+
+    function isValidPdfUpload() {
+      return request.resource != null &&
+        request.resource.size < 25 * 1024 * 1024 &&
+        request.resource.contentType.matches('application/pdf');
+    }
+
+    // Public-read policy for generated Spiritual Dossier PDF reports on external mobile browsers (Android / iOS)
+    // Prevents 403 Forbidden errors when clients open shared report download links across devices
+    match /tathastu_reports/{profileId}/{fileName} {
+      allow get, read: if true;
+      allow create, update: if isValidPdfUpload() && (isSignedIn() || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Healer brand logos (public read for report rendering, authenticated write)
+    match /tathastu_logos/{accountId}/{fileName} {
+      allow get, read: if true;
+      allow create, update: if isSignedIn() &&
+        request.resource != null &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() || isAdmin();
+    }
+
+    // Default deny catch-all for any other storage paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

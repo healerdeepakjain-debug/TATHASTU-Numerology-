@@ -1,0 +1,588 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default-Deny Catch-All)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Helpers
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Zero-lookup admin check for list queries (prevents O(n) exists() calls)
+    function isAdminZeroLookup() {
+      return isSignedIn() && (
+        request.auth.token.email == 'contact@tathastulight.com' ||
+        request.auth.token.email == 'healer.deepak.jain@gmail.com' ||
+        request.auth.token.email == 'healer.ddeepak.jain@gmail.com'
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'contact@tathastulight.com' ||
+        request.auth.token.email == 'healer.deepak.jain@gmail.com' ||
+        request.auth.token.email == 'healer.ddeepak.jain@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Admin registry collection
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && (request.auth.uid == adminUid || isAdmin());
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+
+    // Validation Blueprint: AccountRecord
+    function isValidAccountRecord(data) {
+      return data.keys().hasAll([
+        'id',
+        'ownerUid',
+        'role',
+        'name',
+        'email',
+        'mobile',
+        'passwordHash',
+        'planId',
+        'planName',
+        'planPrice',
+        'isFoc',
+        'maxProfiles',
+        'canDownloadShare',
+        'subscriptionStart',
+        'subscriptionExpiry',
+        'createdAtIso'
+      ]) &&
+      data.keys().hasOnly([
+        'id',
+        'ownerUid',
+        'role',
+        'name',
+        'email',
+        'mobile',
+        'passwordHash',
+        'planId',
+        'planName',
+        'planPrice',
+        'isFoc',
+        'maxProfiles',
+        'canDownloadShare',
+        'subscriptionStart',
+        'subscriptionExpiry',
+        'healerBrandName',
+        'healerLogoUrl',
+        'healerInstagram',
+        'healerFacebook',
+        'healerYoutube',
+        'healerWebsite',
+        'healerAddress',
+        'notificationPrefsJson',
+        'createdAtIso'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.ownerUid) &&
+      data.role is string && data.role.size() <= 20 && (data.role == 'client' || data.role == 'healer' || data.role == 'admin') &&
+      data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+      data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+      data.mobile is string && data.mobile.size() >= 7 && data.mobile.size() <= 24 &&
+      data.passwordHash is string && data.passwordHash.size() >= 3 && data.passwordHash.size() <= 128 &&
+      data.planId is string && data.planId.size() <= 64 &&
+      data.planName is string && data.planName.size() <= 100 &&
+      data.planPrice is number &&
+      data.isFoc is bool &&
+      data.maxProfiles is number &&
+      data.canDownloadShare is bool &&
+      data.subscriptionStart is string && data.subscriptionStart.size() <= 40 &&
+      data.subscriptionExpiry is string && data.subscriptionExpiry.size() <= 40 &&
+      data.createdAtIso is string && data.createdAtIso.size() <= 40 &&
+      (!('healerBrandName' in data) || (data.healerBrandName is string && data.healerBrandName.size() <= 140)) &&
+      (!('healerLogoUrl' in data) || (data.healerLogoUrl is string && data.healerLogoUrl.size() <= 2048)) &&
+      (!('healerInstagram' in data) || (data.healerInstagram is string && data.healerInstagram.size() <= 140)) &&
+      (!('healerFacebook' in data) || (data.healerFacebook is string && data.healerFacebook.size() <= 140)) &&
+      (!('healerYoutube' in data) || (data.healerYoutube is string && data.healerYoutube.size() <= 140)) &&
+      (!('healerWebsite' in data) || (data.healerWebsite is string && data.healerWebsite.size() <= 240)) &&
+      (!('healerAddress' in data) || (data.healerAddress is string && data.healerAddress.size() <= 300)) &&
+      (!('notificationPrefsJson' in data) || (data.notificationPrefsJson is string && data.notificationPrefsJson.size() <= 1000));
+    }
+
+    // Validation Blueprint: AstroProfileRecord
+    function isValidAstroProfileRecord(data) {
+      return data.keys().hasAll([
+        'id',
+        'accountId',
+        'ownerUid',
+        'ownerRole',
+        'relationTag',
+        'name',
+        'dob',
+        'tob',
+        'pob',
+        'lat',
+        'lng',
+        'email',
+        'mobile',
+        'gender',
+        'isLocked',
+        'notificationsEnabled',
+        'createdAtIso'
+      ]) &&
+      data.keys().hasOnly([
+        'id',
+        'accountId',
+        'ownerUid',
+        'ownerRole',
+        'relationTag',
+        'name',
+        'dob',
+        'tob',
+        'pob',
+        'lat',
+        'lng',
+        'email',
+        'mobile',
+        'gender',
+        'isLocked',
+        'notificationsEnabled',
+        'notificationChannelsJson',
+        'partnerName',
+        'partnerDob',
+        'partnerTob',
+        'partnerPob',
+        'partnerLat',
+        'partnerLng',
+        'includePartnerMilan',
+        'healthConcerns',
+        'originalName',
+        'selectedNameA',
+        'selectedNameB',
+        'originalMobile',
+        'selectedMobileA',
+        'selectedMobileB',
+        'createdAtIso'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.accountId) &&
+      isValidId(data.ownerUid) &&
+      data.ownerRole is string && data.ownerRole.size() <= 20 && (data.ownerRole == 'client' || data.ownerRole == 'healer' || data.ownerRole == 'admin') &&
+      data.relationTag is string && data.relationTag.size() <= 30 && (data.relationTag == 'self' || data.relationTag == 'family' || data.relationTag == 'healer-client') &&
+      data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+      data.dob is string && data.dob.size() >= 8 && data.dob.size() <= 20 &&
+      data.tob is string && data.tob.size() <= 20 &&
+      data.pob is string && data.pob.size() <= 160 &&
+      data.lat is number &&
+      data.lng is number &&
+      data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+      data.mobile is string && data.mobile.size() >= 7 && data.mobile.size() <= 24 &&
+      data.gender is string && data.gender.size() <= 20 &&
+      data.isLocked is bool &&
+      data.notificationsEnabled is bool &&
+      data.createdAtIso is string && data.createdAtIso.size() <= 40 &&
+      (!('notificationChannelsJson' in data) || (data.notificationChannelsJson is string && data.notificationChannelsJson.size() <= 1000)) &&
+      (!('partnerName' in data) || (data.partnerName is string && data.partnerName.size() <= 120)) &&
+      (!('partnerDob' in data) || (data.partnerDob is string && data.partnerDob.size() <= 20)) &&
+      (!('partnerTob' in data) || (data.partnerTob is string && data.partnerTob.size() <= 20)) &&
+      (!('partnerPob' in data) || (data.partnerPob is string && data.partnerPob.size() <= 160)) &&
+      (!('partnerLat' in data) || (data.partnerLat is number)) &&
+      (!('partnerLng' in data) || (data.partnerLng is number)) &&
+      (!('includePartnerMilan' in data) || (data.includePartnerMilan is bool)) &&
+      (!('healthConcerns' in data) || (data.healthConcerns is list && data.healthConcerns.size() <= 10 && (data.healthConcerns.size() == 0 || (data.healthConcerns[0] is string && data.healthConcerns[0].size() <= 80)))) &&
+      (!('originalName' in data) || (data.originalName is string && data.originalName.size() <= 120)) &&
+      (!('selectedNameA' in data) || (data.selectedNameA is string && data.selectedNameA.size() <= 120)) &&
+      (!('selectedNameB' in data) || (data.selectedNameB is string && data.selectedNameB.size() <= 120)) &&
+      (!('originalMobile' in data) || (data.originalMobile is string && data.originalMobile.size() <= 24)) &&
+      (!('selectedMobileA' in data) || (data.selectedMobileA is string && data.selectedMobileA.size() <= 24)) &&
+      (!('selectedMobileB' in data) || (data.selectedMobileB is string && data.selectedMobileB.size() <= 24));
+    }
+
+    // Validation Blueprint: SharedReportRecord
+    function isValidSharedReportRecord(data) {
+      return data.keys().hasAll([
+        'id',
+        'ownerUid',
+        'name',
+        'dob',
+        'tob',
+        'pob',
+        'lat',
+        'lng',
+        'gender',
+        'createdAtIso'
+      ]) &&
+      data.keys().hasOnly([
+        'id',
+        'profileId',
+        'ownerUid',
+        'ownerRole',
+        'name',
+        'clientName',
+        'dob',
+        'tob',
+        'pob',
+        'lat',
+        'lng',
+        'gender',
+        'mobile',
+        'partnerName',
+        'partnerDob',
+        'partnerTob',
+        'partnerPob',
+        'partnerLat',
+        'partnerLng',
+        'includePartnerMilan',
+        'healthConcerns',
+        'originalName',
+        'selectedNameA',
+        'selectedNameB',
+        'originalMobile',
+        'selectedMobileA',
+        'selectedMobileB',
+        'healerName',
+        'healerDisplayName',
+        'healerBrandName',
+        'healerMobile',
+        'healerEmail',
+        'signedPdfUrl',
+        'createdAtIso',
+        'updatedAtIso'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.ownerUid) &&
+      data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+      data.dob is string && data.dob.size() >= 8 && data.dob.size() <= 20 &&
+      data.tob is string && data.tob.size() <= 20 &&
+      data.pob is string && data.pob.size() <= 200 &&
+      data.lat is number &&
+      data.lng is number &&
+      data.gender is string && data.gender.size() <= 20 &&
+      data.createdAtIso is string && data.createdAtIso.size() <= 40 &&
+      (!('profileId' in data) || isValidId(data.profileId)) &&
+      (!('ownerRole' in data) || (data.ownerRole is string && data.ownerRole.size() <= 20 && (data.ownerRole == 'client' || data.ownerRole == 'healer' || data.ownerRole == 'admin'))) &&
+      (!('clientName' in data) || (data.clientName is string && data.clientName.size() >= 1 && data.clientName.size() <= 120)) &&
+      (!('mobile' in data) || (data.mobile is string && data.mobile.size() <= 24)) &&
+      (!('partnerName' in data) || (data.partnerName is string && data.partnerName.size() <= 120)) &&
+      (!('partnerDob' in data) || (data.partnerDob is string && data.partnerDob.size() <= 20)) &&
+      (!('partnerTob' in data) || (data.partnerTob is string && data.partnerTob.size() <= 20)) &&
+      (!('partnerPob' in data) || (data.partnerPob is string && data.partnerPob.size() <= 200)) &&
+      (!('partnerLat' in data) || (data.partnerLat is number)) &&
+      (!('partnerLng' in data) || (data.partnerLng is number)) &&
+      (!('includePartnerMilan' in data) || (data.includePartnerMilan is bool)) &&
+      (!('healthConcerns' in data) || (data.healthConcerns is list && data.healthConcerns.size() <= 25 && (data.healthConcerns.size() == 0 || (data.healthConcerns[0] is string && data.healthConcerns[0].size() <= 80)))) &&
+      (!('originalName' in data) || (data.originalName is string && data.originalName.size() <= 120)) &&
+      (!('selectedNameA' in data) || (data.selectedNameA is string && data.selectedNameA.size() <= 120)) &&
+      (!('selectedNameB' in data) || (data.selectedNameB is string && data.selectedNameB.size() <= 120)) &&
+      (!('originalMobile' in data) || (data.originalMobile is string && data.originalMobile.size() <= 30)) &&
+      (!('selectedMobileA' in data) || (data.selectedMobileA is string && data.selectedMobileA.size() <= 30)) &&
+      (!('selectedMobileB' in data) || (data.selectedMobileB is string && data.selectedMobileB.size() <= 30)) &&
+      (!('healerName' in data) || (data.healerName is string && data.healerName.size() <= 120)) &&
+      (!('healerDisplayName' in data) || (data.healerDisplayName is string && data.healerDisplayName.size() <= 120)) &&
+      (!('healerBrandName' in data) || (data.healerBrandName is string && data.healerBrandName.size() <= 150)) &&
+      (!('healerMobile' in data) || (data.healerMobile is string && data.healerMobile.size() <= 30)) &&
+      (!('healerEmail' in data) || (data.healerEmail is string && data.healerEmail.size() <= 150)) &&
+      (!('signedPdfUrl' in data) || (data.signedPdfUrl is string && data.signedPdfUrl.size() <= 2048)) &&
+      (!('updatedAtIso' in data) || (data.updatedAtIso is string && data.updatedAtIso.size() <= 40));
+    }
+
+    // Validation Blueprint: FeedbackSuggestionRecord
+    function isValidFeedbackSuggestionRecord(data) {
+      return data.keys().hasAll([
+        'id',
+        'accountId',
+        'ownerUid',
+        'senderRole',
+        'senderName',
+        'senderMobile',
+        'senderEmail',
+        'category',
+        'rating',
+        'message',
+        'createdAtIso'
+      ]) &&
+      data.keys().hasOnly([
+        'id',
+        'accountId',
+        'ownerUid',
+        'senderRole',
+        'senderName',
+        'senderMobile',
+        'senderEmail',
+        'category',
+        'rating',
+        'message',
+        'adminReply',
+        'createdAtIso'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.accountId) &&
+      isValidId(data.ownerUid) &&
+      data.senderRole is string && data.senderRole.size() <= 20 && (data.senderRole == 'client' || data.senderRole == 'healer' || data.senderRole == 'admin') &&
+      data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 120 &&
+      data.senderMobile is string && data.senderMobile.size() >= 7 && data.senderMobile.size() <= 24 &&
+      data.senderEmail is string && data.senderEmail.size() >= 3 && data.senderEmail.size() <= 160 &&
+      data.category is string && data.category.size() <= 30 && (data.category == 'feedback' || data.category == 'suggestion' || data.category == 'appreciation' || data.category == 'support') &&
+      data.rating is number && data.rating >= 1 && data.rating <= 5 &&
+      data.message is string && data.message.size() >= 2 && data.message.size() <= 1500 &&
+      data.createdAtIso is string && data.createdAtIso.size() <= 40 &&
+      (!('adminReply' in data) || (data.adminReply is string && data.adminReply.size() <= 1000));
+    }
+
+    // Validation Blueprint: BroadcastNotificationRecord
+    function isValidBroadcastNotificationRecord(data) {
+      return data.keys().hasAll([
+        'id',
+        'title',
+        'message',
+        'category',
+        'targetAudience',
+        'createdAtIso'
+      ]) &&
+      data.keys().hasOnly([
+        'id',
+        'title',
+        'message',
+        'category',
+        'targetAudience',
+        'couponCode',
+        'createdAtIso'
+      ]) &&
+      isValidId(data.id) &&
+      data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+      data.message is string && data.message.size() >= 1 && data.message.size() <= 1200 &&
+      data.category is string && data.category.size() <= 30 && (data.category == 'update' || data.category == 'offer' || data.category == 'muhurat' || data.category == 'announcement') &&
+      data.targetAudience is string && data.targetAudience.size() <= 20 && (data.targetAudience == 'all' || data.targetAudience == 'client' || data.targetAudience == 'healer') &&
+      data.createdAtIso is string && data.createdAtIso.size() <= 40 &&
+      (!('couponCode' in data) || (data.couponCode is string && data.couponCode.size() <= 64));
+    }
+
+    // Collection 1: /tathastu_accounts/{accountId}
+    match /tathastu_accounts/{accountId} {
+      allow get: if isSignedIn() && isValidId(accountId) && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.ownerUid == request.auth.uid || isAdminZeroLookup());
+
+      allow create: if isSignedIn() &&
+        isValidId(accountId) &&
+        isValidAccountRecord(incoming()) &&
+        incoming().id == accountId &&
+        (
+          (incoming().ownerUid == request.auth.uid && incoming().role != 'admin' && incoming().isFoc == false) ||
+          isAdmin()
+        );
+
+      allow update: if isSignedIn() &&
+        isValidId(accountId) &&
+        isValidAccountRecord(incoming()) && (
+          isAdmin() ||
+          (
+            existing().ownerUid == request.auth.uid &&
+            incoming().id == existing().id &&
+            incoming().ownerUid == existing().ownerUid &&
+            incoming().role == existing().role &&
+            incoming().createdAtIso == existing().createdAtIso &&
+            (
+              // Action 1: Branding, Notification Preferences or Password Update
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'passwordHash',
+                'notificationPrefsJson',
+                'healerBrandName',
+                'healerLogoUrl',
+                'healerInstagram',
+                'healerFacebook',
+                'healerYoutube',
+                'healerWebsite',
+                'healerAddress'
+              ]) ||
+              // Action 2: Cumulative Paid Plan Upgrade
+              (
+                incoming().isFoc == existing().isFoc &&
+                incoming().planPrice >= 0 &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'planId',
+                  'planName',
+                  'planPrice',
+                  'maxProfiles',
+                  'canDownloadShare',
+                  'subscriptionStart',
+                  'subscriptionExpiry'
+                ])
+              )
+            )
+          )
+        );
+
+      allow delete: if isAdmin() && isValidId(accountId);
+    }
+
+    // Collection 2: /tathastu_profiles/{profileId}
+    match /tathastu_profiles/{profileId} {
+      allow get: if isSignedIn() && isValidId(profileId) && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.ownerUid == request.auth.uid || isAdminZeroLookup());
+
+      allow create: if isSignedIn() &&
+        isValidId(profileId) &&
+        isValidAstroProfileRecord(incoming()) &&
+        incoming().id == profileId &&
+        exists(/databases/$(database)/documents/tathastu_accounts/$(incoming().accountId)) &&
+        (
+          (
+            incoming().ownerUid == request.auth.uid &&
+            get(/databases/$(database)/documents/tathastu_accounts/$(incoming().accountId)).data.ownerUid == request.auth.uid
+          ) ||
+          isAdmin()
+        );
+
+      allow update: if isSignedIn() &&
+        isValidId(profileId) &&
+        isValidAstroProfileRecord(incoming()) && (
+          isAdmin() ||
+          (
+            existing().ownerUid == request.auth.uid &&
+            incoming().id == existing().id &&
+            incoming().accountId == existing().accountId &&
+            incoming().ownerUid == existing().ownerUid &&
+            incoming().dob == existing().dob &&
+            incoming().createdAtIso == existing().createdAtIso &&
+            (
+              // Action 1: Notification Settings Update
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'notificationsEnabled',
+                'notificationChannelsJson'
+              ]) ||
+              // Action 2: Name/Mobile Harmonizer, Partner Milan & Yoga Health Preferences Update
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'name',
+                'tob',
+                'pob',
+                'lat',
+                'lng',
+                'email',
+                'mobile',
+                'gender',
+                'partnerName',
+                'partnerDob',
+                'partnerTob',
+                'partnerPob',
+                'partnerLat',
+                'partnerLng',
+                'includePartnerMilan',
+                'healthConcerns',
+                'originalName',
+                'selectedNameA',
+                'selectedNameB',
+                'originalMobile',
+                'selectedMobileA',
+                'selectedMobileB'
+              ])
+            )
+          )
+        );
+
+      allow delete: if isAdmin() && isValidId(profileId);
+    }
+
+    // Collection 3: /tathastu_shared_reports/{reportId}
+    match /tathastu_shared_reports/{reportId} {
+      allow get: if isValidId(reportId);
+      allow list: if false;
+
+      allow create: if isSignedIn() &&
+        isValidId(reportId) &&
+        isValidSharedReportRecord(incoming()) &&
+        incoming().id == reportId &&
+        (incoming().ownerUid == request.auth.uid || isAdmin());
+
+      allow update: if isSignedIn() &&
+        isValidId(reportId) &&
+        isValidSharedReportRecord(incoming()) && (
+          isAdmin() ||
+          (
+            existing().ownerUid == request.auth.uid &&
+            incoming().id == existing().id &&
+            incoming().ownerUid == existing().ownerUid &&
+            incoming().createdAtIso == existing().createdAtIso &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'profileId',
+              'ownerRole',
+              'name',
+              'clientName',
+              'dob',
+              'tob',
+              'pob',
+              'lat',
+              'lng',
+              'gender',
+              'mobile',
+              'partnerName',
+              'partnerDob',
+              'partnerTob',
+              'partnerPob',
+              'partnerLat',
+              'partnerLng',
+              'includePartnerMilan',
+              'healthConcerns',
+              'originalName',
+              'selectedNameA',
+              'selectedNameB',
+              'originalMobile',
+              'selectedMobileA',
+              'selectedMobileB',
+              'healerName',
+              'healerDisplayName',
+              'healerBrandName',
+              'healerMobile',
+              'healerEmail',
+              'signedPdfUrl',
+              'updatedAtIso'
+            ])
+          )
+        );
+
+      allow delete: if isSignedIn() && isValidId(reportId) && (existing().ownerUid == request.auth.uid || isAdmin());
+    }
+
+    // Collection 4: /tathastu_feedbacks/{feedbackId}
+    match /tathastu_feedbacks/{feedbackId} {
+      allow get: if isSignedIn() && isValidId(feedbackId) && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.ownerUid == request.auth.uid || isAdminZeroLookup());
+
+      allow create: if isSignedIn() &&
+        isValidId(feedbackId) &&
+        isValidFeedbackSuggestionRecord(incoming()) &&
+        incoming().id == feedbackId &&
+        (incoming().ownerUid == request.auth.uid || isAdmin());
+
+      allow update: if isAdmin() &&
+        isValidId(feedbackId) &&
+        isValidFeedbackSuggestionRecord(incoming());
+
+      allow delete: if isAdmin() && isValidId(feedbackId);
+    }
+
+    // Collection 5: /tathastu_broadcasts/{broadcastId}
+    match /tathastu_broadcasts/{broadcastId} {
+      allow get: if isSignedIn() && isValidId(broadcastId);
+      allow list: if isSignedIn();
+
+      allow create, update: if isAdmin() &&
+        isValidId(broadcastId) &&
+        isValidBroadcastNotificationRecord(incoming()) &&
+        incoming().id == broadcastId;
+
+      allow delete: if isAdmin() && isValidId(broadcastId);
+    }
+  }
+}

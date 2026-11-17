@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover"
+    />
+    <link rel="icon" type="image/jpeg" href="/assets/aistudio/tathastu_logo_small_6cf3db26.jpg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#020617" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="application-name" content="Tathastu Numerology" />
+    <meta name="apple-mobile-web-app-title" content="Tathastu" />
+    <title>Tathastu Numerology — TATHASTU THE DIVINE LIGHT | One place . EVERY SOLUTION</title>
+    <meta name="description" content="Tathastu Numerology (TATHASTU THE DIVINE LIGHT — One place . EVERY SOLUTION). Advance Vedic, Chaldean & Islamic-Vedic Numerology, Mobile Harmony, Kundali Milan, Live Good/Bad Time Panchang & Healer Portal." />
+    <meta property="og:title" content="Tathastu Numerology — TATHASTU THE DIVINE LIGHT | One place . EVERY SOLUTION" />
+    <meta property="og:description" content="Tathastu Numerology (TATHASTU THE DIVINE LIGHT — One place . EVERY SOLUTION). Advance Vedic, Chaldean & Islamic-Vedic Numerology, Mobile Harmony, Kundali Milan, Live Good/Bad Time Panchang & Healer Portal." />
+    <meta property="og:image" content="/assets/aistudio/tathastu_logo_small_6cf3db26.jpg" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Yatra+One&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <script>
+      window.addEventListener('unhandledrejection', function (event) {
+        var msg = event && event.reason && (event.reason.message || String(event.reason));
+        if (msg && msg.indexOf('WebSocket closed without opened') !== -1) {
+          event.preventDefault();
+        }
+      });
+      window.addEventListener('error', function (event) {
+        var msg = event && (event.message || (event.error && event.error.message) || '');
+        if (msg && msg.indexOf('WebSocket closed without opened') !== -1) {
+          event.preventDefault();
+        }
+      });
+      if ('serviceWorker' in navigator && window.location.hostname.indexOf('ais-dev-') !== -1) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (reg) {
+            if (reg.active && reg.active.scriptURL && reg.active.scriptURL.indexOf('dev-sw') !== -1) {
+              reg.unregister();
+            }
+          });
+        }).catch(function () {});
+      }
+      window.__tathastuDeferredPrompt = null;
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window.__tathastuDeferredPrompt = e;
+      });
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

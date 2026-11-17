@@ -1,0 +1,444 @@
+@import "tailwindcss";
+
+@layer base {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: #020617;
+    color: #f8fafc;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  button,
+  [role="button"],
+  [role="tab"],
+  a[href],
+  summary,
+  .cursor-pointer {
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity 120ms ease, filter 140ms ease, box-shadow 160ms ease;
+  }
+
+  button:not(:disabled):active,
+  [role="button"]:active,
+  [role="tab"]:active,
+  a[href]:active,
+  .cursor-pointer:active {
+    opacity: 0.78;
+    filter: brightness(1.22);
+  }
+}
+
+@keyframes tathastu-click-blink {
+  0% {
+    opacity: 1;
+    filter: brightness(1);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+  }
+  25% {
+    opacity: 0.42;
+    filter: brightness(1.38);
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.75), 0 0 16px rgba(245, 158, 11, 0.45);
+  }
+  55% {
+    opacity: 1;
+    filter: brightness(1.1);
+    box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.45);
+  }
+  78% {
+    opacity: 0.58;
+    filter: brightness(1.28);
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.65), 0 0 12px rgba(245, 158, 11, 0.35);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+  }
+}
+
+.tathastu-tap-active {
+  animation: tathastu-click-blink 340ms ease-in-out !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tathastu-tap-active {
+    animation: none !important;
+    outline: 2px solid rgba(251, 191, 36, 0.85);
+    outline-offset: 1px;
+  }
+
+  .tathastu-intro-ring-spin,
+  .tathastu-intro-ring-reverse,
+  .tathastu-intro-breathe,
+  .tathastu-intro-fade-up {
+    animation: none !important;
+  }
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes tathastu-intro-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes tathastu-intro-spin-rev {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes tathastu-intro-breathe {
+  0%,
+  100% {
+    transform: scale(0.96);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+@keyframes tathastu-intro-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tathastu-intro-ring-spin {
+  animation: tathastu-intro-spin 14s linear infinite;
+}
+
+.tathastu-intro-ring-reverse {
+  animation: tathastu-intro-spin-rev 18s linear infinite;
+}
+
+.tathastu-intro-breathe {
+  animation: tathastu-intro-breathe 2.6s ease-in-out infinite;
+}
+
+.tathastu-intro-fade-up {
+  animation: tathastu-intro-fade-up 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Forced Mobile View & Automatic Responsive Stack */
+@media screen {
+  body.tathastu-mobile-view .grid.grid-cols-1 {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body.tathastu-mobile-view .flex.flex-col[class*="flex-row"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  body.tathastu-mobile-view .hidden[class*="md:grid"] {
+    display: none !important;
+  }
+
+  body.tathastu-mobile-view table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body.tathastu-mobile-view .rounded-3xl {
+    border-radius: 1.25rem;
+  }
+}
+
+/* Main Screen Spiritual Report Container (A4 Aligned with Minimum Margin) */
+.a4-spiritual-report {
+  width: 100%;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  position: relative;
+}
+
+/* Discrete A4 Portrait Page Sheet (210mm × 297mm with Minimum Margin) */
+.a4-sheet-page {
+  width: 210mm;
+  min-height: 297mm;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 5.5mm 6.5mm;
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #060916 0%, #100c26 40%, #170f24 72%, #070b17 100%);
+  color: #fef3c7;
+  border: 1.5px solid rgba(245, 158, 11, 0.55);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75);
+  overflow: hidden;
+  page-break-after: always;
+  break-after: page;
+}
+
+.a4-sheet-page:last-child {
+  page-break-after: auto;
+  break-after: auto;
+}
+
+/* Responsive scaling wrapper for A4 Preview Modal on smaller screens */
+@media screen and (max-width: 860px) {
+  .a4-sheet-page {
+    width: 100%;
+    min-width: 0;
+    min-height: auto;
+    padding: 14px;
+  }
+}
+
+.a4-print-module-block,
+.a4-section-no-break,
+.a4-sheet-page section,
+.a4-sheet-page > div > div > div,
+.a4-sheet-page tr,
+.a4-spiritual-report section,
+.a4-spiritual-report .rounded-xl,
+.a4-spiritual-report .rounded-2xl {
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+}
+
+/* Dynamic A4 Page Spacer Component to Fill Remaining Vertical Space Without Clipping */
+.a4-dynamic-page-spacer {
+  flex: 1 1 auto;
+  min-height: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  margin-top: 6px;
+  margin-bottom: 4px;
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+}
+
+/* Consistent Text Block Margin, Padding & Alignment System Across All A4 Pages (Including Pages 24 & 25) */
+.a4-consistent-box {
+  padding: 8px 10px !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  overflow-wrap: break-word !important;
+  word-wrap: break-word !important;
+  word-break: break-word !important;
+  white-space: normal !important;
+}
+
+/* Anti-Stretch Image Rule Across All Report Pages */
+.a4-sheet-page img,
+.a4-spiritual-report img {
+  max-width: 100%;
+  object-position: center center;
+  image-rendering: -webkit-optimize-contrast;
+}
+
+/* Subtle Centered Brand / Healer Watermark Seal inside Every A4 Report Page */
+.a4-center-brand-watermark {
+  position: absolute;
+  top: 52%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  user-select: none;
+  z-index: 20;
+  mix-blend-mode: screen;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.a4-sheet-page *,
+.a4-spiritual-report *,
+.a4-text-box-wrap,
+.a4-text-box-wrap * {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: break-word !important;
+  word-wrap: break-word !important;
+  word-break: break-word !important;
+  white-space: normal !important;
+}
+
+.a4-sheet-page table {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.a4-sheet-page th,
+.a4-sheet-page td {
+  overflow-wrap: break-word !important;
+  word-wrap: break-word !important;
+  word-break: break-word !important;
+  white-space: normal !important;
+  vertical-align: top;
+  padding: 5px 7px;
+}
+
+.a4-compact-footer {
+  height: auto;
+  overflow: hidden;
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+}
+
+.a4-page-body-fill {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1 1 auto;
+  gap: 8px;
+}
+
+.a4-page-body-fill > div:first-child {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  flex: 0 1 auto;
+  gap: 8px;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 3.5mm;
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    width: 210mm !important;
+    min-height: 297mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #060916 !important;
+    color: #fef3c7 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    overflow: visible !important;
+  }
+
+  .a4-print-main-reset {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  /* Hide interactive screen container during print because the dedicated multi-page A4 dossier prints instead */
+  .a4-screen-interactive-only {
+    display: none !important;
+  }
+
+  /* If Print Preview Modal is open, hide the background print dossier so pages never print twice */
+  body:has(.a4-print-preview-modal-active) .a4-background-print-dossier {
+    display: none !important;
+  }
+
+  .a4-background-print-dossier {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .a4-print-preview-modal-active,
+  .a4-print-preview-scroll-viewport {
+    position: static !important;
+    inset: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .a4-sheet-page {
+    width: 202mm !important;
+    max-width: 202mm !important;
+    min-height: 288mm !important;
+    margin: 0 auto !important;
+    padding: 4.5mm 5.5mm !important;
+    box-shadow: none !important;
+    border: 1.5px solid rgba(245, 158, 11, 0.65) !important;
+    border-radius: 8px !important;
+    background: linear-gradient(135deg, #060916 0%, #100c26 40%, #170f24 72%, #070b17 100%) !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .a4-sheet-page:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  .a4-compact-footer {
+    height: auto !important;
+    padding: 3.5px 9px !important;
+    overflow: hidden !important;
+  }
+
+  .a4-print-grid-2 {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+  }
+
+  .a4-print-grid-3 {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+  }
+
+  .a4-print-grid-4 {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    align-items: stretch !important;
+  }
+}

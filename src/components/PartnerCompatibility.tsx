@@ -1,0 +1,1062 @@
+import React, { useState, useEffect } from 'react';
+import {
+  HeartHandshake,
+  Heart,
+  Award,
+  Users,
+  MapPin,
+  Search,
+  Clock,
+  Flame,
+  Gem,
+  ShieldAlert,
+  Crown,
+  Sparkles,
+  Check,
+  Save,
+  BarChart3,
+} from 'lucide-react';
+import { BirthProfile, CompatibilityAnalysis, CityLocation } from '../types';
+import {
+  calculateCompatibility,
+  resolveGroomAndBrideProfiles,
+  PLANETARY_PROFILES,
+  analyzeName,
+} from '../utils/numerology';
+import { searchCityGeocode } from '../utils/astrologyAndCities';
+import { CityAutocompleteInput } from './CityAutocompleteInput';
+import { BirthTimeAmPmInput, formatTime12HourAmPm } from './BirthTimeAmPmInput';
+import { useTathastu } from '../utils/tathastuStore';
+
+interface PartnerCompatibilityProps {
+  profile: BirthProfile;
+}
+
+export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ profile }) => {
+  const { activeProfile, adminUpdateProfile } = useTathastu();
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+
+  const initialPair = resolveGroomAndBrideProfiles(profile);
+  const [partner1, setPartner1] = useState(initialPair.groom);
+  const [partner2, setPartner2] = useState(initialPair.bride);
+
+  const isFemaleClient = (activeProfile?.gender || profile.gender) === 'female';
+
+  useEffect(() => {
+    const resolved = resolveGroomAndBrideProfiles(profile);
+    setPartner1(resolved.groom);
+    setPartner2(resolved.bride);
+  }, [
+    profile.id,
+    profile.name,
+    profile.gender,
+    profile.dob,
+    profile.tob,
+    profile.pob,
+    profile.lat,
+    profile.lng,
+    profile.partnerName,
+    profile.partnerDob,
+    profile.partnerTob,
+    profile.partnerPob,
+    profile.partnerLat,
+    profile.partnerLng,
+  ]);
+
+  const [p1CitySuggestions, setP1CitySuggestions] = useState<CityLocation[]>([]);
+  const [p2CitySuggestions, setP2CitySuggestions] = useState<CityLocation[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(async () => {
+      if (partner1.pob.trim().length >= 2) {
+        const res = await searchCityGeocode(partner1.pob);
+        if (active) setP1CitySuggestions(res);
+      }
+    }, 200);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [partner1.pob]);
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(async () => {
+      if (partner2.pob.trim().length >= 2) {
+        const res = await searchCityGeocode(partner2.pob);
+        if (active) setP2CitySuggestions(res);
+      }
+    }, 200);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [partner2.pob]);
+
+  const handleSwitchProfileGender = async (newGender: 'male' | 'female') => {
+    if (!activeProfile) return;
+    const currentGender = activeProfile.gender === 'female' ? 'female' : 'male';
+    if (currentGender === newGender) return;
+
+    // Preserve whichever card currently holds the primary client vs life partner
+    const clientData = currentGender === 'female' ? partner2 : partner1;
+    const partnerData = currentGender === 'female' ? partner1 : partner2;
+    const fallbackPartnerName = newGender === 'female' ? 'Rohit Sharma' : 'Priyanka Sharma';
+    const fallbackPartnerDob = newGender === 'female' ? '1988-06-15' : '1990-11-24';
+    const fallbackPartnerTob = newGender === 'female' ? '10:30' : '14:20';
+
+    const cleanPartnerName =
+      !partnerData.name.trim() ||
+      (newGender === 'female' && partnerData.name.trim() === 'Priyanka Sharma') ||
+      (newGender === 'male' && partnerData.name.trim() === 'Rohit Sharma')
+        ? fallbackPartnerName
+        : partnerData.name.trim();
+
+    await adminUpdateProfile({
+      ...activeProfile,
+      gender: newGender,
+      name: clientData.name.trim() || activeProfile.name,
+      dob: clientData.dob || activeProfile.dob,
+      tob: clientData.tob || activeProfile.tob,
+      pob: clientData.pob || activeProfile.pob,
+      lat: clientData.lat ?? activeProfile.lat,
+      lng: clientData.lng ?? activeProfile.lng,
+      partnerName: cleanPartnerName,
+      partnerDob: partnerData.dob || fallbackPartnerDob,
+      partnerTob: partnerData.tob || fallbackPartnerTob,
+      partnerPob: partnerData.pob || 'Mumbai, Maharashtra, India',
+      partnerLat: partnerData.lat ?? 19.0760,
+      partnerLng: partnerData.lng ?? 72.8777,
+    });
+
+    setSaveSuccessMessage(
+      newGender === 'female'
+        ? `Profile set to Female! ${clientData.name} is now automatically placed in Bride, and ${cleanPartnerName} in Groom.`
+        : `Profile set to Male! ${clientData.name} is now automatically placed in Groom, and ${cleanPartnerName} in Bride.`
+    );
+    setTimeout(() => setSaveSuccessMessage(null), 5000);
+  };
+
+  const handleSavePartnerMilanToReport = async () => {
+    if (!activeProfile) return;
+    if (activeProfile.gender === 'female') {
+      // Female client is Bride (partner2), her partner is Groom (partner1)
+      await adminUpdateProfile({
+        ...activeProfile,
+        name: partner2.name.trim() || activeProfile.name,
+        dob: partner2.dob || activeProfile.dob,
+        tob: partner2.tob || activeProfile.tob,
+        pob: partner2.pob || activeProfile.pob,
+        lat: partner2.lat ?? activeProfile.lat,
+        lng: partner2.lng ?? activeProfile.lng,
+        partnerName: partner1.name.trim() || 'Rohit Sharma',
+        partnerDob: partner1.dob || '1988-06-15',
+        partnerTob: partner1.tob || '10:30',
+        partnerPob: partner1.pob || 'Mumbai, Maharashtra, India',
+        partnerLat: partner1.lat ?? 19.0760,
+        partnerLng: partner1.lng ?? 72.8777,
+      });
+    } else {
+      // Male client is Groom (partner1), his partner is Bride (partner2)
+      await adminUpdateProfile({
+        ...activeProfile,
+        name: partner1.name.trim() || activeProfile.name,
+        dob: partner1.dob || activeProfile.dob,
+        tob: partner1.tob || activeProfile.tob,
+        pob: partner1.pob || activeProfile.pob,
+        lat: partner1.lat ?? activeProfile.lat,
+        lng: partner1.lng ?? activeProfile.lng,
+        partnerName: partner2.name.trim() || 'Priyanka Sharma',
+        partnerDob: partner2.dob || '1990-11-24',
+        partnerTob: partner2.tob || '14:20',
+        partnerPob: partner2.pob || 'Mumbai, Maharashtra, India',
+        partnerLat: partner2.lat ?? 19.0760,
+        partnerLng: partner2.lng ?? 72.8777,
+        includePartnerMilan: true,
+      });
+    }
+    setSaveSuccessMessage(
+      `Saved! Groom (${partner1.name}) & Bride (${partner2.name}) details are now synced to the A4 Report & PDF!`
+    );
+    setTimeout(() => setSaveSuccessMessage(null), 5000);
+  };
+
+  const isPartnerMilanActive = (activeProfile?.includePartnerMilan ?? profile.includePartnerMilan) !== false;
+
+  const handleTogglePartnerMilanCheckbox = async (checked: boolean) => {
+    if (!activeProfile) return;
+    await adminUpdateProfile({
+      ...activeProfile,
+      includePartnerMilan: checked,
+    });
+    setSaveSuccessMessage(
+      checked
+        ? `Partner Milan Activated for ${activeProfile.name}! Partner Milan & 7-Chakra pages are now enabled in the A4 Report.`
+        : `Partner Milan Deactivated for ${activeProfile.name}. It will remain hidden unless checked again.`
+    );
+    setTimeout(() => setSaveSuccessMessage(null), 4000);
+  };
+
+  const analysis: CompatibilityAnalysis = calculateCompatibility(partner1, partner2);
+
+  const p1MulankData = PLANETARY_PROFILES[analysis.p1Mulank];
+  const p2MulankData = PLANETARY_PROFILES[analysis.p2Mulank];
+  const p1BhagyankData = PLANETARY_PROFILES[analysis.p1Bhagyank];
+  const p2BhagyankData = PLANETARY_PROFILES[analysis.p2Bhagyank];
+  const p1NameData = analyzeName(partner1.name, analysis.p1Mulank, analysis.p1Bhagyank);
+  const p2NameData = analyzeName(partner2.name, analysis.p2Mulank, analysis.p2Bhagyank);
+
+  return (
+    <div className="space-y-6 pb-12 animate-fade-in">
+      {/* Sacred Banner + Partner Milan Opt-In Checkbox */}
+      <div className="bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-950 border border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold uppercase tracking-wider">
+              <HeartHandshake className="w-3.5 h-3.5 text-amber-400" />
+              <span>Ashtakoot Guna Milan • 7-Chakra Marital Diagnostics • Pranic Remedies</span>
+            </div>
+            <h1 className="font-serif text-2xl sm:text-3xl font-bold text-amber-100">
+              Vedic Partner Milan & Ashtakoot Milan Chart
+            </h1>
+            <p className="text-sm text-amber-200/70 max-w-2xl">
+              Synthesizes Sidereal Moon Sign (Rashi), Sun Sign, and Nakshatra from birth coordinates with 36-point Ashtakoot Guna Milan and Bride/Groom 7-Chakra bio-field compatibility.
+            </p>
+
+            {/* Partner Milan Activation Checkbox + Gender Role Switcher */}
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <label
+                className={`inline-flex items-center gap-2.5 px-4 py-2 rounded-xl border text-xs font-extrabold cursor-pointer transition-all ${
+                  isPartnerMilanActive
+                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200 shadow-md shadow-emerald-500/10'
+                    : 'bg-slate-950 border-rose-400/50 text-rose-200 hover:border-amber-400'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isPartnerMilanActive}
+                  onChange={(e) => handleTogglePartnerMilanCheckbox(e.target.checked)}
+                  className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                />
+                <span>
+                  {isPartnerMilanActive
+                    ? `✓ Partner Milan Active for ${profile.name} (Included in Report)`
+                    : `Enable Partner Milan for ${profile.name} (Click Checkbox to Activate)`}
+                </span>
+              </label>
+
+              <span className="text-[11px] font-bold text-slate-300">
+                Active Client Role ({profile.name}):
+              </span>
+              <button
+                type="button"
+                onClick={() => handleSwitchProfileGender('male')}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${
+                  !isFemaleClient
+                    ? 'bg-sky-500/25 border-sky-400 text-sky-200 shadow'
+                    : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                ♂ Male (Auto Groom)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchProfileGender('female')}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${
+                  isFemaleClient
+                    ? 'bg-rose-500/25 border-rose-400 text-rose-200 shadow'
+                    : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                ♀ Female (Auto Bride)
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            {isPartnerMilanActive && (
+              <button
+                type="button"
+                onClick={handleSavePartnerMilanToReport}
+                className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>Save Groom & Bride Details to Report</span>
+              </button>
+            )}
+
+            <div className="flex items-center gap-4 bg-slate-950/90 px-5 py-3 rounded-2xl border border-amber-500/30 text-center">
+              <div>
+                <span className="text-[10px] text-amber-400 uppercase font-semibold block">Ashtakoot Score</span>
+                <span className="text-2xl font-black font-mono text-amber-200">
+                  {analysis.totalPoints} / 36
+                </span>
+                <span className="text-xs text-emerald-400 font-bold block">
+                  {analysis.overallPercentage}% Resonance
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {saveSuccessMessage && (
+          <div className="mt-4 p-3 rounded-xl bg-emerald-950/80 border border-emerald-400/50 text-emerald-200 text-xs font-bold flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{saveSuccessMessage}</span>
+          </div>
+        )}
+      </div>
+
+      {!isPartnerMilanActive ? (
+        <div className="bg-slate-900/90 border-2 border-dashed border-amber-500/40 rounded-3xl p-8 text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-300 mx-auto">
+            <HeartHandshake className="w-7 h-7" />
+          </div>
+          <h2 className="font-serif text-xl sm:text-2xl font-bold text-amber-100">
+            Partner Milan is Currently Optional / Inactive for {profile.name}
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-300 max-w-xl mx-auto leading-relaxed">
+            As requested, Partner Milan is controlled by a checkbox so it is only active for clients who require marriage/partner compatibility. Check the box below to activate Groom &amp; Bride Ashtakoot Milan and include it in {profile.name}’s A4 Spiritual Report.
+          </p>
+          <div className="pt-2">
+            <label className="inline-flex items-center gap-3 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider shadow-xl cursor-pointer hover:from-amber-400 hover:to-orange-500 transition-all">
+              <input
+                type="checkbox"
+                checked={isPartnerMilanActive}
+                onChange={(e) => handleTogglePartnerMilanCheckbox(e.target.checked)}
+                className="w-4 h-4 accent-slate-950 rounded cursor-pointer"
+              />
+              <span>Activate Partner Milan for {profile.name}</span>
+            </label>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Groom & Bride Birth Profiles with City Coordinates & Sidereal Astrology */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Groom Card */}
+        <div className="p-5 rounded-2xl bg-slate-900/90 border border-amber-500/25 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/15 pb-2.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Users className="w-4 h-4" />
+                <span>Groom / Partner 1 Natal Profile</span>
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                  !isFemaleClient
+                    ? 'bg-sky-950/90 border-sky-400/50 text-sky-200'
+                    : 'bg-slate-950 border-amber-500/30 text-amber-300'
+                }`}
+              >
+                {!isFemaleClient ? '♂ Primary Client (Groom)' : '♂ Partner (Groom)'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-amber-300">
+                Mulank: <strong>{analysis.p1Mulank}</strong> ({p1MulankData?.planet}) • Bhagyank: <strong>{analysis.p1Bhagyank}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={handleSavePartnerMilanToReport}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-[11px] font-bold transition-all cursor-pointer"
+              >
+                <Save className="w-3 h-3" />
+                <span>Save</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
+            <div>
+              <label className="block text-[11px] font-medium text-slate-300 mb-1.5 truncate">
+                Groom Full Name {!isFemaleClient ? '(Primary Client)' : '(Partner)'}
+              </label>
+              <input
+                type="text"
+                value={partner1.name}
+                onChange={(e) => setPartner1({ ...partner1, name: e.target.value })}
+                className="w-full h-[38px] bg-slate-950 border border-amber-500/30 rounded-xl px-3 text-xs text-amber-100 focus:outline-none focus:border-amber-400"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-slate-300 mb-1.5 truncate">
+                Groom Date of Birth
+              </label>
+              <input
+                type="date"
+                value={partner1.dob}
+                onChange={(e) => setPartner1({ ...partner1, dob: e.target.value })}
+                className="w-full h-[38px] bg-slate-950 border border-amber-500/30 rounded-xl px-3 text-xs text-amber-100 focus:outline-none focus:border-amber-400"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-slate-300 mb-1.5 truncate">
+                Groom Birth Time ({formatTime12HourAmPm(partner1.tob)})
+              </label>
+              <BirthTimeAmPmInput
+                value={partner1.tob}
+                onChange={(newTob) => setPartner1({ ...partner1, tob: newTob })}
+                compact
+              />
+            </div>
+            <div className="relative">
+              <label className="block text-[11px] font-medium text-slate-300 mb-1.5 truncate">
+                Groom Birth City (Type 1st 3 Letters)
+              </label>
+              <CityAutocompleteInput
+                value={partner1.pob}
+                lat={partner1.lat}
+                lng={partner1.lng}
+                onChangeText={(txt) => setPartner1({ ...partner1, pob: txt })}
+                onSelectCity={(res) =>
+                  setPartner1({
+                    ...partner1,
+                    pob: res.formattedPob,
+                    lat: res.lat,
+                    lng: res.lng,
+                  })
+                }
+                placeholder="Type 1st 3 letters of Groom City..."
+                inputClassName="w-full h-[38px] bg-slate-950 border border-amber-500/30 rounded-xl pl-9 pr-8 text-xs text-amber-100"
+              />
+            </div>
+          </div>
+
+          {/* Groom Auto-Calculated Moon Sign, Sun Sign, Nakshatra */}
+          <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-slate-950 border border-amber-500/20 text-center">
+            <div>
+              <span className="text-[9px] text-amber-400 uppercase font-bold block">Janma Rashi (Moon)</span>
+              <span className="text-xs font-bold text-amber-100">{analysis.p1Astrology.rashi}</span>
+            </div>
+            <div>
+              <span className="text-[9px] text-amber-400 uppercase font-bold block">Surya Rashi (Sun)</span>
+              <span className="text-xs font-bold text-amber-100">{analysis.p1Astrology.sunSign}</span>
+            </div>
+            <div>
+              <span className="text-[9px] text-emerald-400 uppercase font-bold block">Janma Nakshatra</span>
+              <span className="text-xs font-bold text-emerald-300">
+                {analysis.p1Astrology.nakshatra} (P-{analysis.p1Astrology.pada})
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Bride Card */}
+        <div className="p-5 rounded-2xl bg-slate-900/90 border border-rose-500/30 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-500/20 pb-2.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-rose-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Heart className="w-4 h-4 text-rose-400" />
+                <span>Bride / Partner 2 Natal Profile</span>
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                  isFemaleClient
+                    ? 'bg-rose-950/90 border-rose-400/50 text-rose-200'
+                    : 'bg-slate-950 border-rose-500/30 text-rose-300'
+                }`}
+              >
+                {isFemaleClient ? '♀ Primary Client (Bride)' : '♀ Partner (Bride)'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-amber-300">
+                Mulank: <strong>{analysis.p2Mulank}</strong> ({p2MulankData?.planet}) • Bhagyank: <strong>{analysis.p2Bhagyank}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={handleSavePartnerMilanToReport}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[11px] font-extrabold transition-all cursor-pointer shadow"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Bride Details</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
+            <div>
+              <label className="block text-[11px] font-medium text-rose-200/90 mb-1.5 truncate">
+                Bride Full Name {isFemaleClient ? '(Primary Client)' : '(Partner)'}
+              </label>
+              <input
+                type="text"
+                value={partner2.name}
+                onChange={(e) => setPartner2({ ...partner2, name: e.target.value })}
+                className="w-full h-[38px] bg-slate-950 border border-rose-500/35 rounded-xl px-3 text-xs text-amber-100 focus:outline-none focus:border-rose-400"
+                placeholder="Enter Bride Full Name..."
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-rose-200/90 mb-1.5 truncate">
+                Bride Date of Birth
+              </label>
+              <input
+                type="date"
+                value={partner2.dob}
+                onChange={(e) => setPartner2({ ...partner2, dob: e.target.value })}
+                className="w-full h-[38px] bg-slate-950 border border-rose-500/35 rounded-xl px-3 text-xs text-amber-100 focus:outline-none focus:border-rose-400"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-rose-200/90 mb-1.5 truncate">
+                Bride Birth Time ({formatTime12HourAmPm(partner2.tob)})
+              </label>
+              <BirthTimeAmPmInput
+                value={partner2.tob}
+                onChange={(newTob) => setPartner2({ ...partner2, tob: newTob })}
+                compact
+                className="border-rose-500/35"
+              />
+            </div>
+            <div className="relative">
+              <label className="block text-[11px] font-medium text-rose-200/90 mb-1.5 truncate">
+                Bride Birth City (Type 1st 3 Letters)
+              </label>
+              <CityAutocompleteInput
+                value={partner2.pob}
+                lat={partner2.lat}
+                lng={partner2.lng}
+                onChangeText={(txt) => setPartner2({ ...partner2, pob: txt })}
+                onSelectCity={(res) =>
+                  setPartner2({
+                    ...partner2,
+                    pob: res.formattedPob,
+                    lat: res.lat,
+                    lng: res.lng,
+                  })
+                }
+                placeholder="Type 1st 3 letters of Bride City..."
+                inputClassName="w-full h-[38px] bg-slate-950 border border-rose-500/35 rounded-xl pl-9 pr-8 text-xs text-amber-100"
+              />
+            </div>
+          </div>
+
+          {/* Bride Auto-Calculated Moon Sign, Sun Sign, Nakshatra */}
+          <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-slate-950 border border-rose-500/25 text-center">
+            <div>
+              <span className="text-[9px] text-rose-300 uppercase font-bold block">Janma Rashi (Moon)</span>
+              <span className="text-xs font-bold text-amber-100">{analysis.p2Astrology.rashi}</span>
+            </div>
+            <div>
+              <span className="text-[9px] text-rose-300 uppercase font-bold block">Surya Rashi (Sun)</span>
+              <span className="text-xs font-bold text-amber-100">{analysis.p2Astrology.sunSign}</span>
+            </div>
+            <div>
+              <span className="text-[9px] text-emerald-400 uppercase font-bold block">Janma Nakshatra</span>
+              <span className="text-xs font-bold text-emerald-300">
+                {analysis.p2Astrology.nakshatra} (P-{analysis.p2Astrology.pada})
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* NEW: Groom vs Bride Complete Natal & Astrological Details Ledger + Visual Ashtakoot Milan Chart */}
+      <div className="bg-slate-900/90 border border-amber-500/35 rounded-2xl p-6 shadow-xl space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-amber-500/20 pb-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold uppercase tracking-wider mb-1">
+              <BarChart3 className="w-3.5 h-3.5 text-amber-400" />
+              <span>Complete Groom & Bride Natal Comparison + 36-Guna Ashtakoot Milan Chart</span>
+            </div>
+            <h2 className="font-serif text-xl font-bold text-amber-100">
+              Ashtakoot Milan Chart: {partner1.name} (Groom) &amp; {partner2.name} (Bride)
+            </h2>
+            <p className="text-xs text-slate-300 mt-0.5">
+              This complete Groom &amp; Bride comparison and 8-Koota Ashtakoot Milan chart is automatically included in your personalized A4 PDF Report.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleSavePartnerMilanToReport}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all cursor-pointer shrink-0"
+          >
+            <Save className="w-4 h-4" />
+            <span>Save to PDF Report</span>
+          </button>
+        </div>
+
+        {/* Groom vs Bride Complete Natal & Astrological Comparison Table */}
+        <div className="overflow-x-auto rounded-xl border border-amber-500/25">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-amber-950/50 border-b border-amber-500/30 text-amber-200 uppercase text-[11px]">
+                <th className="py-2.5 px-3 font-bold">Astro-Numerology Parameter</th>
+                <th className="py-2.5 px-3 font-bold text-amber-300">
+                  Groom / Partner 1: {partner1.name}
+                </th>
+                <th className="py-2.5 px-3 font-bold text-rose-300">
+                  Bride / Partner 2: {partner2.name}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800 bg-slate-950/90 text-slate-200">
+              <tr>
+                <td className="py-2 px-3 font-semibold text-amber-400/90">Full Name &amp; Chaldean Namank</td>
+                <td className="py-2 px-3 font-mono">
+                  <strong>{partner1.name}</strong> (Compound {p1NameData.totalChaldeanCompound} ➔ Root {p1NameData.chaldeanSingle})
+                </td>
+                <td className="py-2 px-3 font-mono">
+                  <strong>{partner2.name}</strong> (Compound {p2NameData.totalChaldeanCompound} ➔ Root {p2NameData.chaldeanSingle})
+                </td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-semibold text-amber-400/90">Date &amp; Time of Birth (AM/PM)</td>
+                <td className="py-2 px-3 font-mono">
+                  {partner1.dob} • {formatTime12HourAmPm(partner1.tob)}
+                </td>
+                <td className="py-2 px-3 font-mono">
+                  {partner2.dob} • {formatTime12HourAmPm(partner2.tob)}
+                </td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-semibold text-amber-400/90">Birth Place &amp; Geodesic Coordinates</td>
+                <td className="py-2 px-3">
+                  {partner1.pob} ({partner1.lat.toFixed(2)}°N, {partner1.lng.toFixed(2)}°E)
+                </td>
+                <td className="py-2 px-3">
+                  {partner2.pob} ({partner2.lat.toFixed(2)}°N, {partner2.lng.toFixed(2)}°E)
+                </td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-semibold text-amber-400/90">Mulank (Psychic) &amp; Ruling Planet</td>
+                <td className="py-2 px-3">
+                  <strong>Mulank {analysis.p1Mulank}</strong> — {p1MulankData?.planet} ({p1MulankData?.sanskritName})
+                </td>
+                <td className="py-2 px-3">
+                  <strong>Mulank {analysis.p2Mulank}</strong> — {p2MulankData?.planet} ({p2MulankData?.sanskritName})
+                </td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-semibold text-amber-400/90">Bhagyank (Destiny) &amp; Ruling Planet</td>
+                <td className="py-2 px-3">
+                  <strong>Bhagyank {analysis.p1Bhagyank}</strong> — {p1BhagyankData?.planet} ({p1BhagyankData?.sanskritName})
+                </td>
+                <td className="py-2 px-3">
+                  <strong>Bhagyank {analysis.p2Bhagyank}</strong> — {p2BhagyankData?.planet} ({p2BhagyankData?.sanskritName})
+                </td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-semibold text-amber-400/90">Sidereal Moon Sign (Janma Rashi)</td>
+                <td className="py-2 px-3 font-semibold text-amber-200">{analysis.p1Astrology.rashi}</td>
+                <td className="py-2 px-3 font-semibold text-rose-200">{analysis.p2Astrology.rashi}</td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-semibold text-amber-400/90">Sidereal Sun Sign (Surya Rashi)</td>
+                <td className="py-2 px-3">{analysis.p1Astrology.sunSign}</td>
+                <td className="py-2 px-3">{analysis.p2Astrology.sunSign}</td>
+              </tr>
+              <tr>
+                <td className="py-2 px-3 font-semibold text-amber-400/90">Janma Nakshatra &amp; Pada</td>
+                <td className="py-2 px-3 text-emerald-300 font-semibold">
+                  {analysis.p1Astrology.nakshatra} (Pada {analysis.p1Astrology.pada})
+                </td>
+                <td className="py-2 px-3 text-emerald-300 font-semibold">
+                  {analysis.p2Astrology.nakshatra} (Pada {analysis.p2Astrology.pada})
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Visual 8-Koota Ashtakoot Milan Chart & Table */}
+        <div className="overflow-x-auto rounded-xl border border-amber-500/30">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-gradient-to-r from-amber-950/70 via-slate-900 to-amber-950/70 border-b border-amber-500/30 text-amber-200 uppercase text-[11px]">
+                <th className="py-2.5 px-3 font-bold">#</th>
+                <th className="py-2.5 px-3 font-bold">Ashtakoot Koota (Dimension)</th>
+                <th className="py-2.5 px-3 font-bold">Marital Domain</th>
+                <th className="py-2.5 px-3 font-bold text-center">Max Gunas</th>
+                <th className="py-2.5 px-3 font-bold text-center">Obtained Gunas</th>
+                <th className="py-2.5 px-3 font-bold w-48">Visual Guna Milan Chart</th>
+                <th className="py-2.5 px-3 font-bold text-center">Verdict</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800 bg-slate-950/90">
+              {analysis.dimensions.map((dim, idx) => {
+                const pct = Math.round((dim.obtainedPoints / Math.max(1, dim.maxPoints)) * 100);
+                return (
+                  <tr key={idx} className="hover:bg-slate-900/70 transition-colors">
+                    <td className="py-2.5 px-3 font-mono font-bold text-amber-400">{idx + 1}</td>
+                    <td className="py-2.5 px-3 font-serif font-bold text-amber-100">
+                      {dim.name} <span className="text-amber-400/80 font-normal">({dim.sanskritName})</span>
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-300">{dim.description}</td>
+                    <td className="py-2.5 px-3 text-center font-mono text-slate-300">{dim.maxPoints}</td>
+                    <td className="py-2.5 px-3 text-center font-mono font-extrabold text-amber-300">
+                      {dim.obtainedPoints}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
+                          <div
+                            className={`h-full rounded-full ${
+                              pct >= 75
+                                ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                                : pct >= 50
+                                ? 'bg-gradient-to-r from-amber-500 to-yellow-400'
+                                : 'bg-gradient-to-r from-rose-500 to-orange-500'
+                            }`}
+                            style={{ width: `${Math.max(8, pct)}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400 w-9 text-right">
+                          {pct}%
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          dim.verdict === 'Excellent'
+                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                            : dim.verdict === 'Good'
+                            ? 'bg-amber-950 text-amber-300 border border-amber-500/40'
+                            : 'bg-rose-950 text-rose-300 border border-rose-500/40'
+                        }`}
+                      >
+                        {dim.verdict}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr className="bg-amber-950/40 border-t-2 border-amber-500/40 font-bold text-amber-100">
+                <td colSpan={3} className="py-3 px-3 text-right uppercase tracking-wider text-xs">
+                  Total Ashtakoot Guna Milan Score ({partner1.name} &amp; {partner2.name}):
+                </td>
+                <td className="py-3 px-3 text-center font-mono text-sm">36</td>
+                <td className="py-3 px-3 text-center font-mono text-base text-emerald-300 font-black">
+                  {analysis.totalPoints}
+                </td>
+                <td className="py-3 px-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-3 rounded-full bg-slate-800 overflow-hidden border border-amber-500/40">
+                      <div
+                        className="h-full bg-gradient-to-r from-amber-400 via-emerald-400 to-teal-400"
+                        style={{ width: `${analysis.overallPercentage}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-mono text-amber-200 font-bold">
+                      {analysis.overallPercentage}%
+                    </span>
+                  </div>
+                </td>
+                <td className="py-3 px-3 text-center text-emerald-300 uppercase text-xs">
+                  {analysis.totalPoints >= 24 ? 'Shubh Milan' : 'Remedy Guided'}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 7-Chakra Post-Marriage Life Challenges (Bride vs Groom Attribution) & Remedies */}
+      <div className="bg-slate-900/90 border border-amber-500/30 rounded-2xl p-6 shadow-xl space-y-5">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-amber-500/20 pb-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[10px] font-bold uppercase tracking-wider mb-1">
+              <Flame className="w-3 h-3 text-rose-400" />
+              <span>Bio-Energetic Marital Diagnostics • Bride & Groom Attribution</span>
+            </div>
+            <h2 className="font-serif text-xl font-bold text-amber-100">
+              7-Chakra Post-Marriage Life Challenges & Remedial Prescriptions
+            </h2>
+            <p className="text-xs text-amber-300/70">
+              Pinpoints the specific karmic challenges carried by the Groom ({partner1.name}) and the Bride ({partner2.name}) across all 7 Chakras after marriage, with targeted Pranic Aura & Crystal remedies.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-5">
+          {analysis.chakraChallenges.map((chakra, idx) => (
+            <div
+              key={idx}
+              className={`p-5 rounded-2xl bg-slate-950 border space-y-4 ${
+                chakra.status === 'Severe Karmic Challenge'
+                  ? 'border-rose-500/50 bg-rose-950/10'
+                  : chakra.status === 'Moderate Blockage'
+                  ? 'border-amber-500/35'
+                  : 'border-emerald-500/30'
+              }`}
+            >
+              {/* Top Header Row */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/15 pb-3">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span
+                    className="w-4 h-4 rounded-full shrink-0 shadow-md"
+                    style={{ backgroundColor: chakra.color }}
+                  />
+                  <h3 className="font-serif text-base sm:text-lg font-bold text-amber-100">
+                    {chakra.chakraName}
+                  </h3>
+                  <span className="text-xs text-amber-400/90 font-medium">
+                    ({chakra.sanskritName} • {chakra.element})
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-200 font-semibold">
+                    Primary Carrier: <strong>{chakra.affectedPartner}</strong>
+                  </span>
+                  <span
+                    className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold uppercase border ${
+                      chakra.status === 'Severe Karmic Challenge'
+                        ? 'bg-rose-950 text-rose-300 border-rose-500/40'
+                        : chakra.status === 'Moderate Blockage'
+                        ? 'bg-amber-950 text-amber-300 border-amber-500/40'
+                        : 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                    }`}
+                  >
+                    {chakra.status} ({chakra.alignmentScore}%)
+                  </span>
+                </div>
+              </div>
+
+              {/* Separate Groom & Bride Challenge Attribution Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                <div className="p-3.5 rounded-xl bg-slate-900/95 border border-amber-500/25 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Groom's Karmic Pattern ({partner1.name})</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      Mulank {analysis.p1Mulank} • {analysis.p1Astrology.rashi.split(' ')[0]}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-200 leading-relaxed">
+                    {chakra.groomChallengeDetail}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-900/95 border border-rose-500/25 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-rose-300 tracking-wider flex items-center gap-1.5">
+                      <Heart className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Bride's Karmic Pattern ({partner2.name})</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      Mulank {analysis.p2Mulank} • {analysis.p2Astrology.rashi.split(' ')[0]}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-200 leading-relaxed">
+                    {chakra.brideChallengeDetail}
+                  </p>
+                </div>
+              </div>
+
+              {/* Combined Marital Dynamic & Remedy */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+                <div className="p-3.5 rounded-xl bg-rose-950/15 border border-rose-500/25 text-xs space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-rose-400 flex items-center gap-1">
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <span>Joint Marital Manifestation & Astrological Diagnosis</span>
+                  </span>
+                  <p className="text-slate-200 leading-relaxed">{chakra.postMarriageIssue}</p>
+                  <p className="text-[11px] text-amber-300/80 italic pt-1">
+                    {chakra.fortuneReadingDiagnosis}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-xs flex flex-col justify-between space-y-2">
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-emerald-400 flex items-center gap-1">
+                      <Gem className="w-3.5 h-3.5" />
+                      <span>Prescribed Pranic Aura & Crystal Summary</span>
+                    </span>
+                    <p className="text-slate-200 leading-relaxed">{chakra.auraScanRemedy}</p>
+                  </div>
+                  <div className="flex flex-wrap justify-between gap-2 pt-2 text-[11px] font-mono text-amber-300 border-t border-emerald-500/20">
+                    <span>Crystal: <strong>{chakra.healingCrystal}</strong></span>
+                    <span>Siddhi Mantra: <strong>{chakra.beejMantra}</strong></span>
+                    {chakra.soundFrequencyHz && (
+                      <span className="text-purple-300">Sound: <strong>🔊 {chakra.soundFrequencyHz}</strong></span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Explicit Remedy Attribution: Groom vs Bride vs Both Partners */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                <div className="p-3.5 rounded-xl bg-amber-950/20 border border-amber-500/35 text-xs space-y-1">
+                  <span className="text-[10px] uppercase font-black text-amber-300 flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Remedy for Groom ({partner1.name})</span>
+                  </span>
+                  <p className="text-slate-200 leading-relaxed">{chakra.groomRemedy}</p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-rose-950/20 border border-rose-500/35 text-xs space-y-1">
+                  <span className="text-[10px] uppercase font-black text-rose-300 flex items-center gap-1.5">
+                    <Heart className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Remedy for Bride ({partner2.name})</span>
+                  </span>
+                  <p className="text-slate-200 leading-relaxed">{chakra.brideRemedy}</p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-emerald-950/25 border border-emerald-500/40 text-xs space-y-1">
+                  <span className="text-[10px] uppercase font-black text-emerald-300 flex items-center gap-1.5">
+                    <HeartHandshake className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Joint Remedy for Both Partners</span>
+                  </span>
+                  <p className="text-slate-200 leading-relaxed">{chakra.bothRemedy}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/*Elaborated 8 Vedic Dimensions (Ashtakoot Koota) with Detailed Paragraphs & Remedies */}
+      <div className="bg-slate-900/90 border border-amber-500/25 rounded-2xl p-6 shadow-xl space-y-5">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-amber-500/20 pb-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold uppercase tracking-wider mb-1">
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              <span>Brihat Parashara Hora Shastra • Comprehensive 36-Guna Exposition</span>
+            </div>
+            <h2 className="font-serif text-xl font-bold text-amber-100 flex items-center gap-2">
+              <Award className="w-5 h-5 text-amber-400" />
+              <span>The 8 Vedic Dimensions (Ashtakoot Milan — {analysis.totalPoints} / 36 Gunas)</span>
+            </h2>
+            <p className="text-xs text-amber-200/80 mt-0.5">{analysis.verdict}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          {analysis.dimensions.map((dim, idx) => (
+            <div
+              key={idx}
+              className="p-5 rounded-2xl bg-slate-950 border border-amber-500/25 hover:border-amber-400/50 transition-all space-y-3"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/15 pb-2.5">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-300 font-mono text-xs font-bold flex items-center justify-center">
+                    {idx + 1}
+                  </span>
+                  <h3 className="font-serif text-base sm:text-lg font-bold text-amber-100">
+                    {dim.name}
+                  </h3>
+                  <span className="text-xs font-serif text-amber-400/90">
+                    ({dim.sanskritName})
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {dim.soundFrequencyHz && (
+                    <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-lg bg-purple-950/80 border border-purple-500/35 text-purple-200">
+                      🔊 {dim.soundFrequencyHz}
+                    </span>
+                  )}
+                  <span className="text-xs font-mono font-bold px-3 py-1 rounded-lg bg-slate-900 border border-amber-500/30 text-amber-100">
+                    Score: {dim.obtainedPoints} / {dim.maxPoints} Gunas
+                  </span>
+                  <span
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${
+                      dim.verdict === 'Excellent'
+                        ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                        : dim.verdict === 'Good'
+                        ? 'bg-amber-950 text-amber-300 border border-amber-500/40'
+                        : 'bg-rose-950 text-rose-300 border border-rose-500/40'
+                    }`}
+                  >
+                    {dim.verdict}
+                  </span>
+                </div>
+              </div>
+
+              {/* Detailed Multi-Sentence Paragraph Elaborating the Dimension */}
+              <div className="space-y-2 text-xs sm:text-sm text-slate-200 leading-relaxed">
+                <p>{dim.detailedAnalysis}</p>
+              </div>
+
+              {/* Dedicated Vedic & Aura Remedy for this Dimension */}
+              <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-xs space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                  <Gem className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Prescribed Shastra & Pranic Harmonization Overview ({dim.sanskritName})</span>
+                </span>
+                <p className="text-slate-200 leading-relaxed">{dim.remedy}</p>
+              </div>
+
+              {/* Groom vs Bride vs Both Remedy Breakdown for each Ashtakoot Dimension */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 text-xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-amber-300 flex items-center gap-1">
+                    <Users className="w-3 h-3 text-amber-400" />
+                    <span>Groom Remedy ({partner1.name})</span>
+                  </span>
+                  <p className="text-slate-200 leading-relaxed">{dim.groomRemedy}</p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-500/30 text-xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-rose-300 flex items-center gap-1">
+                    <Heart className="w-3 h-3 text-rose-400" />
+                    <span>Bride Remedy ({partner2.name})</span>
+                  </span>
+                  <p className="text-slate-200 leading-relaxed">{dim.brideRemedy}</p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-emerald-950/25 border border-emerald-500/35 text-xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-emerald-300 flex items-center gap-1">
+                    <HeartHandshake className="w-3 h-3 text-emerald-400" />
+                    <span>Both Partners Joint Remedy</span>
+                  </span>
+                  <p className="text-slate-200 leading-relaxed">{dim.bothRemedy}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Marital Name Resonance Harmonizer */}
+      <div className="bg-slate-900/90 border border-amber-500/25 rounded-2xl p-6 shadow-xl space-y-4">
+        <div>
+          <h3 className="font-serif text-lg font-bold text-amber-100 flex items-center gap-2">
+            <Crown className="w-5 h-5 text-amber-400" />
+            <span>Marital Name Vibration Harmonizer</span>
+          </h3>
+          <p className="text-xs text-amber-300/70">
+            Calibrates both partners' Chaldean name compounds to foster domestic peace, emotional intimacy, and shared prosperity.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {analysis.perfectNameSuggestions.map((item, idx) => (
+            <div
+              key={idx}
+              className="p-4 rounded-2xl bg-slate-950 border border-amber-500/30 flex flex-col justify-between space-y-3"
+            >
+              <div>
+                <span className="text-[10px] font-bold uppercase text-amber-400 tracking-wider block mb-1">
+                  {item.partnerLabel}
+                </span>
+                <div className="text-xs text-slate-400 mb-1">
+                  Natal Spelling: <span className="line-through">{item.currentName}</span>
+                </div>
+                <div className="text-lg font-serif font-black text-amber-100 tracking-wide">
+                  {item.suggestedPerfectName}
+                </div>
+                <span className="inline-block mt-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/30">
+                  Compound {item.compound} ➔ Root {item.root} ({item.title})
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 border-t border-amber-500/15 pt-2">
+                {item.maritalBenefit}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+      </>
+      )}
+    </div>
+  );
+};
+

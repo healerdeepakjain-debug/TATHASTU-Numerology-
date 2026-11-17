@@ -1,0 +1,5259 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  Download,
+  Printer,
+  Share2,
+  MessageCircle,
+  Lock,
+  Edit3,
+  Trash2,
+  Phone,
+  Globe,
+  Instagram,
+  Facebook,
+  Youtube,
+  ShieldAlert,
+  X,
+  CheckCircle2,
+  Bell,
+  ArrowLeft,
+  CheckSquare,
+  Square,
+  FileText,
+  SlidersHorizontal,
+  Eye,
+  Sparkles,
+  Upload,
+  Mail,
+  MapPin,
+  Award,
+  ZoomIn,
+  ZoomOut,
+  QrCode,
+  Calendar,
+  Clock,
+} from 'lucide-react';
+import {
+  useTathastu,
+  TATHASTU_LOGO_PATH,
+  TATHASTU_APP_NAME,
+  TATHASTU_BRAND_NAME,
+  TATHASTU_TAGLINE,
+  TATHASTU_ADMIN_PHONE,
+  TATHASTU_ADMIN_EMAIL,
+  resolveReportHealerAttribution,
+} from '../utils/tathastuStore';
+import {
+  useLanguage,
+  translateMultilineBlock,
+  validateAndNormalizeLocaleText,
+} from '../utils/i18n';
+import {
+  calculateMulank,
+  calculateBhagyank,
+  PLANETARY_PROFILES,
+  analyzeName,
+  analyzeMobileNumber,
+  generateNameCorrections,
+  getDailyPanchang,
+  calculateLoShuGrid,
+  calculateCompatibility,
+  resolveGroomAndBrideProfiles,
+  getPlanetaryRelationship,
+  validateNumericEntity,
+  CELESTIAL_TRANSITS,
+  UPCOMING_MOON_PHASES,
+} from '../utils/numerology';
+import {
+  calculateVedicAstrologyFromBirth,
+  calculateCareerAndAuraProfile,
+  getPersonalizedIndianFestivals,
+} from '../utils/astrologyAndCities';
+import { generateAdvanceMobileReport } from '../utils/advanceMobileReport';
+import { calculateIslamicVedicReport } from '../utils/islamicVedicRemedies';
+import { getBestUpcomingEventsNext12Months } from './CosmicCalendar';
+import { calculateGemstoneRecommendationsForProfile } from './GemstoneRecommendation';
+import { LO_SHU_VEDIC_REMEDIES_DB } from './InteractiveLoShuGrid';
+import { SANSKRit_BEEJ_DEVANAGARI } from './DailyMantras';
+import {
+  generateAndExport18PagePdf,
+  generate12MonthLunarAndAstroForecast,
+  calculateExactPdfPageCounts,
+} from '../utils/pdfReportGenerator';
+import {
+  generateClientReportQrDataUrl,
+  getClientReportDirectUrl,
+  buildClientStatusAndAuspiciousUpdateBlock,
+  dispatchWhatsAppMessage,
+  sendWhatsAppSpecificEventAlert,
+  sendWhatsAppFullReportShare,
+  sendWhatsAppAuspiciousTimeUpdate,
+} from '../utils/whatsappAndQrService';
+import { formatTime12HourAmPm } from './BirthTimeAmPmInput';
+import { calculateYogaPranayamaPlan } from '../utils/yogaPranayamaData';
+import { YogaPostureIllustration, PranayamaIllustration } from './YogaPranayamaModule';
+import {
+  db,
+  auth,
+  doc as firestoreDoc,
+  setDoc as firestoreSetDoc,
+  OperationType,
+  handleFirestoreError,
+  triggerCrossPlatformPdfBlobDownload,
+} from '../firebase';
+
+import a4DivineEnergyBg from '../assets/images/a4_divine_energy_watermark_1794229222633.jpg';
+import chakraHealingArt from '../assets/images/chakra_healing_meditation_art_1794229223170.jpg';
+import spiritualReportBanner from '../assets/images/spiritual_energy_report_banner_1794229220638.jpg';
+import vedicNameCareerYantra from '../assets/images/vedic_name_career_yantra_1794305504547.jpg';
+import mobileLoShuGridArt from '../assets/images/mobile_lo_shu_cosmic_grid_1794305505049.jpg';
+import planetaryTransitsArt from '../assets/images/planetary_transits_navagraha_1794305507441.jpg';
+import islamicNoorArt from '../assets/images/islamic_vedic_noor_geometry_1794305507170.jpg';
+
+interface A4SpiritualReportFrameProps {
+  sectionTitle: string;
+  children: React.ReactNode;
+  onOpenAdminPortal?: () => void;
+  onOpenEditProfileModal?: () => void;
+}
+
+export interface ReportSectionSelection {
+  nameAndCareer: boolean;
+  advanceMobileAudit: boolean;
+  forecast12Months: boolean;
+  auditedCalendar12Months: boolean;
+  transitsAndMoon12Months: boolean;
+  dailyMantras: boolean;
+  yogaAndPranayama: boolean;
+  partnerMilanChakras: boolean;
+  festivals12Months: boolean;
+  islamicVedicRemedies: boolean;
+}
+
+export interface CenterWatermarkSettings {
+  enabled: boolean;
+  opacityPercent: number;
+  sizePx: number;
+  showBrandText: boolean;
+}
+
+const REPORT_SETTINGS_STORAGE_KEY = 'tathastu_a4_report_module_selection_v7';
+const INCLUDE_ACTIVE_TAB_STORAGE_KEY = 'tathastu_a4_include_active_tab_v5';
+const WATERMARK_SETTINGS_STORAGE_KEY = 'tathastu_a4_center_watermark_v3';
+
+const DEFAULT_REPORT_SECTIONS: ReportSectionSelection = {
+  nameAndCareer: true,
+  advanceMobileAudit: true,
+  forecast12Months: true,
+  auditedCalendar12Months: true,
+  transitsAndMoon12Months: true,
+  dailyMantras: true,
+  yogaAndPranayama: true,
+  partnerMilanChakras: true,
+  festivals12Months: true,
+  islamicVedicRemedies: true,
+};
+
+const DEFAULT_WATERMARK_SETTINGS: CenterWatermarkSettings = {
+  enabled: true,
+  opacityPercent: 10,
+  sizePx: 260,
+  showBrandText: true,
+};
+
+export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
+  sectionTitle,
+  children,
+  onOpenAdminPortal,
+  onOpenEditProfileModal,
+}) => {
+  const { language, tr } = useLanguage();
+  const {
+    accounts,
+    currentAccount,
+    activeProfile,
+    clearActiveProfile,
+    broadcasts,
+    adminUpdateAccount,
+    adminUpdateProfile,
+    adminDeleteProfile,
+    canCurrentAccountDownloadOrShare,
+    canCurrentAccountEditOrDelete,
+    triggerAdminRestrictionPopup,
+    restrictionModal,
+    closeRestrictionModal,
+  } = useTathastu();
+
+  const [shareToast, setShareToast] = useState<string | null>(null);
+  const [dismissedBroadcastId, setDismissedBroadcastId] = useState<string | null>(null);
+
+  const [showExportOptionsPanel, setShowExportOptionsPanel] = useState<boolean>(false);
+  const [isSettingsDrawerOpen, setIsSettingsDrawerOpen] = useState<boolean>(false);
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState<boolean>(false);
+  const [previewScale, setPreviewScale] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      if (window.innerWidth < 640) return 56;
+      if (window.innerWidth < 1024) return 78;
+    }
+    return 100;
+  });
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+  const [reportQrDataUrl, setReportQrDataUrl] = useState<string>('');
+  const [isQrModalOpen, setIsQrModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const onResize = () => {
+      const w = window.innerWidth;
+      setIsMobileViewport(w < 768);
+      if (w < 640) setPreviewScale(56);
+      else if (w < 1024) setPreviewScale(78);
+      else setPreviewScale(100);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const reportQrDirectUrl = useMemo(() => {
+    if (!activeProfile) return '';
+    return getClientReportDirectUrl(activeProfile);
+  }, [activeProfile]);
+
+  const reportDirectDownloadLink = useMemo(() => {
+    if (!reportQrDirectUrl) return '';
+    return `${reportQrDirectUrl}&autoDownloadPdf=1`;
+  }, [reportQrDirectUrl]);
+
+  useEffect(() => {
+    if (!activeProfile) {
+      setReportQrDataUrl('');
+      return;
+    }
+    let mounted = true;
+    generateClientReportQrDataUrl(activeProfile).then((dataUrl) => {
+      if (mounted) setReportQrDataUrl(dataUrl);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [activeProfile]);
+
+  const [selectedSections, setSelectedSections] = useState<ReportSectionSelection>(() => {
+    try {
+      const saved = localStorage.getItem(REPORT_SETTINGS_STORAGE_KEY);
+      if (saved) {
+        return { ...DEFAULT_REPORT_SECTIONS, ...JSON.parse(saved) };
+      }
+    } catch {
+      // Fallback
+    }
+    return DEFAULT_REPORT_SECTIONS;
+  });
+
+  const [includeActiveTabInPrint, setIncludeActiveTabInPrint] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(INCLUDE_ACTIVE_TAB_STORAGE_KEY);
+      if (saved !== null) return JSON.parse(saved);
+    } catch {
+      // Fallback
+    }
+    return false;
+  });
+
+  const [watermarkSettings, setWatermarkSettings] = useState<CenterWatermarkSettings>(() => {
+    try {
+      const saved = localStorage.getItem(WATERMARK_SETTINGS_STORAGE_KEY);
+      if (saved) {
+        return { ...DEFAULT_WATERMARK_SETTINGS, ...JSON.parse(saved) };
+      }
+    } catch {
+      // Fallback
+    }
+    return DEFAULT_WATERMARK_SETTINGS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(REPORT_SETTINGS_STORAGE_KEY, JSON.stringify(selectedSections));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [selectedSections]);
+
+  // Sync Partner Milan report section with the client's opt-in checkbox (`includePartnerMilan`, enabled by default unless explicitly set to false)
+  useEffect(() => {
+    if (!activeProfile) return;
+    setSelectedSections((prev) => ({
+      ...prev,
+      partnerMilanChakras: activeProfile.includePartnerMilan !== false,
+    }));
+  }, [activeProfile?.id, activeProfile?.includePartnerMilan]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(INCLUDE_ACTIVE_TAB_STORAGE_KEY, JSON.stringify(includeActiveTabInPrint));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [includeActiveTabInPrint]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(WATERMARK_SETTINGS_STORAGE_KEY, JSON.stringify(watermarkSettings));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [watermarkSettings]);
+
+  const reportDateRange = useMemo(() => {
+    const startIso = new Date().toISOString();
+    const startDate = new Date(startIso);
+    const endDate = new Date(startDate);
+    endDate.setFullYear(endDate.getFullYear() + 1);
+
+    const formatShort = (d: Date) =>
+      d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    const twelveMonths: {
+      monthLabel: string;
+      periodRange: string;
+      personalMonthNum: number;
+      rulingPlanet: string;
+      forecastSummary: string;
+      transitHighlight: string;
+      moonPhaseDates: string;
+      luckyDays: string;
+    }[] = [];
+
+    const m = activeProfile ? calculateMulank(activeProfile.dob) : 9;
+    const b = activeProfile ? calculateBhagyank(activeProfile.dob) : 9;
+
+    for (let i = 0; i < 12; i++) {
+      const mStart = new Date(startDate.getFullYear(), startDate.getMonth() + i, startDate.getDate());
+      const mEnd = new Date(startDate.getFullYear(), startDate.getMonth() + i + 1, startDate.getDate() - 1);
+      const monthName = mStart.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+      const rawNum = ((m + b + (mStart.getMonth() + 1) + i) % 9) || 9;
+      const pInfo = PLANETARY_PROFILES[rawNum] || PLANETARY_PROFILES[1];
+
+      twelveMonths.push({
+        monthLabel: `Month ${i + 1}: ${monthName}`,
+        periodRange: `${formatShort(mStart)} – ${formatShort(mEnd)}`,
+        personalMonthNum: rawNum,
+        rulingPlanet: `${pInfo.planet} (${pInfo.sanskritName})`,
+        forecastSummary:
+          i % 3 === 0
+            ? `High career expansion, new financial opportunities, and favorable authority decisions under ${pInfo.planet}. Best for launching agreements, property bookings, and wealth investments. Chant "${pInfo.beejMantra}" 108x.`
+            : i % 3 === 1
+            ? `Relationship harmony, family auspicious events, and network growth governed by ${pInfo.planet}. Excellent period for partnership alignment, client expansion, and spiritual sadhana.`
+            : `Consolidation, health rejuvenation, debt clearance, and spiritual sadhana period under ${pInfo.planet}. Avoid impulsive speculation during Rahu Kaal and perform weekly charity.`,
+        transitHighlight: `${pInfo.planet} & Guru Transit Alignment (${pInfo.element} Element Active) — Favorable Direction: East/North`,
+        moonPhaseDates: `Shukla Purnima Siddhi: 14th–16th • Amavasya Remedy: 28th–30th ${mStart.toLocaleDateString('en-IN', { month: 'short' })}`,
+        luckyDays: pInfo.luckyDays.join(', '),
+      });
+    }
+
+    return {
+      startFormatted: formatShort(startDate),
+      endFormatted: formatShort(endDate),
+      twelveMonths,
+    };
+  }, [activeProfile]);
+
+  const multiSectionReportData = useMemo(() => {
+    if (!activeProfile) return null;
+    const m = calculateMulank(activeProfile.dob);
+    const b = calculateBhagyank(activeProfile.dob);
+    const nameAnalysis = analyzeName(activeProfile.name, m, b);
+    const nameSuggestions = generateNameCorrections(activeProfile.name, m, b);
+    const topPerfectChoice =
+      nameSuggestions.find((s) => s.harmonyScore >= 90) || nameSuggestions[0];
+    const mobileAnalysis = analyzeMobileNumber(activeProfile.mobile || '', m, b);
+    const advMobile = generateAdvanceMobileReport(
+      activeProfile.dob,
+      activeProfile.mobile || '9876543210',
+      m,
+      b,
+      activeProfile.tob || '09:30',
+      activeProfile.lat ?? 28.6139,
+      activeProfile.lng ?? 77.209
+    );
+    const panchang = getDailyPanchang(new Date(), m, b);
+    const loShu = calculateLoShuGrid(activeProfile.dob, m, b, activeProfile.gender);
+    const astro = calculateVedicAstrologyFromBirth(
+      activeProfile.dob,
+      activeProfile.tob || '09:30',
+      activeProfile.lat ?? 28.6139,
+      activeProfile.lng ?? 77.209
+    );
+    const career = calculateCareerAndAuraProfile(
+      activeProfile.name,
+      m,
+      b,
+      nameAnalysis.chaldeanSingle
+    );
+    const gemRecommend = calculateGemstoneRecommendationsForProfile({
+      id: activeProfile.id,
+      name: activeProfile.name,
+      dob: activeProfile.dob,
+      tob: activeProfile.tob || '09:30',
+      pob: activeProfile.pob || 'New Delhi, India',
+      lat: activeProfile.lat ?? 28.6139,
+      lng: activeProfile.lng ?? 77.209,
+      mobile: activeProfile.mobile || '9876543210',
+    });
+
+    const triadCompound =
+      m + b + nameAnalysis.totalChaldeanCompound + advMobile.mobileCompound;
+    const triadSingle =
+      ((m + b + nameAnalysis.chaldeanSingle + advMobile.mobileTotal - 1) % 9) + 1;
+    const triadPlanet = PLANETARY_PROFILES[triadSingle] || PLANETARY_PROFILES[1];
+    const relMulankMobile = getPlanetaryRelationship(m, advMobile.mobileTotal);
+    const relBhagyankMobile = getPlanetaryRelationship(b, advMobile.mobileTotal);
+    const relNameMobile = getPlanetaryRelationship(
+      nameAnalysis.chaldeanSingle,
+      advMobile.mobileTotal
+    );
+    const relMulankName = getPlanetaryRelationship(m, nameAnalysis.chaldeanSingle);
+    const nameMobileBonus =
+      relNameMobile === 'friendly' ? 20 : relNameMobile === 'neutral' ? 14 : 7;
+    const combinedTriadScore = Math.min(
+      99,
+      Math.max(
+        38,
+        Math.round(
+          nameAnalysis.harmonyScore * 0.35 +
+            mobileAnalysis.overallScore * 0.45 +
+            nameMobileBonus
+        )
+      )
+    );
+    const combinedCareerProfile = calculateCareerAndAuraProfile(
+      activeProfile.name,
+      m,
+      b,
+      triadSingle
+    );
+
+    const vehicleValidation = validateNumericEntity(
+      `DL01AB${m}${b}${PLANETARY_PROFILES[m]?.friendlyNumbers[0] || m}${PLANETARY_PROFILES[b]?.friendlyNumbers[0] || b}`,
+      'Vehicle',
+      m,
+      b
+    );
+    const flatValidation = validateNumericEntity(
+      `${PLANETARY_PROFILES[m]?.friendlyNumbers[0] || m}0${b}`,
+      'House',
+      m,
+      b
+    );
+    const businessValidation = validateNumericEntity(
+      activeProfile.name,
+      'Account',
+      m,
+      b
+    );
+    const mobileValidation = validateNumericEntity(
+      activeProfile.mobile || '9876543210',
+      'Mobile',
+      m,
+      b
+    );
+
+    const todayIso = new Date().toISOString();
+    const reportYear = new Date(todayIso).getFullYear();
+    const festivals = getPersonalizedIndianFestivals(
+      activeProfile.name,
+      m,
+      b,
+      nameAnalysis.chaldeanSingle,
+      astro.rashi,
+      reportYear >= 2026 && reportYear <= 2030 ? reportYear : 2026,
+      todayIso,
+      false
+    );
+    const islamicReport = calculateIslamicVedicReport({
+      id: activeProfile.id,
+      name: activeProfile.name,
+      dob: activeProfile.dob,
+      tob: activeProfile.tob,
+      pob: activeProfile.pob,
+      lat: activeProfile.lat,
+      lng: activeProfile.lng,
+      mobile: activeProfile.mobile,
+    });
+    const bestEvents12M = getBestUpcomingEventsNext12Months(
+      {
+        id: activeProfile.id,
+        name: activeProfile.name,
+        dob: activeProfile.dob,
+        tob: activeProfile.tob,
+        pob: activeProfile.pob,
+        lat: activeProfile.lat,
+        lng: activeProfile.lng,
+        mobile: activeProfile.mobile,
+      },
+      todayIso
+    );
+    const { groom: groomProfile, bride: brideProfile } = resolveGroomAndBrideProfiles(activeProfile);
+    const partnerMilan = calculateCompatibility(groomProfile, brideProfile);
+    const groomNameAnalysis = analyzeName(
+      groomProfile.name,
+      partnerMilan.p1Mulank,
+      partnerMilan.p1Bhagyank
+    );
+    const brideNameAnalysis = analyzeName(
+      brideProfile.name,
+      partnerMilan.p2Mulank,
+      partnerMilan.p2Bhagyank
+    );
+    const lunar12Months = generate12MonthLunarAndAstroForecast(
+      todayIso,
+      astro.rashi,
+      astro.nakshatra,
+      m,
+      b
+    );
+    const yogaPlan = calculateYogaPranayamaPlan({
+      id: activeProfile.id,
+      name: activeProfile.name,
+      dob: activeProfile.dob,
+      tob: activeProfile.tob || '09:30',
+      pob: activeProfile.pob || 'New Delhi, India',
+      lat: activeProfile.lat ?? 28.6139,
+      lng: activeProfile.lng ?? 77.209,
+      gender: activeProfile.gender,
+      mobile: activeProfile.mobile || '9876543210',
+      healthConcerns: activeProfile.healthConcerns || [],
+    });
+    return {
+      m,
+      b,
+      nameAnalysis,
+      nameSuggestions,
+      topPerfectChoice,
+      mobileAnalysis,
+      advMobile,
+      panchang,
+      loShu,
+      astro,
+      career,
+      gemRecommend,
+      triadCompound,
+      triadSingle,
+      triadPlanet,
+      relMulankMobile,
+      relBhagyankMobile,
+      relNameMobile,
+      relMulankName,
+      combinedTriadScore,
+      combinedCareerProfile,
+      vehicleValidation,
+      flatValidation,
+      businessValidation,
+      mobileValidation,
+      festivals,
+      islamicReport,
+      bestEvents12M,
+      groomProfile,
+      brideProfile,
+      groomNameAnalysis,
+      brideNameAnalysis,
+      partnerMilan,
+      lunar12Months,
+      yogaPlan,
+    };
+  }, [activeProfile]);
+
+  if (!currentAccount) {
+    return <>{children}</>;
+  }
+
+  const {
+    isHealerReport,
+    healerAccount: healerAccountForBranding,
+    brandLogo,
+    brandTitle,
+    healerDisplayName,
+    healerDisplayMobile,
+    healerDisplayEmail,
+    healerDisplayAddress,
+    healerInstagram,
+    healerFacebook,
+    healerYoutube,
+    healerWebsite,
+    watermarkTagline,
+  } = resolveReportHealerAttribution(activeProfile, accounts, currentAccount);
+  const isAdmin = currentAccount.role === 'admin';
+
+  const latestBroadcast = broadcasts.find(
+    (b) =>
+      b.id !== dismissedBroadcastId &&
+      (b.targetAudience === 'all' || b.targetAudience === currentAccount.role)
+  );
+
+  const pdfPageCountInfo = useMemo(() => {
+    if (!activeProfile) {
+      return {
+        totalPdfPages: 0,
+        modulePageCounts: {
+          nameAndCareer: 5,
+          advanceMobileAudit: 5,
+          forecast12Months: 3,
+          auditedCalendar12Months: 2,
+          transitsAndMoon12Months: 2,
+          dailyMantras: 1,
+          yogaAndPranayama: 2,
+          partnerMilanChakras: 3,
+          festivals12Months: 3,
+          islamicVedicRemedies: 2,
+        } as Record<keyof ReportSectionSelection, number>,
+      };
+    }
+    return calculateExactPdfPageCounts({
+      activeProfile,
+      healerAccount: healerAccountForBranding,
+      isHealerReport,
+      brandTitle,
+      healerDisplayName,
+      healerDisplayMobile,
+      healerDisplayEmail,
+      healerDisplayAddress,
+      healerInstagram,
+      healerFacebook,
+      healerYoutube,
+      healerWebsite,
+      startFormatted: reportDateRange.startFormatted,
+      endFormatted: reportDateRange.endFormatted,
+      twelveMonths: reportDateRange.twelveMonths,
+      qrCodeDataUrl: reportQrDataUrl,
+      qrCodeDirectUrl: reportQrDirectUrl,
+      watermarkOpacityPercent: watermarkSettings.opacityPercent,
+      watermarkEnabled: watermarkSettings.enabled,
+      selectedSections,
+      language,
+    });
+  }, [
+    activeProfile,
+    healerAccountForBranding,
+    isHealerReport,
+    brandTitle,
+    healerDisplayName,
+    healerDisplayMobile,
+    healerDisplayEmail,
+    healerDisplayAddress,
+    healerInstagram,
+    healerFacebook,
+    healerYoutube,
+    healerWebsite,
+    reportDateRange,
+    reportQrDataUrl,
+    reportQrDirectUrl,
+    watermarkSettings.opacityPercent,
+    watermarkSettings.enabled,
+    selectedSections,
+    language,
+  ]);
+
+  const modulePageCounts = pdfPageCountInfo.modulePageCounts;
+  const fmtPg = (n: number) => `${n} ${n === 1 ? 'Page' : 'Pages'}`;
+
+  const MODULE_OPTIONS: {
+    key: keyof ReportSectionSelection;
+    label: string;
+    shortLabel: string;
+    pageCount: number;
+    sub: string;
+  }[] = [
+    {
+      key: 'nameAndCareer',
+      label: tr(`1. Name, Career, Ratna & Validator (${fmtPg(modulePageCounts.nameAndCareer)})`),
+      shortLabel: tr('Name, Career & Ratna'),
+      pageCount: modulePageCounts.nameAndCareer,
+      sub: tr('Birth Chart, Lo-Shu 8 Planes, Name Spellings, All Career Sectors, 5-Pillar Ratna & Universal Validator'),
+    },
+    {
+      key: 'advanceMobileAudit',
+      label: tr(`2. Advance Mobile, Triad, 3×3 Grid & Dasha (${fmtPg(modulePageCounts.advanceMobileAudit)})`),
+      shortLabel: tr('Mobile, Grid & Dasha'),
+      pageCount: modulePageCounts.advanceMobileAudit,
+      sub: tr('All 9 Pairs, Combined Name+DOB+Mobile Triad, Virtual SIMs, 3×3 Grid, Present/Missing Remedies & 10-Cycle Dasha'),
+    },
+    {
+      key: 'forecast12Months',
+      label: tr(`3. 12M Monthly & 7-Day Weekly Forecast (${fmtPg(modulePageCounts.forecast12Months)})`),
+      shortLabel: tr('12M & 7-Day Forecast'),
+      pageCount: modulePageCounts.forecast12Months,
+      sub: tr(`Per-Day Career/Love/Vitality Chants & 12-Month Summary (${reportDateRange.startFormatted} – ${reportDateRange.endFormatted})`),
+    },
+    {
+      key: 'auditedCalendar12Months',
+      label: tr(`4. Best Upcoming Muhurat Timings (${fmtPg(modulePageCounts.auditedCalendar12Months)})`),
+      shortLabel: tr('12M Best Muhurats'),
+      pageCount: modulePageCounts.auditedCalendar12Months,
+      sub: tr('All 12 Life Events with Nakshatra Yoga, Rahu Kaal, Choghadiya, Backup Dates & Mantras'),
+    },
+    {
+      key: 'transitsAndMoon12Months',
+      label: tr(`5. Planetary Transits & 12M Moon Phases (${fmtPg(modulePageCounts.transitsAndMoon12Months)})`),
+      shortLabel: tr('12M Transits & Moon'),
+      pageCount: modulePageCounts.transitsAndMoon12Months,
+      sub: tr('All 5 Gochar Transits & 12M Purnima/Amavasya/Ekadashi Table with Parallel Remedies'),
+    },
+    {
+      key: 'dailyMantras',
+      label: tr(`6. Daily Vedic Mantras & Navagraha (${fmtPg(modulePageCounts.dailyMantras)})`),
+      shortLabel: tr('Vedic Mantras'),
+      pageCount: modulePageCounts.dailyMantras,
+      sub: tr('All 4 Daily Time-Phase Mantras (Mala, Mudra, Meaning) & 9-Planet Navagraha Table'),
+    },
+    {
+      key: 'yogaAndPranayama',
+      label: tr(`7. Vedic Yoga, Pranayama & 7-Day Planner (${fmtPg(modulePageCounts.yogaAndPranayama)})`),
+      shortLabel: tr('Yoga & Pranayama'),
+      pageCount: modulePageCounts.yogaAndPranayama,
+      sub: tr('Daily Vedic Asanas with Visual Diagrams, Pranayama Breathing, Health Remedies & 7-Day Weekly Planner'),
+    },
+    {
+      key: 'partnerMilanChakras',
+      label: tr(`8. Complete Partner Milan & 7-Chakras (Opt-In • ${fmtPg(modulePageCounts.partnerMilanChakras)})`),
+      shortLabel: tr('Partner Milan (Opt-In)'),
+      pageCount: modulePageCounts.partnerMilanChakras,
+      sub: tr('Groom/Bride Natal Table, 8-Koota Ashtakoot Chart & All 7 Chakras Complete Diagnostics/Remedies'),
+    },
+    {
+      key: 'festivals12Months',
+      label: tr(`9. Next 12M All-India Festivals (${fmtPg(modulePageCounts.festivals12Months)})`),
+      shortLabel: tr('12M Festivals'),
+      pageCount: modulePageCounts.festivals12Months,
+      sub: tr('All 16 Festivals with Score %, 4 Puja Windows (Siddha/Punya/Bhadra/Varjya), Diya & Aura Remedies'),
+    },
+    {
+      key: 'islamicVedicRemedies',
+      label: tr(`10. Islamic-Vedic Remedies (${fmtPg(modulePageCounts.islamicVedicRemedies)})`),
+      shortLabel: tr('Islamic Remedies'),
+      pageCount: modulePageCounts.islamicVedicRemedies,
+      sub: tr('3 Personal Asma-ul-Husna Cards, All 5 Quranic Surahs, 7-Day Schedule & 1-to-9 Adad Reference Table'),
+    },
+  ];
+
+  const toggleSectionCheckbox = (key: keyof ReportSectionSelection) => {
+    const nextVal = !selectedSections[key];
+    setSelectedSections((prev) => ({ ...prev, [key]: nextVal }));
+    if (key === 'partnerMilanChakras' && activeProfile) {
+      void adminUpdateProfile({ ...activeProfile, includePartnerMilan: nextVal });
+    }
+  };
+
+  const handleSelectAllModules = () => {
+    setSelectedSections({
+      ...DEFAULT_REPORT_SECTIONS,
+      partnerMilanChakras: true,
+    });
+    if (activeProfile) {
+      void adminUpdateProfile({ ...activeProfile, includePartnerMilan: true });
+    }
+  };
+
+  const handleSelectCoreFour = () => {
+    setSelectedSections({
+      nameAndCareer: true,
+      advanceMobileAudit: true,
+      forecast12Months: true,
+      auditedCalendar12Months: true,
+      transitsAndMoon12Months: true,
+      dailyMantras: false,
+      yogaAndPranayama: true,
+      partnerMilanChakras: false,
+      festivals12Months: false,
+      islamicVedicRemedies: false,
+    });
+  };
+
+  const getSelectedSectionLabels = (excludeIslamicLabel = false) => {
+    const labels: string[] = [];
+    if (selectedSections.nameAndCareer) labels.push(tr('Detailed Name & Career Harmony'));
+    if (selectedSections.advanceMobileAudit) labels.push(tr('Advance Mobile Audit & Vedic Grid'));
+    if (selectedSections.forecast12Months) labels.push(tr('12-Month & 7-Day Weekly Forecast'));
+    if (selectedSections.auditedCalendar12Months) labels.push(tr('12-Month Best Upcoming Muhurat Calendar'));
+    if (selectedSections.transitsAndMoon12Months) labels.push(tr('Planetary Transits & Moon Phases'));
+    if (selectedSections.dailyMantras) labels.push(tr('Daily Vedic Mantras'));
+    if (selectedSections.yogaAndPranayama) labels.push(tr('Vedic Yoga, Pranayama & 7-Day Planner'));
+    if (selectedSections.partnerMilanChakras) labels.push(tr('Complete Partner Milan & 7-Chakras'));
+    if (selectedSections.festivals12Months) labels.push(tr('All-India 12-Month Festivals'));
+    if (selectedSections.islamicVedicRemedies && !excludeIslamicLabel) {
+      labels.push(tr('Islamic-Vedic Remedies'));
+    }
+    return labels;
+  };
+
+  const selectedCount = getSelectedSectionLabels(false).length;
+
+  const handleOpenPrintPreview = () => {
+    setIsPrintPreviewOpen(true);
+  };
+
+  const persistSignedPdfUrlToSharedReport = async (signedUrl: string | null | undefined) => {
+    if (!signedUrl || !activeProfile?.id || !auth.currentUser) return;
+    try {
+      await firestoreSetDoc(
+        firestoreDoc(db, 'tathastu_shared_reports', activeProfile.id),
+        {
+          id: activeProfile.id,
+          profileId: activeProfile.id,
+          ownerUid: auth.currentUser.uid,
+          name: activeProfile.name,
+          clientName: activeProfile.name,
+          dob: activeProfile.dob,
+          tob: activeProfile.tob || '12:00',
+          pob: activeProfile.pob || 'New Delhi, India',
+          mobile: activeProfile.mobile || '',
+          signedPdfUrl: signedUrl.slice(0, 2040),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      try {
+        handleFirestoreError(err, OperationType.WRITE, `tathastu_shared_reports/${activeProfile.id}`);
+      } catch {
+        // Non-blocking sync
+      }
+    }
+  };
+
+  const handleDownloadPdfDirectly = async () => {
+    if (!canCurrentAccountDownloadOrShare()) {
+      triggerAdminRestrictionPopup('Download PDF Report');
+      return;
+    }
+    if (!activeProfile) return;
+
+    const { signedUrl } = await generateAndExport18PagePdf(
+      {
+        activeProfile,
+        healerAccount: healerAccountForBranding,
+        isHealerReport,
+        brandTitle,
+        healerDisplayName,
+        healerDisplayMobile,
+        healerDisplayEmail,
+        healerDisplayAddress,
+        healerInstagram,
+        healerFacebook,
+        healerYoutube,
+        healerWebsite,
+        startFormatted: reportDateRange.startFormatted,
+        endFormatted: reportDateRange.endFormatted,
+        twelveMonths: reportDateRange.twelveMonths,
+        qrCodeDataUrl: reportQrDataUrl,
+        qrCodeDirectUrl: reportQrDirectUrl,
+        watermarkOpacityPercent: watermarkSettings.opacityPercent,
+        watermarkEnabled: watermarkSettings.enabled,
+        selectedSections,
+        language,
+      },
+      'download'
+    );
+
+    if (signedUrl) {
+      void persistSignedPdfUrlToSharedReport(signedUrl);
+    }
+
+    setShareToast(
+      `Personalized Detailed PDF Report (${activeProfile.name}) with Spiritual Background, Logo, Watermark & QR Code downloaded!`
+    );
+    setTimeout(() => setShareToast(null), 4500);
+  };
+
+  // Automatically trigger PDF download when opened via Direct Download Link or QR Code (?autoDownloadPdf=1)
+  useEffect(() => {
+    if (!activeProfile || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('autoDownloadPdf') === '1') {
+      params.delete('autoDownloadPdf');
+      const nextQuery = params.toString();
+      window.history.replaceState(
+        {},
+        '',
+        `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`
+      );
+      const timer = setTimeout(() => {
+        void handleDownloadPdfDirectly();
+      }, 450);
+      return () => clearTimeout(timer);
+    }
+  }, [activeProfile?.id]);
+
+  const handleCopyDirectDownloadLink = async () => {
+    if (!activeProfile || !reportDirectDownloadLink) return;
+    let finalLinkToCopy = reportDirectDownloadLink;
+    try {
+      const { signedUrl } = await generateAndExport18PagePdf(
+        {
+          activeProfile,
+          healerAccount: healerAccountForBranding,
+          isHealerReport,
+          brandTitle,
+          healerDisplayName,
+          healerDisplayMobile,
+          healerDisplayEmail,
+          healerDisplayAddress,
+          healerInstagram,
+          healerFacebook,
+          healerYoutube,
+          healerWebsite,
+          startFormatted: reportDateRange.startFormatted,
+          endFormatted: reportDateRange.endFormatted,
+          twelveMonths: reportDateRange.twelveMonths,
+          qrCodeDataUrl: reportQrDataUrl,
+          qrCodeDirectUrl: reportQrDirectUrl,
+          watermarkOpacityPercent: watermarkSettings.opacityPercent,
+          watermarkEnabled: watermarkSettings.enabled,
+          selectedSections,
+          language,
+        },
+        'blob'
+      );
+      if (signedUrl && signedUrl.startsWith('https://firebasestorage.googleapis.com/')) {
+        finalLinkToCopy = signedUrl;
+        void persistSignedPdfUrlToSharedReport(signedUrl);
+      }
+    } catch {
+      // Fallback to reportDirectDownloadLink
+    }
+    navigator.clipboard.writeText(finalLinkToCopy);
+    setShareToast(
+      `Signed Direct PDF Download Link for ${activeProfile.name} copied! Open on any Android/iOS browser to download without 403 error.`
+    );
+    setTimeout(() => setShareToast(null), 4000);
+  };
+
+  const handleWhatsAppReportLinkOnly = async () => {
+    if (!canCurrentAccountDownloadOrShare()) {
+      triggerAdminRestrictionPopup('WhatsApp Report Download Link');
+      return;
+    }
+    if (!activeProfile || !reportDirectDownloadLink) return;
+    let signedDirectPdfUrl: string | null = null;
+    try {
+      const { blob, fileName, signedUrl } = await generateAndExport18PagePdf(
+        {
+          activeProfile,
+          healerAccount: healerAccountForBranding,
+          isHealerReport,
+          brandTitle,
+          healerDisplayName,
+          healerDisplayMobile,
+          healerDisplayEmail,
+          healerDisplayAddress,
+          healerInstagram,
+          healerFacebook,
+          healerYoutube,
+          healerWebsite,
+          startFormatted: reportDateRange.startFormatted,
+          endFormatted: reportDateRange.endFormatted,
+          twelveMonths: reportDateRange.twelveMonths,
+          qrCodeDataUrl: reportQrDataUrl,
+          qrCodeDirectUrl: reportQrDirectUrl,
+          watermarkOpacityPercent: watermarkSettings.opacityPercent,
+          watermarkEnabled: watermarkSettings.enabled,
+          selectedSections,
+          language,
+        },
+        'download'
+      );
+      if (signedUrl) {
+        signedDirectPdfUrl = signedUrl;
+        void persistSignedPdfUrlToSharedReport(signedUrl);
+      }
+      const pdfFile = new File([blob], fileName, { type: 'application/pdf' });
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.canShare &&
+        navigator.canShare({ files: [pdfFile] })
+      ) {
+        try {
+          await navigator.share({
+            files: [pdfFile],
+            title: `${brandTitle} — ${activeProfile.name} PDF Report`,
+            text: `🕉️ ${brandTitle} — Personalized Vedic & Chaldean Numerology PDF Report for ${activeProfile.name} (DOB: ${activeProfile.dob}). Prepared by Healer ${healerDisplayName} (${healerDisplayMobile}).`,
+          });
+          return;
+        } catch {
+          // Continue to WhatsApp message dispatch
+        }
+      }
+    } catch {
+      // Continue to WhatsApp message dispatch
+    }
+    const msgLines = [
+      `🕉️ *${brandTitle}* — *${TATHASTU_BRAND_NAME} (${TATHASTU_TAGLINE})*`,
+      `Namaste *${activeProfile.name}* Ji,`,
+      ``,
+      `📄 *Your Personalized PDF Report (${activeProfile.name}) has been generated & downloaded to attach directly!*`,
+    ];
+    if (signedDirectPdfUrl && signedDirectPdfUrl.startsWith('https://firebasestorage.googleapis.com/')) {
+      msgLines.push(`📥 *Direct Signed PDF Download Link (Android / iOS):*`, `${signedDirectPdfUrl}`, ``);
+    }
+    msgLines.push(
+      `🌐 *Interactive Cloud Report Portal:*`,
+      `${reportDirectDownloadLink}`,
+      ``,
+      `📅 *Report Validity (Next 12 Months):* ${reportDateRange.startFormatted} to ${reportDateRange.endFormatted}`,
+      `Prepared By Healer: *${healerDisplayName}* (📞 ${healerDisplayMobile})`
+    );
+    await dispatchWhatsAppMessage(activeProfile.mobile, msgLines.join('\n'));
+  };
+
+  const handlePrintPdfReport = () => {
+    if (!canCurrentAccountDownloadOrShare()) {
+      triggerAdminRestrictionPopup('Print PDF Report');
+      return;
+    }
+    if (!activeProfile) return;
+
+    setTimeout(() => {
+      try {
+        window.print();
+      } catch {
+        // Fallback
+      }
+    }, 60);
+  };
+
+  const handleShareReport = async () => {
+    if (!canCurrentAccountDownloadOrShare()) {
+      triggerAdminRestrictionPopup('Share Report');
+      return;
+    }
+    if (!activeProfile) return;
+    const chosen = getSelectedSectionLabels(true).join(', ');
+    const rawShareText = `🕉️ ${TATHASTU_BRAND_NAME} (${TATHASTU_TAGLINE}) — Personalized Vedic & Chaldean Numerology Report for ${activeProfile.name} (DOB: ${activeProfile.dob})\nIncluded Sections: ${chosen}\nValidity: ${reportDateRange.startFormatted} to ${reportDateRange.endFormatted}\nHealer: ${healerDisplayName} (${healerDisplayMobile}) • IG: ${healerInstagram}`;
+    const shareText = translateMultilineBlock(rawShareText, language);
+
+    try {
+      const { blob, fileName } = await generateAndExport18PagePdf(
+        {
+          activeProfile,
+          healerAccount: healerAccountForBranding,
+          isHealerReport,
+          brandTitle,
+          healerDisplayName,
+          healerDisplayMobile,
+          healerDisplayEmail,
+          healerDisplayAddress,
+          healerInstagram,
+          healerFacebook,
+          healerYoutube,
+          healerWebsite,
+          startFormatted: reportDateRange.startFormatted,
+          endFormatted: reportDateRange.endFormatted,
+          twelveMonths: reportDateRange.twelveMonths,
+          qrCodeDataUrl: reportQrDataUrl,
+          qrCodeDirectUrl: reportQrDirectUrl,
+          watermarkOpacityPercent: watermarkSettings.opacityPercent,
+          watermarkEnabled: watermarkSettings.enabled,
+          selectedSections,
+          language,
+        },
+        'blob'
+      );
+      const pdfFile = new File([blob], fileName, { type: 'application/pdf' });
+      if (
+        typeof navigator !== 'undefined' &&
+        navigator.canShare &&
+        navigator.canShare({ files: [pdfFile] })
+      ) {
+        await navigator.share({
+          files: [pdfFile],
+          title: `${brandTitle} — ${activeProfile.name} Personalized PDF Report`,
+          text: shareText,
+        });
+        setShareToast(`PDF Report file (${fileName}) shared directly!`);
+        setTimeout(() => setShareToast(null), 3500);
+        return;
+      }
+      // Also trigger cross-platform file download if file sharing isn't supported on this browser
+      triggerCrossPlatformPdfBlobDownload(blob, fileName);
+    } catch {
+      // Fallback to text share
+    }
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `${brandTitle} — ${activeProfile.name} Personalized Report`,
+          text: shareText,
+          url: reportQrDirectUrl || window.location.href,
+        });
+        return;
+      } catch {
+        // Fallback
+      }
+    }
+    navigator.clipboard.writeText(`${shareText}\nDirect Report Link: ${reportQrDirectUrl}`);
+    setShareToast('Personalized PDF Report downloaded & summary copied to clipboard for sharing!');
+    setTimeout(() => setShareToast(null), 3500);
+  };
+
+  const handleDirectWhatsAppReport = async () => {
+    if (!canCurrentAccountDownloadOrShare()) {
+      triggerAdminRestrictionPopup('Direct WhatsApp Report');
+      return;
+    }
+    if (!activeProfile || !multiSectionReportData) return;
+    const { m, b, nameAnalysis, mobileAnalysis, panchang, bestEvents12M } =
+      multiSectionReportData;
+
+    const chosen = getSelectedSectionLabels(true);
+    const { reportStatusSummary, auspiciousTimeSummary, deepLinkSection } =
+      buildClientStatusAndAuspiciousUpdateBlock(activeProfile);
+
+    const lines: string[] = [
+      `🕉️ *${brandTitle}*`,
+      `✨ *${TATHASTU_BRAND_NAME} — ${TATHASTU_TAGLINE}*`,
+      `*PERSONALIZED VEDIC & CHALDEAN NUMEROLOGY REPORT*`,
+      `Client Name: *${activeProfile.name}* (DOB: ${activeProfile.dob})`,
+      `Report Period (Next 12 Months): *${reportDateRange.startFormatted} to ${reportDateRange.endFormatted}*`,
+      `Included Modules: ${chosen.join(' | ')}`,
+      ``,
+      ...reportStatusSummary,
+      ``,
+      ...auspiciousTimeSummary,
+      ``,
+    ];
+
+    if (selectedSections.nameAndCareer) {
+      lines.push(
+        `🔥 *1. NAME & CAREER HARMONY:*`,
+        `• Mulank: ${m} (${PLANETARY_PROFILES[m]?.planet}) | Bhagyank: ${b} (${PLANETARY_PROFILES[b]?.planet})`,
+        `• Current Name Compound: ${nameAnalysis.totalChaldeanCompound} ➔ ${nameAnalysis.chaldeanSingle} (${nameAnalysis.harmonyScore}% Harmony)`,
+        ``
+      );
+    }
+
+    if (selectedSections.advanceMobileAudit) {
+      lines.push(
+        `📱 *2. ADVANCE MOBILE AUDIT (${activeProfile.mobile}):*`,
+        `• Mobile Compound: ${mobileAnalysis.compoundNumber} ➔ ${mobileAnalysis.singleDigit} (Score: ${mobileAnalysis.overallScore}/100)`,
+        `• Verdict: ${mobileAnalysis.verdict}`,
+        ``
+      );
+    }
+
+    if (selectedSections.auditedCalendar12Months && bestEvents12M.events12M[0]) {
+      lines.push(
+        `📅 *3. BEST UPCOMING MUHURAT (NEXT 12 MONTHS):*`,
+        `• ${bestEvents12M.events12M[0].title}: *${bestEvents12M.events12M[0].bestUpcomingDate}* (${bestEvents12M.events12M[0].bestTimeWindow})`,
+        ``
+      );
+    }
+
+    if (selectedSections.dailyMantras) {
+      lines.push(
+        `🕉️ *4. DAILY VEDIC MANTRA:*`,
+        `• "${panchang.todayBeejMantra}"`,
+        ``
+      );
+    }
+
+    lines.push(
+      ...deepLinkSection,
+      ``,
+      `Prepared & Energized By Healer: *${healerDisplayName}* (${brandTitle})`,
+      `📞 ${healerDisplayMobile} • ✉️ ${healerDisplayEmail}`,
+      `📸 IG: ${healerInstagram} • FB: ${healerFacebook} • 🌐 ${healerWebsite}`
+    );
+
+    await dispatchWhatsAppMessage(activeProfile.mobile, lines.join('\n'));
+  };
+
+  const handleEditOrDeleteAttempt = (actionLabel: 'Edit Profile' | 'Delete Profile') => {
+    if (actionLabel === 'Edit Profile') {
+      if (onOpenEditProfileModal) {
+        onOpenEditProfileModal();
+        return;
+      }
+      onOpenAdminPortal?.();
+      return;
+    }
+    if (!canCurrentAccountEditOrDelete()) {
+      triggerAdminRestrictionPopup(actionLabel);
+      return;
+    }
+    if (activeProfile) {
+      void adminDeleteProfile(activeProfile.id);
+      clearActiveProfile();
+    }
+    onOpenAdminPortal?.();
+  };
+
+  const renderCenteredBrandWatermark = () => {
+    if (!watermarkSettings.enabled) return null;
+    const opacityValue = Math.max(0.04, Math.min(0.24, watermarkSettings.opacityPercent / 100));
+    const emblemSize = watermarkSettings.sizePx;
+    const haloSize = emblemSize + 76;
+
+    return (
+      <div
+        className="a4-center-brand-watermark"
+        style={{ opacity: opacityValue }}
+        aria-hidden="true"
+      >
+        <div
+          className="relative flex items-center justify-center"
+          style={{ width: `${haloSize}px`, height: `${haloSize}px` }}
+        >
+          {/* Sacred Concentric Mandala & Solar Halo Around TATHASTU Watermark */}
+          <svg
+            viewBox="0 0 360 360"
+            className="absolute inset-0 w-full h-full text-amber-400"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <circle cx="180" cy="180" r="174" stroke="currentColor" strokeWidth="2" strokeDasharray="8 6" />
+            <circle cx="180" cy="180" r="158" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="180" cy="180" r="142" stroke="currentColor" strokeWidth="2.5" />
+            {Array.from({ length: 16 }).map((_, idx) => {
+              const angle = (idx * Math.PI) / 8;
+              const x1 = 180 + Math.cos(angle) * 138;
+              const y1 = 180 + Math.sin(angle) * 138;
+              const x2 = 180 + Math.cos(angle) * 174;
+              const y2 = 180 + Math.sin(angle) * 174;
+              return (
+                <line
+                  key={idx}
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                />
+              );
+            })}
+          </svg>
+
+          <div
+            className="relative rounded-full border-4 border-amber-400/90 p-2.5 flex items-center justify-center shadow-2xl bg-slate-950/60"
+            style={{ width: `${emblemSize}px`, height: `${emblemSize}px` }}
+          >
+            <img
+              src={TATHASTU_LOGO_PATH}
+              alt={TATHASTU_BRAND_NAME}
+              referrerPolicy="no-referrer"
+              className="w-full h-full rounded-full object-cover"
+            />
+          </div>
+        </div>
+        {watermarkSettings.showBrandText && (
+          <div className="mt-2 max-w-lg px-4">
+            <div className="font-serif text-base sm:text-lg font-black tracking-widest uppercase text-amber-300">
+              {TATHASTU_BRAND_NAME}
+            </div>
+            <div className="text-[11px] font-mono font-bold tracking-wider uppercase text-amber-200 mt-0.5">
+              {TATHASTU_TAGLINE}
+            </div>
+            {brandTitle && brandTitle !== TATHASTU_BRAND_NAME && (
+              <div className="text-[10px] font-serif tracking-wider uppercase text-emerald-300 mt-0.5">
+                {brandTitle} • {watermarkTagline}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderA4PageSpiritualBackground = () => (
+    <div className="absolute inset-0 pointer-events-none select-none overflow-hidden z-0" aria-hidden="true">
+      <img
+        src={a4DivineEnergyBg}
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover opacity-[0.12]"
+      />
+      <img
+        src={spiritualReportBanner}
+        alt=""
+        className="absolute top-0 left-0 right-0 w-full h-36 object-cover opacity-[0.15] mix-blend-screen"
+      />
+      {/* Subtle Corner TATHASTU Brand Watermark Medallions */}
+      {[
+        'top-16 left-8',
+        'top-16 right-8',
+        'bottom-20 left-8',
+        'bottom-20 right-8',
+      ].map((posClass, idx) => (
+        <img
+          key={idx}
+          src={TATHASTU_LOGO_PATH}
+          alt=""
+          referrerPolicy="no-referrer"
+          className={`absolute ${posClass} w-20 h-20 rounded-full object-cover opacity-[0.06] border border-amber-400/40`}
+        />
+      ))}
+      <svg
+        viewBox="0 0 800 1120"
+        className="absolute inset-0 w-full h-full opacity-[0.10]"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <circle cx="400" cy="560" r="340" stroke="#f59e0b" strokeWidth="1.2" strokeDasharray="6 6" />
+        <circle cx="400" cy="560" r="280" stroke="#38bdf8" strokeWidth="1" />
+        <circle cx="400" cy="560" r="220" stroke="#f59e0b" strokeWidth="1.5" />
+        <circle cx="400" cy="560" r="160" stroke="#a855f7" strokeWidth="1" strokeDasharray="4 4" />
+        <polygon points="400,240 675,720 125,720" stroke="#f59e0b" strokeWidth="1.1" />
+        <polygon points="400,880 675,400 125,400" stroke="#f59e0b" strokeWidth="1.1" />
+        <line x1="400" y1="90" x2="400" y2="1030" stroke="#f59e0b" strokeWidth="0.8" strokeDasharray="3 6" />
+        {[200, 320, 440, 560, 680, 800, 920].map((cy, idx) => (
+          <circle key={idx} cx="400" cy={cy} r="14" stroke="#fbbf24" strokeWidth="1" />
+        ))}
+      </svg>
+
+      <div className="absolute inset-[3mm] border border-amber-400/35 rounded-lg pointer-events-none" />
+      <div className="absolute top-[4.5mm] left-[5.5mm] text-amber-400/60 font-serif text-xs font-bold">
+        ॐ
+      </div>
+      <div className="absolute top-[4.5mm] right-[5.5mm] text-amber-400/60 font-serif text-xs font-bold">
+        ॐ
+      </div>
+      <div className="absolute bottom-[4.5mm] left-[5.5mm] text-amber-400/60 font-serif text-xs font-bold">
+        ✦
+      </div>
+      <div className="absolute bottom-[4.5mm] right-[5.5mm] text-amber-400/60 font-serif text-xs font-bold">
+        ✦
+      </div>
+    </div>
+  );
+
+  const renderA4PageTopHeader = (
+    pageSubtitle: string,
+    sectionHeadImage: string,
+    sectionHeadLabel: string,
+    isCoverPage = false
+  ) => {
+    if (!activeProfile || !multiSectionReportData) return null;
+    return (
+      <div className="relative z-10 pb-2.5 mb-2.5 border-b-2 border-amber-500/45">
+        <div className="flex items-center justify-between text-[9.5px] font-serif text-amber-300/90 pb-1 mb-1.5 border-b border-amber-500/20">
+          <span>॥ श्री गणेशाय नमः • ॐ ऐं ह्रीं क्लीं चामुण्डायै विच्चे ॥</span>
+          <span className="font-mono uppercase tracking-widest text-amber-400 font-bold">
+            {TATHASTU_APP_NAME} • {TATHASTU_BRAND_NAME} ({TATHASTU_TAGLINE})
+          </span>
+          <span>॥ तत् त्वम् असि • तथास्तु ॥</span>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <img
+              src={brandLogo}
+              alt={brandTitle}
+              referrerPolicy="no-referrer"
+              className="w-12 h-12 rounded-xl object-cover border-2 border-amber-400 shadow-lg shrink-0"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-amber-400 break-words">
+                {TATHASTU_BRAND_NAME} — {TATHASTU_TAGLINE}
+              </div>
+              <h2 className="font-serif text-base sm:text-lg font-black text-amber-100 tracking-wide leading-tight break-words">
+                {brandTitle}
+              </h2>
+              <div className="text-[9.5px] text-emerald-300 font-bold break-words leading-tight">
+                Healer Name: {healerDisplayName} • 📞 {healerDisplayMobile} • ✉️ {healerDisplayEmail}
+              </div>
+              <p className="text-[10px] text-sky-300 font-semibold break-words leading-tight">{pageSubtitle}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 bg-slate-950/90 border border-amber-500/40 rounded-xl px-2.5 py-1.5 shrink-0">
+            <div className="relative">
+              <img
+                src={sectionHeadImage}
+                alt={sectionHeadLabel}
+                referrerPolicy="no-referrer"
+                className="w-16 h-11 rounded-lg object-cover border border-amber-400/60 shadow-md"
+              />
+              <span className="absolute bottom-0 inset-x-0 bg-slate-950/85 text-[7px] font-mono text-amber-300 text-center uppercase truncate px-0.5">
+                {sectionHeadLabel}
+              </span>
+            </div>
+            <div className="text-right">
+              <div className="text-xs font-black text-amber-100">{activeProfile.name}</div>
+              <div className="text-[9.5px] font-mono text-amber-300">
+                DOB: {activeProfile.dob} • TOB: {formatTime12HourAmPm(activeProfile.tob || '09:30')}
+              </div>
+              <div className="text-[9px] font-mono text-emerald-300">
+                Mulank {multiSectionReportData.m} ({PLANETARY_PROFILES[multiSectionReportData.m]?.planet}) • Bhagyank {multiSectionReportData.b} ({PLANETARY_PROFILES[multiSectionReportData.b]?.planet})
+              </div>
+              <div className="text-[8.5px] font-mono text-amber-200 font-bold">
+                Healer: {healerDisplayName}
+              </div>
+            </div>
+            {reportQrDataUrl && (
+              <div className="bg-amber-100 p-1 rounded-lg border border-amber-400 shrink-0 text-center">
+                <img
+                  src={reportQrDataUrl}
+                  alt="Scan QR for Mobile PDF Report"
+                  className="w-10 h-10 object-contain mx-auto"
+                />
+                <span className="block text-[6px] font-mono font-black text-slate-950 leading-none mt-0.5">
+                  SCAN QR PDF
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {isCoverPage && (
+          <div className="grid grid-cols-4 gap-2 mt-2 pt-2 border-t border-amber-500/25 text-[9.5px] a4-print-grid-4">
+            <div className="bg-slate-950/85 border border-amber-500/30 rounded-lg px-2 py-1">
+              <span className="text-slate-400 block text-[8.5px] uppercase">Birth Place</span>
+              <strong className="text-amber-100 truncate block">{activeProfile.pob || 'New Delhi, India'}</strong>
+            </div>
+            <div className="bg-slate-950/85 border border-amber-500/30 rounded-lg px-2 py-1">
+              <span className="text-slate-400 block text-[8.5px] uppercase">Vedic Moon & Sun Sign</span>
+              <strong className="text-emerald-300 truncate block">
+                {multiSectionReportData.astro.rashi} • {multiSectionReportData.astro.sunSign.split(' ')[0]}
+              </strong>
+            </div>
+            <div className="bg-slate-950/85 border border-amber-500/30 rounded-lg px-2 py-1">
+              <span className="text-slate-400 block text-[8.5px] uppercase">Spiritual Healer Name</span>
+              <strong className="text-amber-200 truncate block">
+                {healerDisplayName} ({brandTitle})
+              </strong>
+            </div>
+            <div className="bg-slate-950/85 border border-amber-500/30 rounded-lg px-2 py-1">
+              <span className="text-slate-400 block text-[8.5px] uppercase">12-Month Validity</span>
+              <strong className="text-sky-300 font-mono truncate block">
+                {reportDateRange.startFormatted} – {reportDateRange.endFormatted}
+              </strong>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderA4PageHealerFooter = (pageNumber: number, totalPages: number) => (
+    <div className="a4-compact-footer relative z-10 mt-auto border-t-2 border-amber-500/55 bg-slate-950/95 rounded-xl px-2.5 py-1.5">
+      <div className="grid grid-cols-[1.55fr_0.75fr_1.1fr] items-center gap-2 text-[8px] leading-snug">
+        {/* Left Column: Healer Emblem + Full Name, Brand, Phone, Email, Address (No Truncation) */}
+        <div className="flex items-start gap-2 min-w-0 pr-1.5 border-r border-amber-500/25">
+          <img
+            src={brandLogo}
+            alt={brandTitle}
+            referrerPolicy="no-referrer"
+            className="w-8 h-8 rounded-lg object-cover border border-amber-400 shadow-sm shrink-0 mt-0.5"
+          />
+          <div className="min-w-0 flex-1 space-y-0.5 break-words">
+            <div className="font-serif font-black text-[9.5px] text-amber-100 leading-tight break-words">
+              Healer: {healerDisplayName} — <span className="text-amber-300">{brandTitle}</span>
+            </div>
+            <div className="text-[7.5px] text-slate-200 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 leading-tight break-words">
+              <span className="inline-flex items-center gap-0.5 text-emerald-300 font-mono font-semibold">
+                <Phone className="w-2 h-2 shrink-0" /> {healerDisplayMobile}
+              </span>
+              <span className="text-amber-500/60">|</span>
+              <span className="inline-flex items-center gap-0.5 text-amber-200 font-mono break-all">
+                <Mail className="w-2 h-2 shrink-0" /> {healerDisplayEmail}
+              </span>
+            </div>
+            <div className="text-[7.3px] text-sky-300 flex items-start gap-1 leading-tight break-words">
+              <MapPin className="w-2 h-2 shrink-0 mt-0.5" />
+              <span className="break-words">{healerDisplayAddress}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Center Column: Strictly Center-Aligned Page Number */}
+        <div className="flex flex-col items-center justify-center text-center px-1 border-r border-amber-500/25">
+          <div className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/60 text-amber-100 font-mono font-black text-[9px] shadow-sm whitespace-nowrap">
+            Page {pageNumber} of {totalPages}
+          </div>
+          <div className="text-[7px] font-serif font-bold tracking-wider uppercase text-amber-300/90 mt-0.5 leading-tight break-words">
+            {TATHASTU_BRAND_NAME}
+          </div>
+        </div>
+
+        {/* Right Column: Social Handles Stacked Cleanly Without Truncation */}
+        <div className="flex flex-col items-end justify-center gap-0.5 text-[7.2px] text-amber-200 min-w-0">
+          <span className="inline-flex items-center gap-1 bg-pink-950/75 border border-pink-500/40 px-1.5 py-0.5 rounded max-w-full break-all">
+            <Instagram className="w-2 h-2 text-pink-400 shrink-0" />
+            <span className="font-mono break-all">{healerInstagram}</span>
+          </span>
+          <span className="inline-flex items-center gap-1 bg-blue-950/75 border border-blue-500/40 px-1.5 py-0.5 rounded max-w-full break-all">
+            <Facebook className="w-2 h-2 text-blue-400 shrink-0" />
+            <span className="font-mono break-all">{healerFacebook}</span>
+          </span>
+          <span className="inline-flex items-center gap-1 bg-emerald-950/75 border border-emerald-500/40 px-1.5 py-0.5 rounded max-w-full break-all">
+            <Globe className="w-2 h-2 text-emerald-400 shrink-0" />
+            <span className="font-mono break-all">{healerWebsite}</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
+  const buildDiscreteA4Pages = () => {
+    if (!activeProfile || !multiSectionReportData) return [];
+
+    const {
+      m,
+      b,
+      nameAnalysis,
+      nameSuggestions,
+      topPerfectChoice,
+      mobileAnalysis,
+      advMobile,
+      panchang,
+      loShu,
+      astro,
+      career,
+      gemRecommend,
+      triadCompound,
+      triadSingle,
+      triadPlanet,
+      relMulankMobile,
+      relBhagyankMobile,
+      relNameMobile,
+      relMulankName,
+      combinedTriadScore,
+      combinedCareerProfile,
+      vehicleValidation,
+      flatValidation,
+      businessValidation,
+      mobileValidation,
+      festivals,
+      islamicReport,
+      bestEvents12M,
+      groomProfile,
+      brideProfile,
+      groomNameAnalysis,
+      brideNameAnalysis,
+      partnerMilan,
+      lunar12Months,
+      yogaPlan,
+    } = multiSectionReportData;
+
+    const mPlanet = PLANETARY_PROFILES[m] || PLANETARY_PROFILES[1];
+    const bPlanet = PLANETARY_PROFILES[b] || PLANETARY_PROFILES[1];
+    const nPlanet = PLANETARY_PROFILES[nameAnalysis.chaldeanSingle] || PLANETARY_PROFILES[1];
+    const groomMulankPlanet = PLANETARY_PROFILES[partnerMilan.p1Mulank] || PLANETARY_PROFILES[1];
+    const groomBhagyankPlanet = PLANETARY_PROFILES[partnerMilan.p1Bhagyank] || PLANETARY_PROFILES[1];
+    const brideMulankPlanet = PLANETARY_PROFILES[partnerMilan.p2Mulank] || PLANETARY_PROFILES[2];
+    const brideBhagyankPlanet = PLANETARY_PROFILES[partnerMilan.p2Bhagyank] || PLANETARY_PROFILES[6];
+    const activeDasha =
+      advMobile.dashaTimeline.find((d) => d.isCurrent) || advMobile.dashaTimeline[0];
+    const activeDashaPlanet =
+      PLANETARY_PROFILES[activeDasha?.dashaNumber || 6] || PLANETARY_PROFILES[6];
+    const rashiLordPlanet =
+      Object.values(PLANETARY_PROFILES).find((p) =>
+        astro.rashiLord.toLowerCase().includes(p.planet.toLowerCase())
+      ) || bPlanet;
+
+    const pages: {
+      title: string;
+      headImg: string;
+      headLabel: string;
+      isCover?: boolean;
+      content: React.ReactNode;
+    }[] = [];
+
+    // PAGES 1–5: Detailed Name Numerology, Career Harmony, Gemstone Recommendation & Universal Validator
+    if (selectedSections.nameAndCareer || selectedCount === 0) {
+      // PAGE 1: Executive Birth Chart, Panchang, Lo-Shu 8 Planes & Name Summary
+      pages.push({
+        title: 'Page 1: Executive Vedic Birth Chart, Daily Panchang, 8 Lo-Shu Planes & Name Vibration Summary',
+        headImg: vedicNameCareerYantra,
+        headLabel: 'Sri Yantra & Birth Chart',
+        isCover: true,
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="relative rounded-xl overflow-hidden border border-amber-500/40 min-h-[76px]">
+              <img
+                src={vedicNameCareerYantra}
+                alt="Sacred Sri Yantra & Vedic Astrological Natal Chart"
+                referrerPolicy="no-referrer"
+                className="absolute inset-0 w-full h-full object-cover opacity-55"
+              />
+              <div className="relative z-10 bg-gradient-to-r from-slate-950/95 via-slate-950/80 to-slate-950/40 p-2.5 flex flex-col justify-center">
+                <span className="text-[9px] font-mono uppercase tracking-widest text-amber-400 font-bold break-words">
+                  01 • EXECUTIVE VEDIC, CHALDEAN &amp; PRANIC BLUEPRINT ({activeProfile.gender === 'female' ? 'FEMALE / BRIDE' : 'MALE / GROOM'})
+                </span>
+                <h3 className="font-serif text-sm font-black text-amber-100 break-words leading-snug">
+                  Complete Birth Chart, Daily Panchang &amp; 8 Lo-Shu Planes for {activeProfile.name}
+                </h3>
+                <p className="text-[9.2px] text-emerald-300 break-words leading-snug">
+                  DOB: {activeProfile.dob} • TOB: {formatTime12HourAmPm(activeProfile.tob || '09:30')} • POB: {activeProfile.pob} ({(activeProfile.lat ?? 28.61).toFixed(2)}°N, {(activeProfile.lng ?? 77.21).toFixed(2)}°E) • Rashi: {astro.rashi} ({astro.rashiLord}) • Nakshatra: {astro.nakshatra} (Pada {astro.pada}, Lord: {astro.nakshatraLord})
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 a4-print-grid-3">
+              <div className="p-2 rounded-xl bg-slate-950/90 border border-amber-500/35 text-[9px] space-y-0.5">
+                <span className="text-[8.5px] uppercase tracking-wider text-amber-400 font-bold block">
+                  Psychic Number (Mulank {m})
+                </span>
+                <strong className="text-amber-100 text-[10.5px] block">
+                  Ruler: {mPlanet.planet} ({mPlanet.sanskritName}) • Deity: {mPlanet.deity}
+                </strong>
+                <span className="text-slate-300 block">
+                  Element: {mPlanet.element} • Color: {mPlanet.luckyColor} • Metal: {mPlanet.metal} • Stone: {mPlanet.gemstone}
+                </span>
+                <span className="text-emerald-300 block">
+                  Friendly: {mPlanet.friendlyNumbers.join(', ')} | Neutral: {mPlanet.neutralNumbers.join(', ')} | Enemy: {mPlanet.enemyNumbers.join(', ')}
+                </span>
+                <span className="text-amber-200 block">Traits: {mPlanet.traits.join(', ')}</span>
+              </div>
+
+              <div className="p-2 rounded-xl bg-slate-950/90 border border-emerald-500/35 text-[9px] space-y-0.5">
+                <span className="text-[8.5px] uppercase tracking-wider text-emerald-400 font-bold block">
+                  Destiny Number (Bhagyank {b})
+                </span>
+                <strong className="text-emerald-200 text-[10.5px] block">
+                  Ruler: {bPlanet.planet} ({bPlanet.sanskritName}) • Deity: {bPlanet.deity}
+                </strong>
+                <span className="text-slate-300 block">
+                  Element: {bPlanet.element} • Color: {bPlanet.luckyColor} • Metal: {bPlanet.metal} • Stone: {bPlanet.gemstone}
+                </span>
+                <span className="text-emerald-300 block">
+                  Friendly: {bPlanet.friendlyNumbers.join(', ')} | Neutral: {bPlanet.neutralNumbers.join(', ')} | Enemy: {bPlanet.enemyNumbers.join(', ')}
+                </span>
+                <span className="text-amber-200 block">Lucky Days: {bPlanet.luckyDays.join(', ')}</span>
+              </div>
+
+              <div className="p-2 rounded-xl bg-slate-950/90 border border-sky-500/35 text-[9px] space-y-0.5">
+                <span className="text-[8.5px] uppercase tracking-wider text-sky-400 font-bold block">
+                  Name Chaldean & Pythagorean + Triad
+                </span>
+                <strong className="text-sky-200 text-[10.5px] font-mono block">
+                  Chaldean: {nameAnalysis.totalChaldeanCompound}➔{nameAnalysis.chaldeanSingle} ({nameAnalysis.harmonyScore}%)
+                </strong>
+                <span className="text-slate-300 block">
+                  Pythagorean: {nameAnalysis.totalPythagoreanCompound}➔{nameAnalysis.pythagoreanSingle} • Verdict: {nameAnalysis.verdict}
+                </span>
+                <span className="text-emerald-300 block">
+                  Triad (Name+DOB+Mob): {triadCompound}➔{triadSingle} ({triadPlanet.planet} • {combinedTriadScore}%)
+                </span>
+                <span className="text-amber-200 block">
+                  Chakra: {career.primaryChakra} • Aura: {career.auraColor}
+                </span>
+              </div>
+            </div>
+
+            {/* Today's Live Panchang & Hora */}
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 text-[9px] space-y-0.5">
+              <div className="flex items-center justify-between font-bold text-amber-200">
+                <span>Today's Live Vedic Panchang, Hora & Muhurat Snapshot ({panchang.dateStr})</span>
+                <span className="font-mono text-emerald-300">{panchang.tithi} • {panchang.vara}</span>
+              </div>
+              <div className="text-slate-200">
+                <strong>Current Hora:</strong> {panchang.currentHoraPlanet} ({panchang.horaStatus}) — {panchang.horaAdvice} | <strong>Auspicious Windows:</strong> {panchang.auspiciousTimings.join(' • ')} | <strong className="text-rose-300">Avoid Rahu Kaal:</strong> {panchang.rahuKaalWindow.start} – {panchang.rahuKaalWindow.end}
+              </div>
+              <div className="text-amber-200">
+                <strong>Today's Lucky Numbers:</strong> {panchang.todayLuckyNumbers.join(', ')} • <strong>Color:</strong> {panchang.todayLuckyColor} • <strong>Beej Mantra:</strong> {panchang.todayBeejMantra} • <strong>Affirmation:</strong> "{panchang.affirmation}"
+              </div>
+            </div>
+
+            {/* All 8 Lo-Shu Planes & Raj Yoga Completion Matrix */}
+            <div className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/35">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
+                  Complete 8 Lo-Shu Planes & Raj Yoga Completion Matrix (Present: {loShu.presentNumbers.join(', ')} | Missing: {loShu.missingNumbers.map((mItem) => mItem.number).join(', ') || 'None'})
+                </h4>
+                <span className="text-[8.5px] font-mono text-emerald-300">Kua Number: {loShu.kuaNumber}</span>
+              </div>
+              <div className="grid grid-cols-4 gap-1.5 a4-print-grid-2">
+                {loShu.planes.map((pl, idx) => (
+                  <div key={idx} className="p-1.5 rounded bg-slate-900 border border-amber-500/25 text-[8px] min-w-0 break-words">
+                    <div className="flex items-center justify-between gap-1 font-bold text-amber-200">
+                      <span className="break-words">{pl.name} ({pl.numbers.join('-')})</span>
+                      <span className={pl.completionPercentage === 100 ? 'text-emerald-300 font-mono shrink-0' : 'text-amber-400 font-mono shrink-0'}>
+                        {pl.completionPercentage}%
+                      </span>
+                    </div>
+                    <div className="text-slate-300 leading-tight break-words mt-0.5">{pl.status}: {pl.interpretation}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ),
+      });
+
+      // PAGE 2: Letter-by-Letter Chaldean Breakdown, Top Perfect Choice, All 8 Spellings & 41-Day Protocol
+      pages.push({
+        title: 'Page 2: Letter-by-Letter Chaldean Breakdown, Supreme Harmonic Choice & All Harmonized Spellings',
+        headImg: vedicNameCareerYantra,
+        headLabel: 'Name Correction & Examples',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 overflow-hidden">
+              <h4 className="font-serif text-[11px] font-bold text-amber-200 mb-1">
+                Letter-by-Letter Chaldean & Pythagorean Sound Breakdown for "{activeProfile.name}" (Compound {nameAnalysis.totalChaldeanCompound} — {nameAnalysis.compoundInfo.title})
+              </h4>
+              <p className="text-[9px] text-slate-300 mb-1.5 leading-snug">
+                {nameAnalysis.compoundInfo.description} | <strong>Mulank Relationship:</strong> {nameAnalysis.mulankRelation} • <strong>Bhagyank Relationship:</strong> {nameAnalysis.bhagyankRelation}
+              </p>
+              <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-1 w-full">
+                {nameAnalysis.letters.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="px-1 py-0.5 rounded bg-slate-950 border border-amber-500/35 text-center font-mono text-[8.5px] overflow-hidden"
+                  >
+                    <span className="text-amber-200 font-black text-[10px] block leading-tight">
+                      {item.char}
+                    </span>
+                    <span className="text-emerald-300 text-[7.5px] block truncate">
+                      C:{item.chaldeanVal}|P:{item.pythagoreanVal}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {nameAnalysis.isAuspicious &&
+            !activeProfile.selectedNameA &&
+            !activeProfile.selectedNameB ? (
+              <div className="p-2.5 rounded-xl bg-emerald-950/30 border-2 border-emerald-500/45 space-y-1 text-[9.5px]">
+                <h4 className="font-serif text-[11px] font-bold text-emerald-300 uppercase">
+                  ★ Perfect Name Frequency Result — No Name Change Suggestion Required
+                </h4>
+                <p className="text-slate-200 leading-snug">
+                  Your current name spelling <strong className="text-amber-200">"{activeProfile.name}"</strong> vibrates at Chaldean Compound <strong className="text-emerald-300">{nameAnalysis.totalChaldeanCompound}</strong> ➔ Root <strong className="text-emerald-300">{nameAnalysis.chaldeanSingle} ({PLANETARY_PROFILES[nameAnalysis.chaldeanSingle]?.planet})</strong> with <strong className="text-emerald-300">{nameAnalysis.harmonyScore}% Cosmic Harmony</strong> ({nameAnalysis.compoundInfo.title}). Because your name frequency is already auspicious and in harmony with Mulank {m} and Bhagyank {b}, only your result is shown and no spelling modification is needed.
+                </p>
+              </div>
+            ) : (
+              <>
+                {(() => {
+                  const realNameStr = (activeProfile.originalName || activeProfile.name || '').trim();
+                  const selNameAStr = (
+                    activeProfile.selectedNameA ||
+                    nameSuggestions[0]?.suggestedName ||
+                    `${activeProfile.name}a`
+                  ).trim();
+                  const selNameBStr = (
+                    activeProfile.selectedNameB ||
+                    nameSuggestions[1]?.suggestedName ||
+                    `${activeProfile.name}h`
+                  ).trim();
+                  const realRes = analyzeName(realNameStr, m, b);
+                  const nameARes = analyzeName(selNameAStr, m, b);
+                  const nameBRes = analyzeName(selNameBStr, m, b);
+
+                  return (
+                    <div className="p-2 rounded-xl bg-slate-900/95 border-2 border-emerald-500/45 space-y-1.5 text-[8.5px]">
+                      <div className="flex items-center justify-between border-b border-emerald-500/25 pb-1">
+                        <span className="font-serif text-[10px] font-bold text-amber-200 uppercase">
+                          ★ 3-Way Name Comparison: Real Name vs Selected Name A &amp; Selected Name B (Active Final Name: "{activeProfile.name}")
+                        </span>
+                        <span className="font-mono text-emerald-300 font-bold">
+                          Losses of Real Name vs Benefits of Selected Names
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
+                        {[
+                          {
+                            tag: '1. Real / Original Name',
+                            nameStr: realNameStr,
+                            res: realRes,
+                            isReal: true,
+                          },
+                          {
+                            tag: '2. Selected Name A',
+                            nameStr: selNameAStr,
+                            res: nameARes,
+                            isReal: false,
+                          },
+                          {
+                            tag: '3. Selected Name B',
+                            nameStr: selNameBStr,
+                            res: nameBRes,
+                            isReal: false,
+                          },
+                        ].map((col, cIdx) => {
+                          const isActive =
+                            col.nameStr.toUpperCase() === activeProfile.name.trim().toUpperCase();
+                          return (
+                            <div
+                              key={cIdx}
+                              className={`p-1.5 rounded-lg border space-y-0.5 ${
+                                isActive
+                                  ? 'bg-emerald-950/40 border-emerald-400'
+                                  : 'bg-slate-950/90 border-amber-500/25'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between font-bold text-amber-200">
+                                <span>{col.tag}</span>
+                                {isActive && (
+                                  <span className="px-1 py-0.2 rounded bg-emerald-500 text-slate-950 text-[7px] font-black">
+                                    ACTIVE PROFILE
+                                  </span>
+                                )}
+                              </div>
+                              <div className="font-mono font-black text-[9.5px] text-white truncate">
+                                {col.nameStr} — {col.res.totalChaldeanCompound}➔{col.res.chaldeanSingle} ({col.res.harmonyScore}%)
+                              </div>
+                              {col.isReal ? (
+                                <p className="text-rose-200 leading-tight">
+                                  <strong>Drawback / Loss:</strong>{' '}
+                                  {col.res.harmonyScore < 75
+                                    ? `Creates planetary friction (${col.res.mulankRelation} with Mulank ${m}), causing career delays & financial leakage.`
+                                    : `Baseline vibration (${col.res.compoundInfo.title}); can be elevated for faster commercial & aura breakthroughs.`}
+                                </p>
+                              ) : (
+                                <p className="text-emerald-200 leading-tight">
+                                  <strong>Benefit / Gain:</strong> Aligns with{' '}
+                                  {PLANETARY_PROFILES[col.res.chaldeanSingle]?.planet} ({col.res.compoundInfo.title}), unlocking +{Math.max(5, col.res.harmonyScore - realRes.harmonyScore)}% higher cosmic harmony, wealth &amp; recognition.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {nameSuggestions.length > 0 && (
+                  <div className="p-2.5 rounded-xl bg-slate-900/90 border border-amber-500/35 space-y-1.5">
+                    <div className="flex items-center justify-between border-b border-amber-500/25 pb-1">
+                      <h4 className="font-serif text-[11px] font-bold text-amber-200">
+                        Complete List of Harmonized Name Spelling Suggestions for {activeProfile.name}
+                      </h4>
+                      <span className="text-[9px] font-mono text-emerald-300">
+                        Friendly Roots: {mPlanet.friendlyNumbers.join(', ')}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+                      {nameSuggestions.map((sug, i) => (
+                        <div
+                          key={i}
+                          className="p-1.5 rounded-lg bg-slate-950/95 border border-amber-500/25 flex items-start justify-between gap-1.5"
+                        >
+                          <div>
+                            <div className="font-mono font-black text-[10.5px] text-amber-100">
+                              {i + 1}. {sug.suggestedName}
+                            </div>
+                            <div className="text-[8.5px] text-slate-300 leading-snug">
+                              {sug.changeExplanation} ({sug.planetaryBlessing})
+                            </div>
+                          </div>
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-mono font-bold text-[8.5px] shrink-0">
+                            {sug.compoundNumber}➔{sug.singleDigit} ({sug.harmonyScore}%)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="p-2 rounded-xl bg-emerald-950/20 border border-emerald-500/35 space-y-1 text-[9.2px]">
+              <h5 className="font-serif text-[10.5px] font-bold text-emerald-300 uppercase">
+                Practical Examples & 41-Day Name Vibration Activation Remedies
+              </h5>
+              <p className="text-slate-200">
+                <strong>• Example 1 (Digital & Social Profiles):</strong> Immediately update your display name on WhatsApp, Instagram, LinkedIn, Email Signature, and Visiting Cards to <strong className="text-amber-200">"{topPerfectChoice?.suggestedName || activeProfile.name}"</strong>.
+              </p>
+              <p className="text-slate-200">
+                <strong>• Example 2 (41-Day Sankalpa Writing Sadhana):</strong> Write your harmonized name 41 times every morning at sunrise in a dedicated notebook using a gold, green, or red ink pen while chanting <strong className="text-amber-200">"{mPlanet.beejMantra}"</strong>.
+              </p>
+              <p className="text-slate-200">
+                <strong>• Example 3 (Ascending Signature Alignment):</strong> Sign your harmonized name at a 15° upward angle with an underline and a single dot underneath; never cut or loop backwards through the first letter.
+              </p>
+            </div>
+          </div>
+        ),
+      });
+
+      // PAGE 3: Complete Career & Business Matrix (Favorable Professions, 4 Perfect, 4 Good, 4 Hostile & All 6 Remedies)
+      pages.push({
+        title: 'Page 3: Complete Career & Business Matrix — Perfect, Good & Hostile Sectors + All 6 Aura Remedies',
+        headImg: vedicNameCareerYantra,
+        headLabel: 'Career & Fortune Remedies',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 text-[9px] text-slate-200">
+              <strong className="text-amber-200">Top Favorable Career & Profession Streams (Mulank {m} & Bhagyank {b}):</strong>{' '}
+              <span className="text-emerald-300 font-semibold">{career.favorableProfessions.join(' • ')}</span>
+              <div className="mt-0.5 text-slate-300">
+                <strong>Aura Diagnosis ({career.auraColor} • {career.primaryChakra} / {career.secondaryChakra}):</strong> {career.auraHealthSummary}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
+              <div className="p-2 rounded-xl bg-emerald-950/25 border border-emerald-500/40 space-y-1">
+                <h5 className="font-serif text-[10px] font-bold text-emerald-300 uppercase">
+                  1. Supreme Perfect Businesses (All 4)
+                </h5>
+                {career.perfectBusinesses.map((item, idx) => (
+                  <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-emerald-500/25 text-[8.5px]">
+                    <div className="flex items-center justify-between font-bold text-emerald-200">
+                      <span>{item.field}</span>
+                      <span className="font-mono text-emerald-400">{item.successRate}%</span>
+                    </div>
+                    <p className="text-slate-300 leading-tight mt-0.5">{item.reason}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-2 rounded-xl bg-sky-950/25 border border-sky-500/40 space-y-1">
+                <h5 className="font-serif text-[10px] font-bold text-sky-300 uppercase">
+                  2. Good Supportive Businesses (All 4)
+                </h5>
+                {career.goodBusinesses.map((item, idx) => (
+                  <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-sky-500/25 text-[8.5px]">
+                    <div className="flex items-center justify-between font-bold text-sky-200">
+                      <span>{item.field}</span>
+                      <span className="font-mono text-sky-400">{item.successRate}%</span>
+                    </div>
+                    <p className="text-slate-300 leading-tight mt-0.5">{item.reason}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-2 rounded-xl bg-rose-950/25 border border-rose-500/40 space-y-1">
+                <h5 className="font-serif text-[10px] font-bold text-rose-300 uppercase">
+                  3. Hostile Sectors to Avoid (All 4)
+                </h5>
+                {career.veryBadBusinesses.map((item, idx) => (
+                  <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-rose-500/25 text-[8.5px]">
+                    <div className="flex items-center justify-between font-bold text-rose-200">
+                      <span>{item.field}</span>
+                      <span className="font-mono text-rose-400">{item.conflictPlanet}</span>
+                    </div>
+                    <p className="text-slate-300 leading-tight mt-0.5">{item.dangerReason}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 space-y-1">
+              <h5 className="font-serif text-[10px] font-bold text-amber-200 uppercase">
+                All 6 Prescribed Vedic, Pranic, Sound Frequency (Hz) &amp; Fortune Remedies for Career &amp; Aura Breakthrough
+              </h5>
+              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
+                {career.fortuneReadingRemedies.map((rem, idx) => (
+                  <div key={idx} className="p-1.5 rounded bg-slate-950 border border-amber-500/25 text-[8.2px]">
+                    <div className="flex items-center justify-between gap-1 font-bold text-amber-300">
+                      <span>{idx + 1}. [{rem.category}] {rem.title}</span>
+                      <span className="px-1 py-0.2 rounded bg-sky-950 border border-sky-500/40 text-sky-300 font-mono text-[7.5px] shrink-0">
+                        🔊 {rem.frequencyHz}
+                      </span>
+                    </div>
+                    <p className="text-slate-300 mt-0.5 leading-tight">{rem.prescription}</p>
+                    <span className="text-emerald-300 font-mono block mt-0.5">Addresses: {rem.issueAddressed}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ),
+      });
+
+      // PAGE 4: Dedicated 5-Pillar Vedic Gemstone (Ratna & Upratna) Recommendation Dossier
+      pages.push({
+        title: 'Page 4: Personalized 5-Pillar Vedic Gemstone (Ratna & Upratna) Recommendation & Prana-Pratishtha Vidhi',
+        headImg: vedicNameCareerYantra,
+        headLabel: '5-Pillar Ratna Dossier',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40 flex items-center justify-between">
+              <div>
+                <h4 className="font-serif text-[11px] font-bold text-amber-200 uppercase">
+                  Complete 5-Pillar Vedic Ratna Shastra Matrix for {activeProfile.name}
+                </h4>
+                <p className="text-[9px] text-slate-300">
+                  Ideal Carat / Ratti Weight Range: <strong className="text-emerald-300">{gemRecommend.idealRattiRange}</strong> | Stones Strictly to Avoid: <strong className="text-rose-300">{gemRecommend.stonesToAvoid.map((s) => `${s.primaryGem} (${s.planet})`).join(', ') || 'Enemy Planet Gems'}</strong>
+                </p>
+              </div>
+              <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/50 text-amber-200 font-mono text-[9px] font-bold">
+                Rashi: {astro.rashi}
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              {[
+                {
+                  pillar: `1. Life Stone (Mulank ${m} — ${mPlanet.planet})`,
+                  stone: gemRecommend.lifeStone,
+                  extra: `Core vitality, immunity, self-confidence & physical aura shield.`,
+                },
+                {
+                  pillar: `2. Bhagya Stone (Bhagyank ${b} — ${bPlanet.planet})`,
+                  stone: gemRecommend.destinyStone,
+                  extra: `Long-term wealth compounding, career elevation & destiny grace after age 30.`,
+                },
+                {
+                  pillar: `3. Rashi & Nakshatra Stone (${astro.rashi} / ${astro.nakshatra})`,
+                  stone: gemRecommend.rashiNakshatraStone,
+                  extra: `Mental peace, emotional stability & protection against Chandrashtama.`,
+                },
+                {
+                  pillar: `4. Active Gochar Transit Kavach Stone (${gemRecommend.transitStone.planet})`,
+                  stone: gemRecommend.transitStone,
+                  extra: gemRecommend.transitReason,
+                },
+                {
+                  pillar: `5. Name Vibration Amplifier Stone (Namank ${nameAnalysis.chaldeanSingle} — ${nPlanet.planet})`,
+                  stone: gemRecommend.nameStone,
+                  extra: `Amplifies public magnetism, brand recognition & commercial success.`,
+                },
+              ].map((item, idx) => (
+                <div key={idx} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.8px] space-y-0.5">
+                  <div className="flex items-center justify-between font-bold text-amber-200">
+                    <span>{item.pillar}: <strong className="text-emerald-300">{item.stone.primaryGem} ({item.stone.sanskritName})</strong></span>
+                    <span className="font-mono text-sky-300">Upratna: {item.stone.substituteStone}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 text-slate-200 a4-print-grid-2">
+                    <div>
+                      <strong>Metal & Finger:</strong> {item.stone.metal} • {item.stone.wearingFinger} | <strong>Day/Time:</strong> {item.stone.wearingDayTime}
+                    </div>
+                    <div>
+                      <strong>Chakra:</strong> {item.stone.chakra} | <strong>Mantra:</strong> <span className="text-amber-300 font-mono">{item.stone.mantra}</span>
+                    </div>
+                  </div>
+                  <div className="text-slate-300">
+                    <strong>Benefits:</strong> {(item.stone.benefits || item.stone.coreBenefits).join(' • ')} — <span className="text-emerald-200">{item.extra}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-2 rounded-xl bg-emerald-950/25 border border-emerald-500/35 text-[8.8px] text-slate-200">
+              <strong className="text-emerald-300 uppercase block mb-0.5">
+                5-Step Vedic Ratna Prana-Pratishtha (Consecration) Vidhi:
+              </strong>
+              1. Dip the ring/pendant in Panchamrit (raw cow milk, curd, honey, ghee & Gangajal) for 21 minutes on the prescribed morning Hora. 2. Wash with pure Gangajal and place on a red/yellow silk cloth before your Ishta Devata. 3. Offer sandalwood paste, Akshat, incense, and a cow-ghee lamp. 4. Chant the stone's Beej Mantra 108 times facing East. 5. Touch the ring to the deity's feet and wear on the prescribed finger during Shukla Paksha.
+            </div>
+          </div>
+        ),
+      });
+
+      // PAGE 5: Universal Numeric Vibration Verifier (Vehicle, Flat/House, Bank/Brand, Mobile)
+      pages.push({
+        title: 'Page 5: Universal Numeric Vibration Verifier — Vehicle, Flat/House, Business Brand & Mobile Benchmarks',
+        headImg: vedicNameCareerYantra,
+        headLabel: 'Universal Validator',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40 text-[9px] text-slate-200">
+              <strong className="text-amber-300 uppercase block">
+                Universal Numeric Vibration Verifier (Personalized Benchmarks for Mulank {m} & Bhagyank {b}):
+              </strong>
+              Every registration plate, house/flat door number, bank account, or commercial brand name carries an active Chaldean compound and single-digit root. Align all assets to your Friendly Planetary Roots (<strong className="text-emerald-300">{mPlanet.friendlyNumbers.join(', ')}</strong>).
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 a4-print-grid-2">
+              {[
+                { label: '1. Vehicle Registration Plate Benchmark', data: vehicleValidation },
+                { label: '2. Flat / Villa / Office Door Number Benchmark', data: flatValidation },
+                { label: '3. Business / Brand / Account Name Benchmark', data: businessValidation },
+                { label: '4. Primary Mobile Number Benchmark', data: mobileValidation },
+              ].map((card, idx) => (
+                <div key={idx} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.8px] space-y-1">
+                  <div className="flex items-center justify-between font-bold text-amber-200">
+                    <span>{card.label}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-mono">
+                      {card.data.compoundNumber}➔{card.data.singleDigit} ({card.data.compatibilityScore}%)
+                    </span>
+                  </div>
+                  <div className="text-sky-300 font-mono">
+                    Sample: {card.data.input} • Planet: {card.data.rulingPlanet} • Status: {card.data.status}
+                  </div>
+                  <div className="text-slate-200">
+                    <strong>Compound Title ({card.data.compoundInfo.title}):</strong> {card.data.compoundInfo.description}
+                  </div>
+                  <div className="text-emerald-200 leading-snug">
+                    <strong>Vedic Guidance:</strong> {card.data.recommendation}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-sky-500/35 text-[8.5px] text-slate-200 space-y-1">
+              <div className="flex items-center justify-between font-bold text-sky-300 uppercase">
+                <span>1. Step-by-Step Self-Calculation Formula (Calculate Your Own Vehicle, Flat &amp; Brand)</span>
+                <span className="font-mono text-amber-300">Chaldean Key (1 to 8)</span>
+              </div>
+              <p className="leading-snug">
+                <strong>Step 1 (Letters to Chaldean Values):</strong>{' '}
+                <span className="font-mono text-amber-200">
+                  1 = A,I,J,Q,Y • 2 = B,K,R • 3 = C,G,L,S • 4 = D,M,T • 5 = E,H,N,X • 6 = U,V,W • 7 = O,Z • 8 = F,P
+                </span>{' '}
+                | <strong>Step 2 (Add Digits &amp; Letters):</strong> Add every letter value + every digit to get the <strong>Compound Number</strong>, then add its digits until you get a single <strong>Root Digit (1–9)</strong>. Match with your Friendly Roots (<strong className="text-emerald-300">{mPlanet.friendlyNumbers.join(', ')}</strong>).
+              </p>
+            </div>
+
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-emerald-500/35 text-[8.6px] text-slate-200 space-y-1">
+              <h5 className="font-serif text-[10px] font-bold text-emerald-300 uppercase">
+                2. Master Selection Rules for New Vehicles, Flats, Plots, Bank Accounts &amp; Business / Brand Names (Company &amp; Trade)
+              </h5>
+              <p>
+                <strong>• A. Ideal Vehicle Last-4 Plate Sum &amp; Full Plate Sum:</strong> Choose registration numbers summing to <strong className="text-amber-200">{mPlanet.friendlyNumbers.join(', ')}</strong> (Compound 19, 23, 24, 27, 32, 37, 41, 45, 46). Avoid enemy roots ({mPlanet.enemyNumbers.join(', ')}).
+              </p>
+              <p>
+                <strong>• B. Ideal Flat / House / Plot Door Number:</strong> Select door or plot numbers reducing to <strong className="text-amber-200">{bPlanet.friendlyNumbers.join(', ')}</strong>. Place a brass/copper sticker of digit <strong className="text-emerald-300">{mPlanet.friendlyNumbers[0] || m}</strong> inside the doorframe if needed.
+              </p>
+              <p>
+                <strong>• C. Business / Brand Name (Company &amp; Trade):</strong> Ensure your company, trade, startup, or shop name sums to Compound <strong className="text-emerald-300">19 (Sun), 23 (Mercury), 24 (Venus), 32 (Mercury), 37 (Sun-Ketu), 41 (Mercury), 45 (Jupiter), or 46 (Sun)</strong> reducing to friendly roots <strong className="text-amber-200">{Array.from(new Set([m, b, ...mPlanet.friendlyNumbers])).join(', ')}</strong>.
+              </p>
+              <p>
+                <strong>• D. Bank Account, Locker &amp; Demat Selection Rule:</strong> Prioritize bank accounts or lockers whose last 4 digits or full account sum reduce to <strong className="text-amber-200">6 (Venus), 5 (Mercury), 3 (Jupiter), or {b} (Destiny)</strong>.
+              </p>
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    // PAGES 6–10: Advance Mobile Audit, Combined Triad, Virtual SIMs, 3x3 Grid, Present/Missing Remedies & 10-Cycle Maha Dasha
+    if (selectedSections.advanceMobileAudit) {
+      // PAGE 6: Advance Mobile Audit, All 9 Pairs, Combined Pair Prediction & Concrete Examples
+      pages.push({
+        title: 'Page 6: Advance Mobile Numerology Audit, All 9 Sequential Digit Pairs & Concrete Examples',
+        headImg: mobileLoShuGridArt,
+        headLabel: 'Advance Mobile Audit',
+        isCover: pages.length === 0,
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="relative rounded-xl overflow-hidden border border-amber-500/40 min-h-[68px]">
+              <img
+                src={mobileLoShuGridArt}
+                alt="Advance Mobile Numerology & Lo-Shu Cosmic Grid"
+                referrerPolicy="no-referrer"
+                className="absolute inset-0 w-full h-full object-cover opacity-55"
+              />
+              <div className="relative z-10 bg-gradient-to-r from-slate-950/95 via-slate-950/80 to-slate-950/40 p-2.5 flex flex-col justify-center">
+                <span className="text-[9px] font-mono uppercase tracking-widest text-amber-400 font-bold break-words">
+                  02 • ADVANCE MOBILE NUMBER VIBRATION AUDIT ({activeProfile.mobile})
+                </span>
+                <h3 className="font-serif text-sm font-black text-amber-100 break-words leading-snug">
+                  Compound {mobileAnalysis.compoundNumber} ➔ Root {mobileAnalysis.singleDigit} • Overall Score: {mobileAnalysis.overallScore}/100 ({mobileAnalysis.verdict})
+                </h3>
+                <p className="text-[9px] text-emerald-300 break-words leading-snug">
+                  Lucky Colours: {advMobile.luckyColours.join(', ')} | Avoid Colours: {advMobile.unluckyColours.join(', ')} | Avoid Digits in SIM: {(advMobile.avoidNumbersInMobile || []).join(', ')}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 a4-print-grid-2">
+              <div className="p-2 rounded-xl bg-slate-950/90 border border-amber-500/30 text-[9px] space-y-1">
+                <span className="font-bold text-amber-300 uppercase block">
+                  Compound {advMobile.mobileCompound} & Root {advMobile.mobileTotal} Prediction
+                </span>
+                <p className="text-slate-200 leading-snug">{advMobile.mobileTotalPrediction}</p>
+                <p className="text-emerald-300">
+                  <strong>Lucky Totals:</strong> {advMobile.recommendedMobileTotals.join(', ')} | <strong>Lucky Digits:</strong> {advMobile.luckyNumbers.join(', ')} | <strong>Unlucky:</strong> {advMobile.unluckyNumbers.join(', ')} | <strong>Neutral:</strong> {advMobile.neutralNumbers.join(', ')}
+                </p>
+                <p className="text-sky-200 leading-snug">
+                  <strong>Combined Pair Summary:</strong> {advMobile.combinedPairPrediction}
+                </p>
+              </div>
+
+              <div className="p-2 rounded-xl bg-slate-950/90 border border-amber-500/30 text-[8.5px] space-y-0.5">
+                <span className="font-bold text-amber-300 uppercase block">
+                  All {advMobile.mobileCombinations.length} Adjacent 2-Digit Cellular Pairs in {activeProfile.mobile}
+                </span>
+                <div className="space-y-0.5">
+                  {advMobile.mobileCombinations.map((pa, idx) => (
+                    <div key={idx} className="text-slate-200 leading-tight">
+                      <strong className="font-mono text-amber-300">#{idx + 1} [{pa.pair}] ({pa.status.toUpperCase()}):</strong> {pa.prediction}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-emerald-500/35 space-y-1 text-[9px]">
+              <h5 className="font-serif text-[10.5px] font-bold text-emerald-300 uppercase">
+                {advMobile.exampleRecommendedNumbers.length === 0
+                  ? 'Perfect Mobile Frequency Result & Prescribed Wallpaper Remedy'
+                  : 'Concrete Recommended Mobile Examples, Wallpaper Remedy & SIM Balancing Protocol'}
+              </h5>
+              {advMobile.exampleRecommendedNumbers.length === 0 ? (
+                <p className="text-emerald-200">
+                  <strong>• Perfect Mobile Frequency Result:</strong> Your mobile number <strong>{activeProfile.mobile}</strong> (Compound {advMobile.mobileCompound} ➔ Root {advMobile.mobileTotal}) already vibrates in auspicious harmony with Mulank {m} and Bhagyank {b}. No mobile number change or suggestion is required.
+                </p>
+              ) : (
+                advMobile.exampleRecommendedNumbers.map((ex, idx) => (
+                  <p key={idx} className="text-slate-200">
+                    <strong>• Example {idx + 1} ({ex.number}):</strong> Compound {ex.compound} ➔ Root {ex.total} — {ex.benefit}
+                  </p>
+                ))
+              )}
+              <p className="text-amber-200">
+                <strong>• Prescribed Mobile Wallpaper ({advMobile.recommendedWallpaper.title}):</strong> {advMobile.recommendedWallpaper.description} ({advMobile.recommendedWallpaper.placementAdvice})
+              </p>
+              {mobileAnalysis.remedies.length > 0 && (
+                <div className="grid grid-cols-2 gap-1 pt-0.5 a4-print-grid-2">
+                  {mobileAnalysis.remedies.map((rem, idx) => (
+                    <div key={idx} className="p-1 rounded bg-slate-950 border border-amber-500/20 text-[8.5px] text-amber-100">
+                      ✓ {rem}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ),
+      });
+
+      // PAGE 7: Combined Name + D.O.B + Mobile Triad Synergy Audit & Virtual Lucky SIM Architect
+      pages.push({
+        title: 'Page 7: Combined Name + D.O.B + Mobile Triad Synergy Audit & Career Result',
+        headImg: mobileLoShuGridArt,
+        headLabel: 'Triad & Mobile Result',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-900/95 border-2 border-amber-500/45 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <h4 className="font-serif text-[11px] font-bold text-amber-200 uppercase">
+                  1. Live Combined Name + D.O.B + Mobile Triad Synergy Audit
+                </h4>
+                <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono font-bold text-[10px]">
+                  Triad {triadCompound} ➔ {triadSingle} ({triadPlanet.planet}) • {combinedTriadScore}% Synergy
+                </span>
+              </div>
+              <div className="grid grid-cols-4 gap-1.5 text-[8.5px] a4-print-grid-2">
+                <div className="p-1.5 rounded bg-slate-950 border border-amber-500/25">
+                  <strong className="text-amber-300 block">Mulank ({m}) ↔ Mobile ({mobileAnalysis.singleDigit})</strong>
+                  <span className="text-emerald-300 font-mono">{relMulankMobile} Relationship</span>
+                </div>
+                <div className="p-1.5 rounded bg-slate-950 border border-amber-500/25">
+                  <strong className="text-amber-300 block">Bhagyank ({b}) ↔ Mobile ({mobileAnalysis.singleDigit})</strong>
+                  <span className="text-emerald-300 font-mono">{relBhagyankMobile} Relationship</span>
+                </div>
+                <div className="p-1.5 rounded bg-slate-950 border border-amber-500/25">
+                  <strong className="text-amber-300 block">Name ({nameAnalysis.chaldeanSingle}) ↔ Mobile ({mobileAnalysis.singleDigit})</strong>
+                  <span className="text-emerald-300 font-mono">{relNameMobile} Relationship</span>
+                </div>
+                <div className="p-1.5 rounded bg-slate-950 border border-amber-500/25">
+                  <strong className="text-amber-300 block">Mulank ({m}) ↔ Name ({nameAnalysis.chaldeanSingle})</strong>
+                  <span className="text-emerald-300 font-mono">{relMulankName} Relationship</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[8.8px] a4-print-grid-2">
+                <div className="p-1.5 rounded bg-emerald-950/30 border border-emerald-500/30 text-slate-200">
+                  <strong className="text-emerald-300 block">Combined Triad Supreme Career Sectors:</strong>
+                  {combinedCareerProfile.perfectBusinesses.map((cb) => `${cb.field} (${cb.successRate}%)`).join(' • ')}
+                </div>
+                <div className="p-1.5 rounded bg-rose-950/30 border border-rose-500/30 text-slate-200">
+                  <strong className="text-rose-300 block">Combined Triad Sectors to Avoid:</strong>
+                  {combinedCareerProfile.veryBadBusinesses.map((vb) => `${vb.field} (${vb.conflictPlanet})`).join(' • ')}
+                </div>
+              </div>
+            </div>
+
+            {advMobile.exampleRecommendedNumbers.length === 0 &&
+            !activeProfile.selectedMobileA &&
+            !activeProfile.selectedMobileB ? (
+              <div className="p-2.5 rounded-xl bg-emerald-950/30 border-2 border-emerald-500/45 space-y-1 text-[9.5px]">
+                <h4 className="font-serif text-[11px] font-bold text-emerald-300 uppercase">
+                  ★ Perfect Mobile Number Frequency Result — No SIM Change Suggestion Required
+                </h4>
+                <p className="text-slate-200 leading-snug">
+                  Your active mobile number <strong className="text-amber-200">{activeProfile.mobile}</strong> (Compound {advMobile.mobileCompound} ➔ Root {advMobile.mobileTotal} • {mobileAnalysis.overallScore}% Cosmic Harmony) is already in auspicious planetary alignment with your Mulank {m} and Bhagyank {b}. Only your complete Triad and Mobile frequency result is displayed — no new SIM suggestions are needed.
+                </p>
+              </div>
+            ) : (
+              <>
+                {(() => {
+                  const origMob = (activeProfile.originalMobile || activeProfile.mobile || '9876543210').trim();
+                  const selMobA = (
+                    activeProfile.selectedMobileA ||
+                    advMobile.exampleRecommendedNumbers[0]?.number ||
+                    `98${mPlanet.friendlyNumbers[0] || 5}651535${b}`
+                  ).trim();
+                  const selMobB = (
+                    activeProfile.selectedMobileB ||
+                    advMobile.exampleRecommendedNumbers[1]?.number ||
+                    `98691656${m}6`
+                  ).trim();
+                  const origMobRes = analyzeMobileNumber(origMob, m, b);
+                  const mobARes = analyzeMobileNumber(selMobA, m, b);
+                  const mobBRes = analyzeMobileNumber(selMobB, m, b);
+
+                  return (
+                    <div className="p-2 rounded-xl bg-slate-900/95 border-2 border-amber-500/45 space-y-1 text-[8.4px]">
+                      <div className="flex items-center justify-between border-b border-amber-500/25 pb-0.5">
+                        <h4 className="font-serif text-[10px] font-bold text-amber-200 uppercase">
+                          ★ 3-Way Mobile Comparison: Client Original Number vs Selected Number A &amp; B (Active: {activeProfile.mobile})
+                        </h4>
+                        <span className="font-mono text-emerald-300 font-bold">
+                          Cosmic Harmony Index % &amp; Losses vs Benefits
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
+                        {[
+                          { label: '1. Original Mobile', num: origMob, res: origMobRes, isOrig: true },
+                          { label: '2. Selected Number A', num: selMobA, res: mobARes, isOrig: false },
+                          { label: '3. Selected Number B', num: selMobB, res: mobBRes, isOrig: false },
+                        ].map((item, idx) => {
+                          const isCurrent = item.num === (activeProfile.mobile || '').trim();
+                          return (
+                            <div
+                              key={idx}
+                              className={`p-1.5 rounded-lg border space-y-0.5 ${
+                                isCurrent
+                                  ? 'bg-emerald-950/40 border-emerald-400'
+                                  : 'bg-slate-950 border-amber-500/25'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between font-bold text-amber-200">
+                                <span>{item.label}</span>
+                                <span className="font-mono text-emerald-300">
+                                  Harmony: {item.res.overallScore}%
+                                </span>
+                              </div>
+                              <div className="font-mono font-black text-white">
+                                {item.num} ({item.res.compoundNumber}➔{item.res.singleDigit})
+                              </div>
+                              {item.isOrig ? (
+                                <p className="text-rose-200 leading-tight">
+                                  <strong>Loss / Drawback:</strong>{' '}
+                                  {item.res.toxicPairsFound.length > 0
+                                    ? `Negative pairs (${item.res.toxicPairsFound.map((tp) => tp.pair).join(', ')}) cause payment delays & stress.`
+                                    : `Root ${item.res.singleDigit} gives ${item.res.overallScore}% Cosmic Harmony Index.`}
+                                </p>
+                              ) : (
+                                <p className="text-emerald-200 leading-tight">
+                                  <strong>Benefit / Gain:</strong> Root {item.res.singleDigit} ({PLANETARY_PROFILES[item.res.singleDigit]?.planet}) boosts cashflow, authority &amp; client conversion ({item.res.overallScore}% Harmony).
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div className="p-2 rounded-xl bg-slate-900/95 border border-emerald-500/40 space-y-1">
+                  <h4 className="font-serif text-[10.5px] font-bold text-emerald-300 uppercase">
+                    2. Virtual Lucky SIM Architect — All 4 Life Goals Custom SIM Blueprints for {activeProfile.name}
+                  </h4>
+                  <div className="grid grid-cols-2 gap-1.5 text-[8.4px] a4-print-grid-2">
+                    {[
+                      {
+                        goal: '1. Business & Commercial Expansion SIM',
+                        targetRoot: mPlanet.friendlyNumbers[0] || 5,
+                        pairs: '56 • 65 • 51 • 15 • 35',
+                        sample: `98${mPlanet.friendlyNumbers[0] || 5}651535${b}`,
+                        benefit: 'Accelerates B2B inquiries, daily cash-flow turnover, digital marketing conversions & trade velocity.',
+                      },
+                      {
+                        goal: '2. Wealth, Luxury & Asset Compounding SIM',
+                        targetRoot: 6,
+                        pairs: '69 • 96 • 61 • 16 • 56',
+                        sample: `98691656${m}6`,
+                        benefit: 'Attracts high-net-worth clientele, real-estate appreciation, luxury assets & Shukra-Kubera grace.',
+                      },
+                      {
+                        goal: '3. Authority, Leadership & Government Fame SIM',
+                        targetRoot: 1,
+                        pairs: '19 • 91 • 13 • 31 • 15',
+                        sample: `98193115${b}1`,
+                        benefit: 'Strengthens Surya-Guru administrative command, executive promotions, tenders & public recognition.',
+                      },
+                      {
+                        goal: '4. Family Peace, Healing & Spiritual Protection SIM',
+                        targetRoot: 3,
+                        pairs: '32 • 23 • 39 • 93 • 25',
+                        sample: `98329325${m}3`,
+                        benefit: 'Harmonizes domestic relationships, emotional intuition, consultation wisdom & ancestral blessings.',
+                      },
+                    ].map((sim, idx) => (
+                      <div key={idx} className="p-1.5 rounded-lg bg-slate-950 border border-emerald-500/30 space-y-0.5">
+                        <div className="flex items-center justify-between font-bold text-amber-200">
+                          <span>{sim.goal}</span>
+                          <span className="font-mono text-emerald-300">Target Root {sim.targetRoot}</span>
+                        </div>
+                        <div className="text-sky-300 font-mono">
+                          Power Pairs: {sim.pairs} | Blueprint: {sim.sample}
+                        </div>
+                        <p className="text-slate-300 leading-tight">{sim.benefit}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        ),
+      });
+
+      // PAGE 8: Sacred 3×3 Square Lo-Shu Grid, Present Number Readings (Sepharial Vedic Grid) & All Active Chart Yogas
+      pages.push({
+        title: 'Page 8: Sacred 3×3 Square Lo-Shu Grid, Present Number Readings & All Active Chart Yogas',
+        headImg: mobileLoShuGridArt,
+        headLabel: '3×3 Grid & Active Yogas',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-900/95 border-2 border-amber-500/45 flex flex-col sm:flex-row items-center gap-3">
+              <div className="w-48 min-h-[11rem] shrink-0 p-1.5 rounded-xl bg-slate-950 border-2 border-amber-400 shadow-xl grid grid-cols-3 grid-rows-3 gap-1 text-center font-mono">
+                {[
+                  { num: 4, dir: 'SE', label: 'Rahu (Wealth)' },
+                  { num: 9, dir: 'S', label: 'Mangal (Fame)' },
+                  { num: 2, dir: 'SW', label: 'Chandra (Mind)' },
+                  { num: 3, dir: 'E', label: 'Guru (Wisdom)' },
+                  { num: 5, dir: 'C', label: 'Budh (Balance)' },
+                  { num: 7, dir: 'W', label: 'Ketu (Intuition)' },
+                  { num: 8, dir: 'NE', label: 'Shani (Assets)' },
+                  { num: 1, dir: 'N', label: 'Surya (Career)' },
+                  { num: 6, dir: 'NW', label: 'Shukra (Luxury)' },
+                ].map((cell) => {
+                  const count = loShu.grid[cell.num] || 0;
+                  return (
+                    <div
+                      key={cell.num}
+                      className={`p-1 rounded-lg border flex flex-col items-center justify-between min-w-0 overflow-hidden ${
+                        count > 0
+                          ? 'bg-amber-500/25 border-amber-400 text-amber-100'
+                          : 'bg-slate-900/90 border-rose-500/35 text-slate-400'
+                      }`}
+                    >
+                      <span className="text-[7px] font-bold text-amber-300 leading-none">
+                        {cell.dir} [{cell.num}]
+                      </span>
+                      <div className="text-xs font-black leading-none my-0.5">
+                        {count > 0 ? (
+                          <span className="text-emerald-300">{String(cell.num).repeat(count)}</span>
+                        ) : (
+                          <span className="text-rose-400 text-[7.5px]">MISSING</span>
+                        )}
+                      </div>
+                      <div className="text-[6.4px] leading-tight break-words w-full">{cell.label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex-1 space-y-1 text-[9px]">
+                <h5 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
+                  Present Numbers Repetition Impact in Birth Chart (Sepharial & Lo-Shu Analysis)
+                </h5>
+                {advMobile.presentNumberReadings.map((pr) => (
+                  <div key={pr.number} className="p-1 rounded bg-slate-950 border border-amber-500/25">
+                    <strong className="text-emerald-300">
+                      {pr.heading} ({pr.count}x in Grid):
+                    </strong>{' '}
+                    <span className="text-slate-200">{pr.description} {pr.repetitionNote || ''}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-emerald-500/40 space-y-1">
+              <h5 className="font-serif text-[10.5px] font-bold text-emerald-300 uppercase">
+                All Active 2-Digit & 3-Digit Chart Combination Yogas (Directly Below Sacred 3×3 Square Grid)
+              </h5>
+              <div className="grid grid-cols-2 gap-1.5 text-[8.5px] a4-print-grid-2">
+                {advMobile.chartCombinations.map((y, idx) => (
+                  <div key={idx} className="p-1.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-100">
+                    <strong className="text-amber-200 block">
+                      {idx + 1}. Active {y.type} ({y.combination} — {y.title}):
+                    </strong>
+                    <span>{y.paragraphs.join(' ')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ),
+      });
+
+      // PAGE 9: Complete Missing Karmic Numbers Remedies (Wear, Vastu, Rituals + Interactive Lo-Shu Vedic Remedies DB)
+      pages.push({
+        title: 'Page 9: Complete Missing Karmic Numbers — Wear, Vastu, Sacred Rituals & Vedic Planetary Remedies',
+        headImg: mobileLoShuGridArt,
+        headLabel: 'Missing Digits Remedies',
+        content: (
+          <div className="space-y-1.5 text-xs">
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-rose-500/40 text-[9px] text-slate-200">
+              <strong className="text-amber-300 uppercase">
+                Complete Missing Karmic Numbers Protocol ({advMobile.missingNumberRemedies.map((mItem) => mItem.number).join(', ')}):
+              </strong>{' '}
+              Every missing digit in your Lo-Shu Grid represents a karmic lesson. Activate all 3 pillars (1. Wear, 2. Vastu & Feng Shui, 3. Sacred Rituals + Mantra & Charity) below.
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+              {advMobile.missingNumberRemedies.map((mr) => {
+                const dbRem = LO_SHU_VEDIC_REMEDIES_DB[mr.number];
+                return (
+                  <div
+                    key={mr.number}
+                    className="p-2 rounded-xl bg-slate-950/95 border border-rose-500/30 text-[8.3px] space-y-0.5"
+                  >
+                    <div className="flex items-center justify-between font-bold text-amber-200">
+                      <span>
+                        Missing Digit {mr.number} — {mr.planet} ({dbRem?.planet || mr.planet})
+                      </span>
+                      <span className="font-mono text-sky-300">
+                        {dbRem?.direction || ''} • {dbRem?.element || ''}
+                      </span>
+                    </div>
+                    {dbRem && (
+                      <div className="text-rose-200 leading-tight">
+                        <strong>Missing Impact:</strong> {dbRem.missingImpact}
+                      </div>
+                    )}
+                    <div className="text-slate-200 leading-tight">
+                      <strong>1. Wear:</strong> {mr.wear.join(' • ')} {dbRem ? `• ${dbRem.rudrakshaAndCrystal}` : ''}
+                    </div>
+                    <div className="text-emerald-300 leading-tight">
+                      <strong>2. Vastu & Feng Shui:</strong> {mr.vastuAndFengShui.join(' • ')}
+                    </div>
+                    <div className="text-amber-200 leading-tight">
+                      <strong>3. Sacred Rituals:</strong> {mr.rituals.join(' • ')}
+                    </div>
+                    <div className="text-purple-200 font-mono leading-tight">
+                      <strong>4. Sound Frequency (Hz):</strong> 🔊 {mr.soundFrequency}
+                    </div>
+                    {dbRem && (
+                      <div className="text-sky-200 font-mono leading-tight">
+                        <strong>Mantra:</strong> {dbRem.beejMantra} ({dbRem.mantraProtocol}) | <strong>Daan:</strong> {dbRem.dailyKarmaAndDaan}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ),
+      });
+
+      // PAGE 10: Complete Vedic Numerology & Astrological Vimshottari Maha Dasha Timeline — Starting from Present Active Cycle
+      const activeVimshottari =
+        advMobile.vimshottariDashaTimeline?.find((d) => d.isCurrent) ||
+        advMobile.vimshottariDashaTimeline?.[0];
+      pages.push({
+        title: 'Page 10: Complete Vedic Astrological (120-Yr Vimshottari) & Numerology (45-Yr) Maha Dasha Timeline — Starting from Present Active Cycle',
+        headImg: mobileLoShuGridArt,
+        headLabel: 'Maha Dasha Timeline',
+        content: (
+          <div className="space-y-1.5 text-xs">
+            {/* A. 120-Year Classical Parashari Vimshottari Maha Dasha (Matches AstroSage / Drik Panchang) */}
+            {advMobile.janmaNakshatraSummary && advMobile.vimshottariDashaTimeline && (
+              <div className="p-2 rounded-xl bg-slate-900/95 border border-emerald-500/45 text-[8.4px] text-slate-200 space-y-1">
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                  <strong className="text-emerald-300 uppercase">
+                    A. 120-Year Classical Parashari Vimshottari Maha Dasha (Janma Nakshatra: {advMobile.janmaNakshatraSummary.nakshatra} Pada {advMobile.janmaNakshatraSummary.pada} • Moon {advMobile.janmaNakshatraSummary.moonDegreeSidereal.toFixed(2)}° • Lord: {advMobile.janmaNakshatraSummary.birthDashaLord}):
+                  </strong>
+                  <span className="font-mono text-[7.8px] text-amber-300">
+                    Birth Balance (Bhogya): {advMobile.janmaNakshatraSummary.birthDashaBalanceLabel}
+                  </span>
+                </div>
+                {activeVimshottari && (
+                  <div className="p-1.5 rounded bg-emerald-950/60 border border-emerald-400/60 text-emerald-100">
+                    <strong className="text-amber-300">
+                      ★ Present Active Astrological Vimshottari Maha Dasha:
+                    </strong>{' '}
+                    <strong>{activeVimshottari.planet} ({activeVimshottari.sanskritName})</strong> — {activeVimshottari.startDate} to {activeVimshottari.endDate} ({activeVimshottari.durationYears} Yrs)
+                    {activeVimshottari.activeAntardasha ? (
+                      <span className="text-amber-200 font-semibold">
+                        {' '}• Active Antardasha: {activeVimshottari.activeAntardasha}
+                      </span>
+                    ) : null}
+                  </div>
+                )}
+                <div className="grid grid-cols-3 gap-1 a4-print-grid-3 text-[7.8px]">
+                  {advMobile.vimshottariDashaTimeline.map((vd, vIdx) => (
+                    <div
+                      key={vIdx}
+                      className={`p-1.5 rounded border ${
+                        vd.isCurrent
+                          ? 'bg-amber-500/20 border-amber-400 text-amber-100'
+                          : 'bg-slate-950 border-emerald-500/30 text-slate-200'
+                      }`}
+                    >
+                      <div className="font-bold text-amber-200 flex items-center justify-between gap-1">
+                        <span>{vd.isCurrent ? '★ NOW: ' : `${vIdx + 1}. `}{vd.planet} (#{vd.dashaNumber})</span>
+                        <span className="font-mono text-[7px] text-emerald-300">{vd.durationYears}Y</span>
+                      </div>
+                      <div className="font-mono text-[7.2px] text-sky-200">{vd.startDate} – {vd.endDate}</div>
+                    </div>
+                  ))}
+                </div>
+                {advMobile.vimshottariPastCycles && advMobile.vimshottariPastCycles.length > 0 && (
+                  <div className="text-[7.5px] text-slate-300 font-mono pt-0.5">
+                    <strong className="text-amber-200">Past Completed Astrological Cycles Since Birth:</strong>{' '}
+                    {advMobile.vimshottariPastCycles
+                      .map((p) => `${p.planet} (${p.startDate} – ${p.endDate})`)
+                      .join(' • ')}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* B. 45-Year Vedic Numerology Progressive Maha Dasha Timeline — Starting from Present Active Cycle */}
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40 text-[8.5px] text-slate-200 space-y-1">
+              <div>
+                <strong className="text-amber-300 uppercase">
+                  B. 45-Year Vedic Numerology Progressive Maha Dasha Timeline — Starting from Present Active Cycle (DOB: {activeProfile.dob}):
+                </strong>{' '}
+                Begins with Mulank #{m} at birth (1→1y, 2→2y ... 9→9y = 45-Year Cycle). Starts directly from your <strong>★ Present Active Cycle</strong> (Dasha #{activeDasha?.dashaNumber} {activeDasha?.planet}, {activeDasha?.startDate} – {activeDasha?.endDate}).
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 text-[7.8px] a4-print-grid-3">
+                <div className="p-1.5 rounded bg-amber-500/20 border-2 border-amber-400 text-amber-100">
+                  <strong className="text-amber-300 uppercase block">★ 1. Present Active Cycle (Starts Timeline):</strong>
+                  Dasha #{activeDasha?.dashaNumber} {activeDasha?.planet} ({activeDasha?.startDate} – {activeDasha?.endDate})
+                  {activeDasha?.activeAntardasha ? ` • ${activeDasha.activeAntardasha}` : ''}
+                </div>
+                <div className="p-1.5 rounded bg-emerald-950/35 border border-emerald-500/40 text-emerald-200">
+                  <strong className="text-emerald-300 uppercase block">2. Upcoming Cycles (Sequential Future):</strong>
+                  {advMobile.dashaTimeline
+                    .filter((d) => !d.isCurrent)
+                    .map((d) => `Dasha #${d.dashaNumber} (${d.startDate}–${d.endDate})`)
+                    .join(' • ')}
+                </div>
+                <div className="p-1.5 rounded bg-slate-950 border border-slate-700 text-slate-300">
+                  <strong className="text-slate-200 uppercase block">3. Past Cycles (Completed Since Birth):</strong>
+                  {advMobile.pastDashaCycles && advMobile.pastDashaCycles.length > 0
+                    ? advMobile.pastDashaCycles
+                        .map((d) => `Dasha #${d.dashaNumber} (${d.startDate}–${d.endDate})`)
+                        .join(' • ')
+                    : 'Birth Cycle Currently Active'}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+              {advMobile.dashaTimeline.map((md, idx) => (
+                <div
+                  key={idx}
+                  className={`p-1.5 rounded-xl border text-[8px] space-y-0.5 ${
+                    md.isCurrent
+                      ? 'bg-amber-500/20 border-2 border-amber-400 text-amber-100'
+                      : 'bg-slate-950/95 border-emerald-500/30 text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-bold text-amber-200 gap-1">
+                    <span>
+                      {md.isCurrent ? '★ 1. PRESENT ACTIVE' : `Cycle ${idx + 1} (Upcoming)`}: Dasha #{md.dashaNumber} ({md.planet} • {md.durationYears} Yrs)
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded font-mono text-[7.2px] shrink-0 ${
+                        md.isCurrent
+                          ? 'bg-amber-400 text-slate-950 font-black'
+                          : 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                      }`}
+                    >
+                      {md.startDate}–{md.endDate} • {md.isCurrent ? '★ ACTIVE NOW' : 'UPCOMING'}
+                    </span>
+                  </div>
+                  <p className="leading-snug">{md.paragraphs.join(' ')}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    // PAGES 11–13: 12-Month Monthly Forecast & 7-Day Weekly Per-Day Forecast with Mantra Chants
+    if (selectedSections.forecast12Months) {
+      pages.push({
+        title: `Page 11: 12-Month Personalized Forecast — Months 1 to 6 (${reportDateRange.startFormatted} – ${reportDateRange.endFormatted})`,
+        headImg: spiritualReportBanner,
+        headLabel: '12M Forecast (Part 1)',
+        content: (
+          <div className="space-y-2.5 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-amber-500/35 text-[10px] text-slate-200 leading-relaxed">
+              <strong className="text-amber-300 uppercase block mb-0.5">
+                First 6-Month Planetary & Pranic Roadmap ({reportDateRange.startFormatted} – {reportDateRange.endFormatted}):
+              </strong>
+              Calculated from your Psychic Number {m} ({mPlanet.planet}) and Destiny Number {b} ({bPlanet.planet}), the first half of your 12-month cycle governs career acceleration, wealth creation, and karmic stabilization. Schedule high-value agreements during your Personal Month 1, 3, 5, 6, and 9 windows.
+            </div>
+            <div className="grid grid-cols-2 gap-2 a4-print-grid-2">
+              {reportDateRange.twelveMonths.slice(0, 6).map((item, idx) => (
+                <div
+                  key={idx}
+                  className="p-2.5 rounded-xl bg-slate-950/92 border border-amber-500/30 space-y-1"
+                >
+                  <div className="flex items-center justify-between font-bold text-amber-200 text-[11px]">
+                    <span>{item.monthLabel}</span>
+                    <span className="text-[9px] font-mono text-amber-400">{item.periodRange}</span>
+                  </div>
+                  <div className="text-[9.5px] text-emerald-300 font-semibold">
+                    Personal Month {item.personalMonthNum} • {item.rulingPlanet} • Lucky: {item.luckyDays}
+                  </div>
+                  <p className="text-[9.5px] text-slate-300 leading-snug">{item.forecastSummary}</p>
+                  <div className="text-[9px] text-sky-300 font-mono">{item.moonPhaseDates}</div>
+                </div>
+              ))}
+            </div>
+            <div className="p-2.5 rounded-xl bg-emerald-950/25 border border-emerald-500/35 text-[9.5px] text-emerald-200">
+              <strong>Shukla Purnima & Monthly Sankalpa Remedy (Months 1–6):</strong> On every Purnima window listed above, light a cow-ghee lamp in the North-East corner at sunset, chant <strong className="text-amber-200">"{mPlanet.beejMantra}"</strong> 108 times, and offer white sweets or grain charity.
+            </div>
+          </div>
+        ),
+      });
+
+      pages.push({
+        title: `Page 12: 12-Month Personalized Forecast — Months 7 to 12 (${reportDateRange.startFormatted} – ${reportDateRange.endFormatted})`,
+        headImg: spiritualReportBanner,
+        headLabel: '12M Forecast (Part 2)',
+        content: (
+          <div className="space-y-2.5 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-amber-500/35 text-[10px] text-slate-200 leading-relaxed">
+              <strong className="text-amber-300 uppercase block mb-0.5">
+                Second 6-Month Consolidation, Asset Expansion & Family Harmony Blueprint:
+              </strong>
+              During Months 7 to 12, your planetary transits emphasize long-term property/investment compounding, international or digital trade growth, and spiritual protection. Avoid speculative lending during Rahu Kaal and fortify your aura on Amavasya dates.
+            </div>
+            <div className="grid grid-cols-2 gap-2 a4-print-grid-2">
+              {reportDateRange.twelveMonths.slice(6, 12).map((item, idx) => (
+                <div
+                  key={idx}
+                  className="p-2.5 rounded-xl bg-slate-950/92 border border-amber-500/30 space-y-1"
+                >
+                  <div className="flex items-center justify-between font-bold text-amber-200 text-[11px]">
+                    <span>{item.monthLabel}</span>
+                    <span className="text-[9px] font-mono text-amber-400">{item.periodRange}</span>
+                  </div>
+                  <div className="text-[9.5px] text-emerald-300 font-semibold">
+                    Personal Month {item.personalMonthNum} • {item.rulingPlanet} • Lucky: {item.luckyDays}
+                  </div>
+                  <p className="text-[9.5px] text-slate-300 leading-snug">{item.forecastSummary}</p>
+                  <div className="text-[9px] text-sky-300 font-mono">{item.moonPhaseDates}</div>
+                </div>
+              ))}
+            </div>
+            <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-500/35 text-[9.5px] text-amber-100">
+              <strong>Annual Wealth &amp; Protection Siddha Protocol (Months 7–12):</strong> Keep an energized Bhojpatra or copper <strong className="text-emerald-300">{bPlanet.planet} Yantra</strong> in your locker/wallet and recite <strong className="text-amber-200">"{bPlanet.beejMantra}"</strong> + <strong className="text-emerald-300">"{mPlanet.beejMantra}"</strong> (108x) daily before starting work.
+            </div>
+          </div>
+        ),
+      });
+
+      pages.push({
+        title: `Page 13: 7-Day Weekly Per-Day Forecast (Career, Love & Vitality) with Vedic Mantra Chants`,
+        headImg: spiritualReportBanner,
+        headLabel: '7-Day Weekly Forecast',
+        content: (
+          <div className="space-y-1.5 text-xs">
+            <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-400/40 text-[9.5px] text-amber-100">
+              <strong>7-Day Per-Day Planetary Rhythm ({reportDateRange.startFormatted} – {reportDateRange.endFormatted}):</strong> Complete Career/Wealth, Love/Family, and Health/Vitality guidance with auspicious Muhurat windows and Vedic Planetary Beej Mantras for every day of the week.
+            </div>
+            <div className="space-y-1.5">
+              {[
+                {
+                  day: 'Sunday (Ravivar — Surya / Sun • Color: Ruby Gold)',
+                  window: 'Shubh: 08:15 AM – 12:15 PM | Avoid Rahu: 04:30 PM – 06:00 PM',
+                  career: 'Peak day for government approvals, executive authority decisions & leadership pitches.',
+                  love: 'Honour father/elders; avoid ego clashes in domestic discussions.',
+                  vitality: 'Solar plexus & heart vitality; practice 15 mins morning sunlight pranayama.',
+                  mantra: 'Om Hram Hreem Hroum Sah Suryaya Namah (108x) • Offer Surya Arghya at Sunrise',
+                },
+                {
+                  day: 'Monday (Somvar — Chandra / Moon • Color: Pearl White)',
+                  window: 'Shubh: 09:00 AM – 11:45 AM | Avoid Rahu: 07:30 AM – 09:00 AM',
+                  career: 'Auspicious for liquid cash flow, public relations, hospitality & creative planning.',
+                  love: 'Deep emotional bonding, maternal blessings & domestic tranquility.',
+                  vitality: 'Hydration & mental calm; drink water from a silver vessel.',
+                  mantra: 'Om Shram Shreem Shroum Sah Chandraya Namah (108x) • Shiva Jalabhishek',
+                },
+                {
+                  day: 'Tuesday (Mangalvar — Mangal / Mars • Color: Coral Red)',
+                  window: 'Shubh: 10:30 AM – 01:30 PM | Avoid Rahu: 03:00 PM – 04:30 PM',
+                  career: 'Ideal for land/property inspection, engineering, debt recovery & bold execution.',
+                  love: 'Channel passion constructively; avoid impulsive speech with spouse.',
+                  vitality: 'High muscular stamina & blood circulation; avoid spicy food at night.',
+                  mantra: 'Om Kram Kreem Kroum Sah Bhaumaya Namah (108x) • Recite Hanuman Chalisa',
+                },
+                {
+                  day: 'Wednesday (Budhvar — Budh / Mercury • Color: Emerald Green)',
+                  window: 'Shubh: 09:15 AM – 12:00 PM | Avoid Rahu: 12:00 PM – 01:30 PM',
+                  career: 'Best day for commercial contracts, banking, accounting, IT/software & trade.',
+                  love: 'Clear, joyful communication & resolving misunderstandings.',
+                  vitality: 'Nervous system & throat chakra balance; walk barefoot on green grass.',
+                  mantra: 'Om Bram Breem Broum Sah Budhaya Namah (108x) • Offer Durva to Lord Ganesha',
+                },
+                {
+                  day: 'Thursday (Guruvar — Brihaspati / Jupiter • Color: Saffron Yellow)',
+                  window: 'Shubh: 07:30 AM – 11:30 AM | Avoid Rahu: 01:30 PM – 03:00 PM',
+                  career: 'Supreme Siddha day for gold/wealth investments, education, advisory & expansion.',
+                  love: 'Auspicious for marriage talks, family rituals & mentor blessings.',
+                  vitality: 'Liver & metabolic harmony; apply Kesar/Haldi tilak on forehead.',
+                  mantra: 'Om Gram Greem Groum Sah Gurave Namah (108x) • Chana Dal & Yellow Cloth Daan',
+                },
+                {
+                  day: 'Friday (Shukravar — Shukra / Venus • Color: Diamond White/Pink)',
+                  window: 'Shubh: 08:30 AM – 10:30 AM | Avoid Rahu: 10:30 AM – 12:00 PM',
+                  career: 'Favorable for vehicle purchase, jewelry, fashion, media & luxury commerce.',
+                  love: 'Peak romantic harmony, spouse gifts & relationship healing.',
+                  vitality: 'Reproductive & hormonal balance; use natural rose/sandalwood attar.',
+                  mantra: 'Om Dram Dreem Droum Sah Shukraya Namah (108x) • Recite Sri Suktam at Sandhya',
+                },
+                {
+                  day: 'Saturday (Shanivar — Shani / Saturn • Color: Royal Navy Blue)',
+                  window: 'Shubh: 11:30 AM – 02:30 PM | Avoid Rahu: 09:00 AM – 10:30 AM',
+                  career: 'Dedicated to machinery, long-term real estate, audits, staff welfare & discipline.',
+                  love: 'Practice patience, loyalty & karmic forgiveness within the family.',
+                  vitality: 'Joint, bone & grounding care; light sesame oil lamp under Peepal tree.',
+                  mantra: 'Om Pram Preem Proum Sah Shanaischaraya Namah (108x) • Til Oil Deepdaan at Sunset',
+                },
+              ].map((d, idx) => (
+                <div key={idx} className="p-1.5 rounded-lg bg-slate-950/95 border border-amber-500/25 text-[8.5px]">
+                  <div className="flex items-center justify-between font-bold text-amber-200">
+                    <span>{d.day}</span>
+                    <span className="font-mono text-emerald-300 text-[8px]">{d.window}</span>
+                  </div>
+                  <div className="text-slate-200 mt-0.5">
+                    <strong>Career:</strong> {d.career} | <strong>Love:</strong> {d.love} | <strong>Vitality:</strong> {d.vitality}
+                  </div>
+                  <div className="text-amber-300 font-mono text-[8px] mt-0.5">🕉️ {d.mantra}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    // PAGES 14–15: Audited Life Path Calendar — Best Upcoming Muhurat Timings in Next 12 Months (with Nakshatra Yoga, Rahu Kaal & Choghadiya)
+    if (selectedSections.auditedCalendar12Months) {
+      pages.push({
+        title: `Page 14: Best Upcoming Muhurat Timings in Next 12 Months (Part 1: Events 1–6 • ${reportDateRange.startFormatted} – ${reportDateRange.endFormatted})`,
+        headImg: planetaryTransitsArt,
+        headLabel: '12M Muhurats (Part 1)',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="p-2 rounded-xl bg-emerald-950/35 border border-emerald-500/40 text-[9px] text-emerald-100 leading-snug">
+              <strong>Vedic Astrology 12-Month Event Muhurat Calendar (Part 1 — Events 1 to 6):</strong> Calculated from <strong>{reportDateRange.startFormatted}</strong> through <strong>{reportDateRange.endFormatted}</strong> for {activeProfile.name}'s Janma Rashi (<strong>{astro.rashi}</strong>), Nakshatra (<strong>{astro.nakshatra}</strong>), Mulank {m}, and Bhagyank {b}.
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-amber-500/40 bg-slate-950/95">
+              <table className="w-full table-fixed border-collapse text-left text-[8px]">
+                <thead>
+                  <tr className="bg-amber-950/70 text-amber-200 border-b border-amber-500/40">
+                    <th className="w-[20%] py-1.5 px-1.5 font-bold">Life Event &amp; Category</th>
+                    <th className="w-[25%] py-1.5 px-1.5 font-bold">Best Date, Window, Choghadiya &amp; Avoid Rahu</th>
+                    <th className="w-[29%] py-1.5 px-1.5 font-bold">Nakshatra Yoga &amp; Astrological Reason</th>
+                    <th className="w-[26%] py-1.5 px-1.5 font-bold">Backup Dates &amp; Pre-Event Mantra</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-200">
+                  {bestEvents12M.events12M.slice(0, 6).map((ev, idx) => (
+                    <tr key={ev.id} className="align-top">
+                      <td className="py-1.5 px-1.5 font-bold text-amber-200 break-words">
+                        <div>{idx + 1}. {ev.title}</div>
+                        <div className="text-[7.5px] text-slate-400 font-normal">{ev.category}</div>
+                      </td>
+                      <td className="py-1.5 px-1.5 font-mono break-words space-y-0.5">
+                        <div className="text-emerald-300 font-bold">{ev.bestUpcomingDate}</div>
+                        <div className="text-sky-300 text-[7.5px]">{ev.bestTimeWindow}</div>
+                        <div className="text-amber-200 text-[7.5px]">{ev.choghadiyaAndHora}</div>
+                        <div className="text-rose-300 text-[7.5px]">Avoid Rahu: {ev.rahuKaalToAvoid}</div>
+                      </td>
+                      <td className="py-1.5 px-1.5 text-slate-200 leading-snug break-words">
+                        <div className="text-amber-300 font-semibold text-[7.5px] mb-0.5">{ev.nakshatraYoga}</div>
+                        {ev.vedicAstrologyReason}
+                      </td>
+                      <td className="py-1.5 px-1.5 break-words">
+                        <div className="text-amber-300 font-mono text-[7.5px]">
+                          <strong>Alt:</strong> {ev.secondaryUpcomingDates.join(' • ')}
+                        </div>
+                        <div className="text-emerald-200 text-[7.5px] mt-0.5 leading-snug">
+                          <strong>Mantra:</strong> {ev.mantraAndDhikrBeforeEvent}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ),
+      });
+
+      pages.push({
+        title: `Page 15: Best Upcoming Muhurat Timings in Next 12 Months (Part 2: Events 7–12 • ${reportDateRange.startFormatted} – ${reportDateRange.endFormatted})`,
+        headImg: planetaryTransitsArt,
+        headLabel: '12M Muhurats (Part 2)',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="p-2 rounded-xl bg-emerald-950/35 border border-emerald-500/40 text-[9px] text-emerald-100 leading-snug">
+              <strong>Vedic Astrology 12-Month Event Muhurat Calendar (Part 2 — Events 7 to 12):</strong> Complete remaining 6 auspicious event windows with Nakshatra Yoga, Choghadiya, and Rahu Kaal precautions for {activeProfile.name}.
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-amber-500/40 bg-slate-950/95">
+              <table className="w-full table-fixed border-collapse text-left text-[8px]">
+                <thead>
+                  <tr className="bg-amber-950/70 text-amber-200 border-b border-amber-500/40">
+                    <th className="w-[20%] py-1.5 px-1.5 font-bold">Life Event &amp; Category</th>
+                    <th className="w-[25%] py-1.5 px-1.5 font-bold">Best Date, Window, Choghadiya &amp; Avoid Rahu</th>
+                    <th className="w-[29%] py-1.5 px-1.5 font-bold">Nakshatra Yoga &amp; Astrological Reason</th>
+                    <th className="w-[26%] py-1.5 px-1.5 font-bold">Backup Dates &amp; Pre-Event Mantra</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-200">
+                  {bestEvents12M.events12M.slice(6, 12).map((ev, idx) => (
+                    <tr key={ev.id} className="align-top">
+                      <td className="py-1.5 px-1.5 font-bold text-amber-200 break-words">
+                        <div>{idx + 7}. {ev.title}</div>
+                        <div className="text-[7.5px] text-slate-400 font-normal">{ev.category}</div>
+                      </td>
+                      <td className="py-1.5 px-1.5 font-mono break-words space-y-0.5">
+                        <div className="text-emerald-300 font-bold">{ev.bestUpcomingDate}</div>
+                        <div className="text-sky-300 text-[7.5px]">{ev.bestTimeWindow}</div>
+                        <div className="text-amber-200 text-[7.5px]">{ev.choghadiyaAndHora}</div>
+                        <div className="text-rose-300 text-[7.5px]">Avoid Rahu: {ev.rahuKaalToAvoid}</div>
+                      </td>
+                      <td className="py-1.5 px-1.5 text-slate-200 leading-snug break-words">
+                        <div className="text-amber-300 font-semibold text-[7.5px] mb-0.5">{ev.nakshatraYoga}</div>
+                        {ev.vedicAstrologyReason}
+                      </td>
+                      <td className="py-1.5 px-1.5 break-words">
+                        <div className="text-amber-300 font-mono text-[7.5px]">
+                          <strong>Alt:</strong> {ev.secondaryUpcomingDates.join(' • ')}
+                        </div>
+                        <div className="text-emerald-200 text-[7.5px] mt-0.5 leading-snug">
+                          <strong>Mantra:</strong> {ev.mantraAndDhikrBeforeEvent}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    // PAGES 16–17: All 5 Planetary Transits & Complete 12-Month Shukla Purnima / Krishna Amavasya / Ekadashi
+    if (selectedSections.transitsAndMoon12Months) {
+      pages.push({
+        title: `Page 16: All 5 Planetary Transits & Complete 12-Month Purnima / Amavasya / Ekadashi (Part 1: Months 1–6)`,
+        headImg: planetaryTransitsArt,
+        headLabel: 'Gochar & Lunar (Months 1–6)',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-indigo-500/40 space-y-1">
+              <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
+                1. All 5 Major Planetary Transits (Navagraha Gochar) for {astro.rashi} ({astro.nakshatra})
+              </h4>
+              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
+                {CELESTIAL_TRANSITS.map((tr, idx) => (
+                  <div key={idx} className="p-1.5 rounded-lg bg-slate-950 border border-indigo-500/30 text-[8px]">
+                    <div className="flex items-center justify-between font-bold text-amber-200">
+                      <span>{tr.planet} in {tr.sign}</span>
+                      <span className="font-mono text-sky-300">{tr.impactLevel}</span>
+                    </div>
+                    <div className="text-[7.5px] font-mono text-slate-400">{tr.startDate} ➔ {tr.endDate}</div>
+                    <p className="text-slate-300 leading-tight mt-0.5">{tr.summary}</p>
+                    <div className="text-emerald-300 font-semibold mt-0.5">Remedy: {tr.recommendation}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-amber-500/40 bg-slate-950/95">
+              <div className="flex items-center justify-between bg-amber-950/60 px-2.5 py-1 border-b border-amber-500/35">
+                <h4 className="font-serif text-[10px] font-bold text-amber-200 uppercase">
+                  2. Complete 12-Month Shukla Purnima / Krishna Amavasya / Ekadashi &amp; Parallel Astro Remedies (Months 1–6)
+                </h4>
+                <span className="text-[8px] font-mono text-emerald-300 font-bold">
+                  {reportDateRange.startFormatted} – {reportDateRange.endFormatted}
+                </span>
+              </div>
+              <table className="w-full table-fixed border-collapse text-left text-[8px]">
+                <thead>
+                  <tr className="bg-slate-900 text-amber-300 border-b border-amber-500/30">
+                    <th className="w-[16%] py-1 px-1.5 font-bold">Month &amp; Ruler</th>
+                    <th className="w-[26%] py-1 px-1.5 font-bold">Purnima, Amavasya &amp; Ekadashi</th>
+                    <th className="w-[29%] py-1 px-1.5 font-bold">Vedic Astrological Prediction</th>
+                    <th className="w-[29%] py-1 px-1.5 font-bold">Parallel Vedic Remedy</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-200">
+                  {lunar12Months.slice(0, 6).map((mp) => (
+                    <tr key={mp.monthIndex} className="align-top">
+                      <td className="py-1 px-1.5 font-bold text-amber-200 break-words">
+                        <div>{mp.monthLabel}</div>
+                        <div className="text-[7.2px] font-mono text-sky-300">{mp.rulingPlanet}</div>
+                      </td>
+                      <td className="py-1 px-1.5 font-mono text-[7.5px] break-words space-y-0.5">
+                        <div className="text-amber-100"><strong>Purnima:</strong> {mp.shuklaPurnima}</div>
+                        <div className="text-rose-200"><strong>Amavasya:</strong> {mp.krishnaAmavasya}</div>
+                        <div className="text-emerald-200"><strong>Ekadashi:</strong> {mp.shuklaEkadashi} • {mp.krishnaEkadashi}</div>
+                      </td>
+                      <td className="py-1 px-1.5 text-slate-200 leading-snug break-words">
+                        {mp.astrologicalPrediction}
+                      </td>
+                      <td className="py-1 px-1.5 text-emerald-300 leading-snug break-words">
+                        {mp.parallelRemedy}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ),
+      });
+
+      pages.push({
+        title: `Page 17: Complete 12-Month Shukla Purnima / Krishna Amavasya / Ekadashi & Parallel Astro Remedies (Part 2: Months 7–12)`,
+        headImg: planetaryTransitsArt,
+        headLabel: 'Lunar Phases (Months 7–12)',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="overflow-hidden rounded-xl border border-amber-500/40 bg-slate-950/95">
+              <div className="flex items-center justify-between bg-amber-950/60 px-2.5 py-1.5 border-b border-amber-500/35">
+                <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
+                  Complete 12-Month Shukla Purnima / Krishna Amavasya / Ekadashi &amp; Parallel Astro Remedies (Months 7–12)
+                </h4>
+                <span className="text-[8.5px] font-mono text-emerald-300 font-bold">
+                  {reportDateRange.startFormatted} – {reportDateRange.endFormatted}
+                </span>
+              </div>
+              <table className="w-full table-fixed border-collapse text-left text-[8.2px]">
+                <thead>
+                  <tr className="bg-slate-900 text-amber-300 border-b border-amber-500/30">
+                    <th className="w-[16%] py-1 px-1.5 font-bold">Month &amp; Ruler</th>
+                    <th className="w-[26%] py-1 px-1.5 font-bold">Purnima, Amavasya &amp; Ekadashi</th>
+                    <th className="w-[29%] py-1 px-1.5 font-bold">Vedic Astrological Prediction</th>
+                    <th className="w-[29%] py-1 px-1.5 font-bold">Parallel Vedic Remedy</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-200">
+                  {lunar12Months.slice(6, 12).map((mp) => (
+                    <tr key={mp.monthIndex} className="align-top">
+                      <td className="py-1.5 px-1.5 font-bold text-amber-200 break-words">
+                        <div>{mp.monthLabel}</div>
+                        <div className="text-[7.5px] font-mono text-sky-300 mt-0.5">{mp.rulingPlanet}</div>
+                      </td>
+                      <td className="py-1.5 px-1.5 font-mono text-[7.8px] break-words space-y-0.5">
+                        <div className="text-amber-100"><strong>Purnima:</strong> {mp.shuklaPurnima}</div>
+                        <div className="text-rose-200"><strong>Amavasya:</strong> {mp.krishnaAmavasya}</div>
+                        <div className="text-emerald-200"><strong>Ekadashi:</strong> {mp.shuklaEkadashi} • {mp.krishnaEkadashi}</div>
+                      </td>
+                      <td className="py-1.5 px-1.5 text-slate-200 leading-snug break-words">
+                        {mp.astrologicalPrediction}
+                      </td>
+                      <td className="py-1.5 px-1.5 text-emerald-300 leading-snug break-words">
+                        {mp.parallelRemedy}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-[8.8px] a4-print-grid-3">
+              <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/35">
+                <strong className="text-amber-300 block">Shukla Purnima Siddhi Vidhi:</strong>
+                <span className="text-slate-200">
+                  Offer raw milk &amp; Akshat Arghya to Chandra Dev at moonrise, light a cow-ghee lamp in North-East, and chant "{mPlanet.beejMantra}" 108x.
+                </span>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-900/95 border border-rose-500/35">
+                <strong className="text-rose-300 block">Krishna Amavasya Pitru Kavach:</strong>
+                <span className="text-slate-200">
+                  Perform Pitru Tarpan at noon, light a sesame oil lamp under a Peepal tree at sunset, and donate black sesame &amp; grains.
+                </span>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-900/95 border border-emerald-500/35">
+                <strong className="text-emerald-300 block">Ekadashi Sri Hari Sankalpa:</strong>
+                <span className="text-slate-200">
+                  Observe Sattvic diet on Shukla &amp; Krishna Ekadashi, offer Tulsi leaves to Lord Vishnu, and recite "Om Namo Bhagavate Vasudevaya" 108x.
+                </span>
+              </div>
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    // PAGE 18: Daily Vedic Mantras (All 4 Time-Phase Mantras with Mala, Mudra & Meaning) & Complete 9-Planet Navagraha Table
+    if (selectedSections.dailyMantras) {
+      pages.push({
+        title: 'Page 18: All 4 Daily Time-Phase Vedic Mantras (Mala, Mudra, Meaning) & 9-Planet Navagraha Reference',
+        headImg: chakraHealingArt,
+        headLabel: 'Daily Vedic Mantras',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+              {[
+                {
+                  slot: `1. Brahma Muhurat / Sunrise (05:30–07:30 AM) — Mulank ${m} (${mPlanet.planet})`,
+                  sanskrit: SANSKRit_BEEJ_DEVANAGARI[m]?.devanagari || '',
+                  mantra: mPlanet.beejMantra,
+                  soundHz: mPlanet.soundFrequencyHz || '126.22 Hz & 528 Hz',
+                  malaMudra: `108x • Rudraksha / Ruby Mala • Gyan or Surya Mudra • Face East`,
+                  meaning: `Invokes ${mPlanet.deity} & ${mPlanet.planet} solar prana for health, authority, and decision clarity.`,
+                },
+                {
+                  slot: `2. Midday Abhijit Muhurat (11:45 AM–12:35 PM) — Bhagyank ${b} (${bPlanet.planet})`,
+                  sanskrit: SANSKRit_BEEJ_DEVANAGARI[b]?.devanagari || '',
+                  mantra: bPlanet.beejMantra,
+                  soundHz: bPlanet.soundFrequencyHz || '183.58 Hz & 852 Hz',
+                  malaMudra: `27x or 108x • Sphatik / Tulsi Mala • Prana or Kubera Mudra • Face North-East`,
+                  meaning: `Activates ${bPlanet.deity} & ${bPlanet.planet} destiny grace for commercial wealth and career breakthroughs.`,
+                },
+                {
+                  slot: `3. Evening Sandhya Kaal (06:00–07:30 PM) — Active ${activeDasha.planet} Maha Dasha & Rashi (${astro.rashi})`,
+                  sanskrit: SANSKRit_BEEJ_DEVANAGARI[activeDasha.dashaNumber]?.devanagari || '',
+                  mantra: `${activeDashaPlanet.beejMantra} • ${rashiLordPlanet.beejMantra}`,
+                  soundHz: activeDashaPlanet.soundFrequencyHz || '221.23 Hz & 639 Hz',
+                  malaMudra: `108x • Chandan / Rudraksha Mala • Dhyana Mudra • Face North`,
+                  meaning: `Harmonizes your active ${activeDasha.planet} Maha Dasha (${activeDasha.startDate}–${activeDasha.endDate}) and Janma Rashi (${astro.rashi}).`,
+                },
+                {
+                  slot: `4. Night Shayan Kaal (09:30–10:30 PM) — Navagraha & Rahu Kaal Protection Kavach`,
+                  sanskrit: `ॐ ब्रह्मा मुरारिस्त्रिपुरांतकारी भानुः शशी भूमिसुतो बुधश्च ।`,
+                  mantra: `${panchang.todayBeejMantra} • Om Namo Bhagavate Vasudevaya`,
+                  soundHz: `432 Hz Cosmic Tuning & 528 Hz Pranic Shield`,
+                  malaMudra: `27x • Rudraksha Mala • Apana Mudra • Before Sleep`,
+                  meaning: `Clears subconscious psychic fatigue, shields all 7 Chakras from Rahu Kaal (${panchang.rahuKaalWindow.start}–${panchang.rahuKaalWindow.end}) & Gochar friction.`,
+                },
+              ].map((mCard, idx) => (
+                <div key={idx} className="p-2 rounded-xl bg-slate-950 border border-amber-500/35 text-[8.5px] space-y-0.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[8px] uppercase text-amber-400 font-bold">{mCard.slot}</span>
+                    <span className="px-1.5 py-0.2 rounded bg-purple-950 border border-purple-500/40 text-purple-200 font-mono text-[7.5px] shrink-0">
+                      🔊 {mCard.soundHz}
+                    </span>
+                  </div>
+                  <div className="text-amber-100 font-serif text-[9.5px]">{mCard.sanskrit}</div>
+                  <div className="font-serif font-bold text-emerald-300 text-[9.5px]">{mCard.mantra}</div>
+                  <div className="text-sky-300 font-mono">{mCard.malaMudra}</div>
+                  <p className="text-slate-300 leading-tight">{mCard.meaning}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 space-y-1">
+              <h4 className="font-serif text-[10.5px] font-bold text-amber-200">
+                Complete 9-Planet (Navagraha) Vedic Beej Mantra, Sound Frequency (Hz), Deity, Gemstone &amp; Lucky Day Table
+              </h4>
+              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
+                {Object.values(PLANETARY_PROFILES).map((p) => (
+                  <div key={p.number} className="p-1.5 rounded-lg bg-slate-950 border border-amber-500/25 text-[8px]">
+                    <div className="font-bold text-amber-200">
+                      #{p.number} {p.planet} ({p.sanskritName}) • {p.deity}
+                    </div>
+                    <div className="text-emerald-300 font-serif">{p.beejMantra}</div>
+                    <div className="text-purple-300 font-mono text-[7.5px]">🔊 {p.soundFrequencyHz || '432 Hz'}</div>
+                    <div className="text-slate-300">
+                      Stone: {p.gemstone} • Days: {p.luckyDays.join(', ')} • Color: {p.luckyColor}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    // PAGES: Vedic Yoga, Pranayama, Visual Posture Diagrams & 7-Day Weekly Planner
+    if (selectedSections.yogaAndPranayama) {
+      pages.push({
+        title: `Page 18A: Vedic Yoga & Pranayama Blueprint — Visual Posture Gallery, Breathing & Health Remedies`,
+        headImg: chakraHealingArt,
+        headLabel: 'Yoga & Pranayama',
+        content: (
+          <div className="space-y-1.5 text-xs">
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-emerald-500/40 text-[8.8px] text-slate-200 space-y-0.5">
+              <div className="flex items-center justify-between font-bold text-amber-200">
+                <span>
+                  Vedic Chikitsa-Jyotish Yoga &amp; Pranayama Blueprint for {activeProfile.name}
+                </span>
+                <span className="font-mono text-emerald-300">
+                  {yogaPlan.primaryChakra} • {yogaPlan.secondaryChakra}
+                </span>
+              </div>
+              <p className="leading-snug text-slate-300">{yogaPlan.dominantDoshaConstitution}</p>
+              <div className="text-amber-300 font-mono text-[8px]">
+                <strong>Selected Health Focus:</strong>{' '}
+                {yogaPlan.selectedHealthConcerns.length > 0
+                  ? yogaPlan.selectedHealthConcerns.map((hc) => hc.label).join(' • ')
+                  : 'General Pranic Vitality & 7-Chakra Harmony'}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <h5 className="font-serif text-[10px] font-bold text-amber-200 uppercase">
+                1. Visual Yoga Posture Card Gallery (Birth Chart &amp; Selected Health Prescriptions — All {yogaPlan.dailyAsanas.length} Asanas)
+              </h5>
+              <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+                {yogaPlan.dailyAsanas.map((asana, idx) => (
+                  <div
+                    key={asana.id}
+                    className="p-1.5 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8px] flex gap-2 items-start"
+                  >
+                    <YogaPostureIllustration
+                      diagramType={asana.diagramType}
+                      chakraColor={asana.chakraColor}
+                      className="w-16 h-16 shrink-0"
+                    />
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <div className="font-bold text-amber-200">
+                        {idx + 1}. {asana.sanskritName} ({asana.englishName})
+                      </div>
+                      <div className="text-emerald-300 font-mono text-[7.5px]">
+                        {asana.durationOrReps} • {asana.targetChakra}
+                      </div>
+                      <div className="text-sky-200 leading-tight">{asana.astrologicalReason}</div>
+                      <div className="text-slate-300 leading-tight">
+                        <strong>Steps:</strong> {asana.stepByStepAlignment.join(' ')}
+                      </div>
+                      <div className="text-amber-200 leading-tight">
+                        <strong>Benefits:</strong> {asana.therapeuticBenefits.join(' • ')}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <h5 className="font-serif text-[10px] font-bold text-emerald-300 uppercase">
+                2. Prescribed Daily Pranayama Breathing &amp; Hasta Mudra Protocols
+              </h5>
+              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
+                {yogaPlan.dailyPranayamas.map((prana, idx) => (
+                  <div
+                    key={prana.id}
+                    className="p-1.5 rounded-xl bg-slate-950/95 border border-emerald-500/30 text-[8px] space-y-0.5"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <PranayamaIllustration
+                        diagramType={prana.diagramType}
+                        className="w-10 h-10 shrink-0"
+                      />
+                      <div>
+                        <div className="font-bold text-amber-200">
+                          {idx + 1}. {prana.sanskritName}
+                        </div>
+                        <div className="text-[7.5px] text-emerald-300 font-mono">
+                          {prana.roundsAndDuration}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-sky-200 font-mono text-[7.5px]">
+                      Ratio: {prana.breathingRatio} • {prana.mudraAndBandha}
+                    </div>
+                    <p className="text-slate-300 leading-tight">{prana.stepByStepTechnique.join(' ')}</p>
+                    <div className="text-amber-300 font-mono text-[7.5px]">
+                      Mantra: {prana.beejMantra}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ),
+      });
+
+      pages.push({
+        title: `Page 18B: 7-Day Weekly Vedic Yoga & Pranayama Planner (Vara-Jyotish Schedule) & Dietary Sadhana`,
+        headImg: chakraHealingArt,
+        headLabel: '7-Day Yoga Planner',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="overflow-hidden rounded-xl border border-amber-500/40 bg-slate-950/95">
+              <div className="flex items-center justify-between bg-amber-950/60 px-2.5 py-1 border-b border-amber-500/35">
+                <h4 className="font-serif text-[10px] font-bold text-amber-200 uppercase">
+                  7-Day Weekly Yoga &amp; Pranayama Schedule (Tailored to Mulank {m}, Bhagyank {b} &amp; {astro.rashi})
+                </h4>
+                <span className="text-[8px] font-mono text-emerald-300 font-bold">
+                  Daily Practice Tracker
+                </span>
+              </div>
+              <table className="w-full table-fixed border-collapse text-left text-[8px]">
+                <thead>
+                  <tr className="bg-slate-900 text-amber-300 border-b border-amber-500/30">
+                    <th className="w-[18%] py-1 px-1.5 font-bold">Day &amp; Planet</th>
+                    <th className="w-[26%] py-1 px-1.5 font-bold">Morning Yoga Asanas</th>
+                    <th className="w-[26%] py-1 px-1.5 font-bold">Pranayama &amp; Mudra</th>
+                    <th className="w-[30%] py-1 px-1.5 font-bold">Focus Area, Mantra &amp; Synergy</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-200">
+                  {yogaPlan.weeklyPlanner.map((dayItem, idx) => (
+                    <tr key={idx} className="align-top">
+                      <td className="py-1.5 px-1.5 font-bold text-amber-200 break-words">
+                        <div>☐ {dayItem.dayName}</div>
+                        <div className="text-[7.2px] text-sky-300 font-mono">{dayItem.hindiDay} • {dayItem.rulingPlanet}</div>
+                      </td>
+                      <td className="py-1.5 px-1.5 break-words">
+                        {dayItem.morningAsanas.map((ma, mIdx) => (
+                          <div key={mIdx} className="text-emerald-300 font-semibold">
+                            • {ma.sanskritName} ({ma.duration})
+                          </div>
+                        ))}
+                      </td>
+                      <td className="py-1.5 px-1.5 break-words">
+                        <div className="font-bold text-amber-100">{dayItem.pranayamaPractice.name} ({dayItem.pranayamaPractice.rounds})</div>
+                        <div className="text-[7.2px] text-sky-300">{dayItem.mudraAndMantra.mudra}</div>
+                      </td>
+                      <td className="py-1.5 px-1.5 break-words space-y-0.5">
+                        <div className="text-slate-200">{dayItem.themeTitle} — {dayItem.personalChartSynergy}</div>
+                        <div className="text-amber-300 font-mono text-[7.2px]">{dayItem.mudraAndMantra.mantra}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-2 rounded-xl bg-emerald-950/25 border border-emerald-500/35 text-[8.8px] text-slate-200 space-y-1">
+              <strong className="text-emerald-300 uppercase block">
+                Ayurvedic Dinacharya, Pranic Hydration &amp; Yoga Sadhana Rules for {activeProfile.name}:
+              </strong>
+              <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+                {yogaPlan.ayurvedicAharaTips.map((tip, idx) => (
+                  <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-emerald-500/25 text-[8.2px]">
+                    ✓ {tip}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    // PAGES 19–21: Complete Partner Milan (Groom & Bride Natal Table + Visual Ashtakoot Guna Milan Chart Box + All 8 Koota Details 1-8 + All 7 Chakras Full Diagnostics & Remedies)
+    if (selectedSections.partnerMilanChakras) {
+      // PAGE 19: Groom & Bride Complete Natal Details + Visual Ashtakoot Guna Milan Chart Box + Marital Name Harmonizer
+      pages.push({
+        title: `Page 19: Partner Milan — Groom (${groomProfile.name}) & Bride (${brideProfile.name}) Details & Ashtakoot Guna Milan Chart`,
+        headImg: chakraHealingArt,
+        headLabel: 'Ashtakoot Milan Chart',
+        content: (
+          <div className="space-y-1.5 text-xs">
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
+                  1. Groom ({groomProfile.name}) &amp; Bride ({brideProfile.name}) Complete Birth &amp; Astrological Details
+                </h4>
+                <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono font-bold text-[9.5px]">
+                  Total Ashtakoot Score: {partnerMilan.totalPoints}/36 Gunas ({partnerMilan.overallPercentage}%) • {partnerMilan.verdict}
+                </span>
+              </div>
+              <table className="w-full table-fixed text-left border-collapse text-[8.2px]">
+                <thead>
+                  <tr className="bg-amber-950/60 text-amber-200 border-b border-amber-500/30">
+                    <th className="w-[22%] py-1 px-1.5 font-bold">Parameter</th>
+                    <th className="w-[39%] py-1 px-1.5 font-bold text-amber-300">Groom (Male): {groomProfile.name}</th>
+                    <th className="w-[39%] py-1 px-1.5 font-bold text-rose-300">Bride (Female): {brideProfile.name}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 bg-slate-950/90 text-slate-200">
+                  <tr>
+                    <td className="py-0.5 px-1.5 font-semibold text-amber-400">Name &amp; Namank</td>
+                    <td className="py-0.5 px-1.5 font-mono">{groomProfile.name} (Comp {groomNameAnalysis.totalChaldeanCompound} ➔ Root {groomNameAnalysis.chaldeanSingle})</td>
+                    <td className="py-0.5 px-1.5 font-mono">{brideProfile.name} (Comp {brideNameAnalysis.totalChaldeanCompound} ➔ Root {brideNameAnalysis.chaldeanSingle})</td>
+                  </tr>
+                  <tr>
+                    <td className="py-0.5 px-1.5 font-semibold text-amber-400">DOB, Time &amp; Place</td>
+                    <td className="py-0.5 px-1.5 font-mono">{groomProfile.dob} • {formatTime12HourAmPm(groomProfile.tob)} • {groomProfile.pob}</td>
+                    <td className="py-0.5 px-1.5 font-mono">{brideProfile.dob} • {formatTime12HourAmPm(brideProfile.tob)} • {brideProfile.pob}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-0.5 px-1.5 font-semibold text-amber-400">Mulank &amp; Bhagyank</td>
+                    <td className="py-0.5 px-1.5">Mulank {partnerMilan.p1Mulank} ({groomMulankPlanet.planet}) • Bhagyank {partnerMilan.p1Bhagyank} ({groomBhagyankPlanet.planet})</td>
+                    <td className="py-0.5 px-1.5">Mulank {partnerMilan.p2Mulank} ({brideMulankPlanet.planet}) • Bhagyank {partnerMilan.p2Bhagyank} ({brideBhagyankPlanet.planet})</td>
+                  </tr>
+                  <tr>
+                    <td className="py-0.5 px-1.5 font-semibold text-amber-400">Rashi, Sun &amp; Nakshatra</td>
+                    <td className="py-0.5 px-1.5 text-emerald-300">{partnerMilan.p1Astrology.rashi} (Sun: {partnerMilan.p1Astrology.sunSign}) • {partnerMilan.p1Astrology.nakshatra} (Pada {partnerMilan.p1Astrology.pada})</td>
+                    <td className="py-0.5 px-1.5 text-emerald-300">{partnerMilan.p2Astrology.rashi} (Sun: {partnerMilan.p2Astrology.sunSign}) • {partnerMilan.p2Astrology.nakshatra} (Pada {partnerMilan.p2Astrology.pada})</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Exact 7-Column Ashtakoot Guna Milan Summary Box */}
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
+                  2. Ashtakoot Koota (Dimension) + Marital Domain + Max Gunas + Obtained Gunas + Visual Guna Milan Chart + Verdict
+                </h4>
+                <span className="text-[8px] font-mono text-amber-300">
+                  18+ Gunas = Auspicious • 24+ = Very Good • 28+ = Uttam Milan
+                </span>
+              </div>
+              <table className="w-full table-fixed text-left border-collapse text-[8px]">
+                <thead>
+                  <tr className="bg-amber-950/70 text-amber-200 border-b border-amber-500/30">
+                    <th className="w-[5%] py-1 px-1 font-bold text-center">#</th>
+                    <th className="w-[22%] py-1 px-1.5 font-bold">Ashtakoot Koota (Dimension)</th>
+                    <th className="w-[22%] py-1 px-1.5 font-bold">Marital Domain</th>
+                    <th className="w-[9%] py-1 px-1 font-bold text-center">Max Gunas</th>
+                    <th className="w-[11%] py-1 px-1 font-bold text-center">Obtained Gunas</th>
+                    <th className="w-[18%] py-1 px-1.5 font-bold">Visual Guna Milan Chart</th>
+                    <th className="w-[13%] py-1 px-1 font-bold text-center">Verdict</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 bg-slate-950/90 text-slate-200">
+                  {partnerMilan.dimensions.map((dim, idx) => {
+                    const pct = Math.round((dim.obtainedPoints / Math.max(1, dim.maxPoints)) * 100);
+                    return (
+                      <tr key={idx}>
+                        <td className="py-1 px-1 text-center font-mono font-bold text-amber-400">{idx + 1}</td>
+                        <td className="py-1 px-1.5 font-bold text-amber-100">
+                          {dim.name} <span className="text-amber-300/80 font-normal">({dim.sanskritName})</span>
+                        </td>
+                        <td className="py-1 px-1.5 text-slate-300">{dim.description}</td>
+                        <td className="py-1 px-1 text-center font-mono text-slate-300">{dim.maxPoints}</td>
+                        <td className="py-1 px-1 text-center font-mono font-extrabold text-amber-300">{dim.obtainedPoints}</td>
+                        <td className="py-1 px-1.5">
+                          <div className="flex items-center gap-1">
+                            <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
+                              <div
+                                className={`h-full rounded-full ${
+                                  pct >= 75
+                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                                    : pct >= 50
+                                    ? 'bg-gradient-to-r from-amber-500 to-yellow-400'
+                                    : 'bg-gradient-to-r from-rose-500 to-orange-400'
+                                }`}
+                                style={{ width: `${Math.max(8, pct)}%` }}
+                              />
+                            </div>
+                            <span className="font-mono text-[7.5px] text-amber-200 w-7 text-right">{pct}%</span>
+                          </div>
+                        </td>
+                        <td className="py-1 px-1 text-center">
+                          <span
+                            className={`inline-block px-1.5 py-0.5 rounded text-[7px] font-bold uppercase ${
+                              dim.verdict === 'Excellent'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                : dim.verdict === 'Good'
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                            }`}
+                          >
+                            {dim.verdict}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-amber-950/60 border-t-2 border-amber-500/40 font-bold text-amber-100">
+                    <td colSpan={3} className="py-1 px-1.5 uppercase text-amber-200">
+                      Total Ashtakoot Guna Milan Score ({groomProfile.name} &amp; {brideProfile.name})
+                    </td>
+                    <td className="py-1 px-1 text-center font-mono">36</td>
+                    <td className="py-1 px-1 text-center font-mono text-emerald-300 text-[9.5px]">{partnerMilan.totalPoints}</td>
+                    <td className="py-1 px-1.5">
+                      <div className="flex items-center gap-1">
+                        <div className="flex-1 h-2.5 rounded-full bg-slate-800 overflow-hidden border border-amber-500/40">
+                          <div
+                            className="h-full bg-gradient-to-r from-amber-400 via-emerald-400 to-teal-300 rounded-full"
+                            style={{ width: `${Math.max(10, partnerMilan.overallPercentage)}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-[8px] text-amber-200 w-7 text-right">{partnerMilan.overallPercentage}%</span>
+                      </div>
+                    </td>
+                    <td className="py-1 px-1 text-center">
+                      <span className="inline-block px-1.5 py-0.5 rounded bg-amber-500/25 border border-amber-400/50 text-amber-200 text-[7px] uppercase">
+                        {partnerMilan.totalPoints >= 18 ? 'Shubh Milan' : 'Remedy Req.'}
+                      </span>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* Width-Wise 3-Column Marital Name Vibration Harmonizer */}
+            <div className="grid grid-cols-3 gap-1.5 text-[8px] a4-print-grid-3">
+              {partnerMilan.perfectNameSuggestions.slice(0, 2).map((item, idx) => (
+                <div
+                  key={idx}
+                  className={`p-1.5 rounded-xl bg-slate-950/95 border text-slate-200 ${
+                    idx === 0 ? 'border-amber-500/30' : 'border-rose-500/30'
+                  }`}
+                >
+                  <strong className={`${idx === 0 ? 'text-amber-300' : 'text-rose-300'} uppercase block`}>
+                    {item.partnerLabel}: {item.suggestedPerfectName}
+                  </strong>
+                  Natal: {item.currentName} ➔ Comp {item.compound} (Root {item.root} • {item.title}) — {item.maritalBenefit}
+                </div>
+              ))}
+              <div className="p-1.5 rounded-xl bg-emerald-950/35 border border-emerald-500/40 text-emerald-100">
+                <strong className="text-emerald-300 uppercase block">Joint Couple Resonance Verdict:</strong>
+                {partnerMilan.summary}
+              </div>
+            </div>
+          </div>
+        ),
+      });
+
+      // PAGE 19B: Complete 1 to 8 Ashtakoot Koota Details (Varna, Vashya, Tara, Yoni, Graha Maitri, Gana, Bhakoot, Nadi) in Width-Wise 2-Column Layout
+      pages.push({
+        title: `Page 19B: Partner Milan — All 8 Ashtakoot Koota Detailed Diagnostics & Remedies (Kootas 1 to 8)`,
+        headImg: chakraHealingArt,
+        headLabel: '1–8 Koota Diagnostics',
+        content: (
+          <div className="space-y-1.5 text-xs">
+            <div className="p-1.5 rounded-xl bg-slate-900/95 border border-amber-500/40 text-[8.4px] text-slate-200">
+              <strong className="text-amber-300 uppercase">
+                Complete 1 to 8 Ashtakoot Koota Deep Analysis &amp; Groom/Bride Remedies ({groomProfile.name} &amp; {brideProfile.name}):
+              </strong>{' '}
+              Includes Kootas 1 to 5 (<strong>1. Varna, 2. Vashya, 3. Tara, 4. Yoni, 5. Graha Maitri</strong>) and Kootas 6 to 8 (<strong>6. Gana, 7. Bhakoot, 8. Nadi</strong>) arranged width-wise in 2 columns with Groom, Bride, and Joint remedies.
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+              {partnerMilan.dimensions.map((dim, idx) => {
+                const pct = Math.round((dim.obtainedPoints / Math.max(1, dim.maxPoints)) * 100);
+                return (
+                  <div
+                    key={idx}
+                    className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/35 text-[8px] space-y-0.5"
+                  >
+                    <div className="flex items-center justify-between font-bold text-amber-200">
+                      <span>
+                        Koota {idx + 1}: {dim.name} ({dim.sanskritName})
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-amber-200 font-mono text-[7.5px]">
+                        {dim.obtainedPoints}/{dim.maxPoints} Gunas ({pct}%) • {dim.verdict}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-amber-300/90 font-semibold">
+                      <span>Domain: {dim.description}</span>
+                      {dim.soundFrequencyHz && (
+                        <span className="text-purple-300 font-mono text-[7.5px]">🔊 {dim.soundFrequencyHz}</span>
+                      )}
+                    </div>
+                    <p className="text-slate-200 leading-snug">{dim.detailedAnalysis}</p>
+                    <div className="text-emerald-300 leading-snug">
+                      <strong>Vedic Koota Remedy:</strong> {dim.remedy}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 pt-0.5 text-[7.6px] a4-print-grid-2">
+                      <div className="p-1 rounded bg-sky-950/40 border border-sky-500/30 text-sky-200">
+                        <strong className="text-sky-300">Groom ({groomProfile.name}):</strong> {dim.groomRemedy}
+                      </div>
+                      <div className="p-1 rounded bg-rose-950/40 border border-rose-500/30 text-rose-200">
+                        <strong className="text-rose-300">Bride ({brideProfile.name}):</strong> {dim.brideRemedy}
+                      </div>
+                    </div>
+                    <div className="p-1 rounded bg-emerald-950/35 border border-emerald-500/30 text-emerald-200 text-[7.6px]">
+                      <strong className="text-emerald-300">Joint Couple Practice:</strong> {dim.bothRemedy}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ),
+      });
+
+      // PAGE 20: 7-Chakra Marital Diagnostics & Remedies (Part 1: Chakras 1 to 4 in Width-Wise 2-Column Layout)
+      pages.push({
+        title: `Page 20: Partner Milan — 7-Chakra Marital Diagnostics, Aura Scan & Remedies (Part 1: Chakras 1 to 4)`,
+        headImg: chakraHealingArt,
+        headLabel: 'Chakras 1–4 Diagnostics',
+        content: (
+          <div className="space-y-1.5 text-xs">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+              {partnerMilan.chakraChallenges.slice(0, 4).map((ch, idx) => (
+                <div key={idx} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.1px] space-y-0.5">
+                  <div className="flex items-center justify-between font-bold text-amber-200 gap-1">
+                    <span>
+                      {idx + 1}. {ch.chakraName} ({ch.sanskritName} • {ch.element})
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 font-mono text-[7.5px] shrink-0">
+                      {ch.alignmentScore}% [{ch.status}] • {ch.affectedPartner}
+                    </span>
+                  </div>
+                  <div className="text-slate-200 leading-snug">
+                    <strong>Post-Marriage Challenge:</strong> {ch.postMarriageIssue} | <strong>Diagnosis:</strong> {ch.fortuneReadingDiagnosis}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 text-slate-300 a4-print-grid-2">
+                    <div><strong className="text-sky-300">Groom ({groomProfile.name}):</strong> {ch.groomChallengeDetail}</div>
+                    <div><strong className="text-pink-300">Bride ({brideProfile.name}):</strong> {ch.brideChallengeDetail}</div>
+                  </div>
+                  <div className="text-sky-200"><strong>Groom Remedy:</strong> {ch.groomRemedy}</div>
+                  <div className="text-pink-200"><strong>Bride Remedy:</strong> {ch.brideRemedy}</div>
+                  <div className="text-emerald-300"><strong>Joint Remedy:</strong> {ch.bothRemedy}</div>
+                  <div className="text-amber-300 font-mono text-[7.6px]">
+                    <strong>Sound:</strong> 🔊 {ch.soundFrequencyHz || '528 Hz'} | <strong>Aura Scan:</strong> {ch.auraScanRemedy} | <strong>Crystal:</strong> {ch.healingCrystal} | <strong>Mantra:</strong> {ch.beejMantra}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ),
+      });
+
+      // PAGE 21: 7-Chakra Marital Diagnostics & Remedies (Part 2: Chakras 5 to 7 + Couple Vastu Shield in Width-Wise 2-Column Layout)
+      pages.push({
+        title: `Page 21: Partner Milan — 7-Chakra Marital Diagnostics, Aura Scan & Remedies (Part 2: Chakras 5 to 7)`,
+        headImg: chakraHealingArt,
+        headLabel: 'Chakras 5–7 Diagnostics',
+        content: (
+          <div className="space-y-1.5 text-xs">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+              {partnerMilan.chakraChallenges.slice(4, 7).map((ch, idx) => (
+                <div key={idx} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.1px] space-y-0.5">
+                  <div className="flex items-center justify-between font-bold text-amber-200 gap-1">
+                    <span>
+                      {idx + 5}. {ch.chakraName} ({ch.sanskritName} • {ch.element})
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 font-mono text-[7.5px] shrink-0">
+                      {ch.alignmentScore}% [{ch.status}] • {ch.affectedPartner}
+                    </span>
+                  </div>
+                  <div className="text-slate-200 leading-snug">
+                    <strong>Post-Marriage Challenge:</strong> {ch.postMarriageIssue} | <strong>Diagnosis:</strong> {ch.fortuneReadingDiagnosis}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 text-slate-300 a4-print-grid-2">
+                    <div><strong className="text-sky-300">Groom ({groomProfile.name}):</strong> {ch.groomChallengeDetail}</div>
+                    <div><strong className="text-pink-300">Bride ({brideProfile.name}):</strong> {ch.brideChallengeDetail}</div>
+                  </div>
+                  <div className="text-sky-200"><strong>Groom Remedy:</strong> {ch.groomRemedy}</div>
+                  <div className="text-pink-200"><strong>Bride Remedy:</strong> {ch.brideRemedy}</div>
+                  <div className="text-emerald-300"><strong>Joint Remedy:</strong> {ch.bothRemedy}</div>
+                  <div className="text-amber-300 font-mono text-[7.6px]">
+                    <strong>Sound:</strong> 🔊 {ch.soundFrequencyHz || '852 Hz'} | <strong>Aura Scan:</strong> {ch.auraScanRemedy} | <strong>Crystal:</strong> {ch.healingCrystal} | <strong>Mantra:</strong> {ch.beejMantra}
+                  </div>
+                </div>
+              ))}
+              <div className="p-2 rounded-xl bg-amber-950/25 border border-amber-500/35 text-[8.3px] text-amber-100 space-y-1">
+                <strong className="text-amber-300 uppercase block">
+                  8. Master Marital Compatibility Summary &amp; Bedroom Vastu Shield ({groomProfile.name} &amp; {brideProfile.name}):
+                </strong>
+                <p>{partnerMilan.summary}</p>
+                <p className="text-emerald-300">
+                  <strong>Couple Vastu &amp; Crystal Prescription:</strong> Keep a pair of natural Rose Quartz and Pyrite crystals in the South-West corner of the master bedroom, sleep with heads towards South, and chant your joint Sahasrara Mantra together every Friday evening.
+                </p>
+              </div>
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    // PAGES 22–24: Next 12 Months All-India Festivals (All 16 Festivals with Score %, All 4 Puja Windows, Diya, Aura Cleansing & Mantra)
+    if (selectedSections.festivals12Months) {
+      pages.push({
+        title: 'Page 22: Next 12 Months All-India Festivals — Complete 4-Window Puja Muhurats & Remedies (Part 1: 1–6)',
+        headImg: spiritualReportBanner,
+        headLabel: 'Festivals (Part 1)',
+        content: (
+          <div className="space-y-1.5 text-xs">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+              {festivals.slice(0, 6).map((fest, idx) => (
+                <div key={fest.id} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.3px] space-y-0.5">
+                  <div className="flex items-center justify-between font-bold text-amber-100">
+                    <span>
+                      {idx + 1}. {fest.name} ({fest.hindiName})
+                    </span>
+                    <span className="font-mono text-emerald-300">{fest.personalImpactScore}% ({fest.personalVerdictTag})</span>
+                  </div>
+                  <div className="text-sky-300 font-mono">
+                    {fest.date} ({fest.dayOfWeek}) • {fest.vikramSamvatTithi} • Planet #{fest.governingNumber} ({fest.governingPlanet})
+                  </div>
+                  <p className="text-slate-300 leading-tight">{fest.howFestivalWillBeForClient}</p>
+                  <div className="text-emerald-300 leading-tight">
+                    <strong>1. Siddha Puja:</strong> {fest.auspiciousBestPoojaTime.window} | <strong>2. Punya Kaal:</strong> {fest.normalGoodPoojaTime.window}
+                  </div>
+                  <div className="text-rose-300 leading-tight">
+                    <strong>3. Bhadra Caution:</strong> {fest.avoidBhadraPoojaTime.window} | <strong>4. Avoid Rahu:</strong> {fest.badPoojaTime.window}
+                  </div>
+                  <div className="text-amber-200 leading-tight">
+                    <strong>Offerings & Diya:</strong> {fest.personalizedRitualAndAuraRemedy.offerings} • {fest.personalizedRitualAndAuraRemedy.diyaAndDirection}
+                  </div>
+                  <div className="text-sky-200 leading-tight">
+                    <strong>Aura Tip:</strong> {fest.personalizedRitualAndAuraRemedy.auraCleansingTip} | <strong>Mantra:</strong> {fest.personalizedRitualAndAuraRemedy.mantraForClient}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ),
+      });
+
+      pages.push({
+        title: 'Page 23: Next 12 Months All-India Festivals — Complete 4-Window Puja Muhurats & Remedies (Part 2: 7–12)',
+        headImg: spiritualReportBanner,
+        headLabel: 'Festivals (Part 2)',
+        content: (
+          <div className="space-y-1.5 text-xs">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+              {festivals.slice(6, 12).map((fest, idx) => (
+                <div key={fest.id} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.3px] space-y-0.5">
+                  <div className="flex items-center justify-between font-bold text-amber-100">
+                    <span>
+                      {idx + 7}. {fest.name} ({fest.hindiName})
+                    </span>
+                    <span className="font-mono text-emerald-300">{fest.personalImpactScore}% ({fest.personalVerdictTag})</span>
+                  </div>
+                  <div className="text-sky-300 font-mono">
+                    {fest.date} ({fest.dayOfWeek}) • {fest.vikramSamvatTithi} • Planet #{fest.governingNumber} ({fest.governingPlanet})
+                  </div>
+                  <p className="text-slate-300 leading-tight">{fest.howFestivalWillBeForClient}</p>
+                  <div className="text-emerald-300 leading-tight">
+                    <strong>1. Siddha Puja:</strong> {fest.auspiciousBestPoojaTime.window} | <strong>2. Punya Kaal:</strong> {fest.normalGoodPoojaTime.window}
+                  </div>
+                  <div className="text-rose-300 leading-tight">
+                    <strong>3. Bhadra Caution:</strong> {fest.avoidBhadraPoojaTime.window} | <strong>4. Avoid Rahu:</strong> {fest.badPoojaTime.window}
+                  </div>
+                  <div className="text-amber-200 leading-tight">
+                    <strong>Offerings & Diya:</strong> {fest.personalizedRitualAndAuraRemedy.offerings} • {fest.personalizedRitualAndAuraRemedy.diyaAndDirection}
+                  </div>
+                  <div className="text-sky-200 leading-tight">
+                    <strong>Aura Tip:</strong> {fest.personalizedRitualAndAuraRemedy.auraCleansingTip} | <strong>Mantra:</strong> {fest.personalizedRitualAndAuraRemedy.mantraForClient}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ),
+      });
+
+      pages.push({
+        title: 'Page 24: All-India Festivals (Part 3: 13–16) + Complete Vastu Shastra & Rudraksha Blueprint',
+        headImg: vedicNameCareerYantra,
+        headLabel: 'Festivals & Vastu',
+        content: (
+          <div
+            className="space-y-2.5 text-xs a4-text-box-wrap a4-section-no-break"
+            style={{
+              pageBreakInside: 'avoid',
+              breakInside: 'avoid',
+              overflowWrap: 'break-word',
+              whiteSpace: 'normal',
+              wordBreak: 'break-word',
+            }}
+          >
+            <div
+              className="grid grid-cols-2 gap-2 a4-print-grid-2 a4-section-no-break"
+              style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+            >
+              {festivals.slice(12).map((fest, idx) => (
+                <div
+                  key={fest.id}
+                  className="p-2.5 rounded-xl bg-slate-950/95 border border-amber-500/35 text-[8.4px] space-y-1 min-w-0 break-words whitespace-normal overflow-hidden a4-section-no-break"
+                  style={{
+                    pageBreakInside: 'avoid',
+                    breakInside: 'avoid',
+                    overflowWrap: 'break-word',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-1 font-bold text-amber-100 break-words whitespace-normal">
+                    <span style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                      {idx + 13}. {fest.name} ({fest.hindiName})
+                    </span>
+                    <span className="font-mono text-emerald-300" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                      {fest.personalImpactScore}% ({fest.personalVerdictTag})
+                    </span>
+                  </div>
+                  <div className="text-sky-300 font-mono break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    {fest.date} ({fest.dayOfWeek}) • {fest.vikramSamvatTithi} • Planet #{fest.governingNumber} ({fest.governingPlanet})
+                  </div>
+                  <p className="text-slate-200 leading-snug break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    {fest.howFestivalWillBeForClient}
+                  </p>
+                  <div className="text-emerald-300 leading-snug break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    <strong>1. Siddha Puja:</strong> {fest.auspiciousBestPoojaTime.window} | <strong>2. Punya Kaal:</strong> {fest.normalGoodPoojaTime.window}
+                  </div>
+                  <div className="text-rose-300 leading-snug break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    <strong>3. Bhadra:</strong> {fest.avoidBhadraPoojaTime.window} | <strong>4. Avoid Rahu:</strong> {fest.badPoojaTime.window}
+                  </div>
+                  <div className="text-amber-200 leading-snug break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    <strong>Offerings &amp; Diya:</strong> {fest.personalizedRitualAndAuraRemedy.offerings} • {fest.personalizedRitualAndAuraRemedy.diyaAndDirection}
+                  </div>
+                  <div className="text-sky-200 leading-snug break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    <strong>Aura Tip:</strong> {fest.personalizedRitualAndAuraRemedy.auraCleansingTip} | <strong>Mantra:</strong> {fest.personalizedRitualAndAuraRemedy.mantraForClient}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div
+              className="p-3 rounded-xl bg-slate-950/95 border border-amber-500/45 space-y-2 min-w-0 break-words whitespace-normal overflow-hidden a4-section-no-break"
+              style={{
+                pageBreakInside: 'avoid',
+                breakInside: 'avoid',
+                overflowWrap: 'break-word',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+              }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-1">
+                <h4
+                  className="font-serif text-xs font-bold text-amber-200 uppercase break-words whitespace-normal"
+                  style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
+                >
+                  Complete Home &amp; Office Vastu Shastra, Rudraksha &amp; Yantra Blueprint for {activeProfile.name}
+                </h4>
+                <span
+                  className="text-[9.5px] font-mono text-emerald-300 font-bold break-words whitespace-normal"
+                  style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
+                >
+                  Elements: {mPlanet.element} &amp; {bPlanet.element}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5 text-[9px] a4-print-grid-2">
+                <div
+                  className="p-2.5 rounded-lg bg-slate-900 border border-amber-500/30 min-w-0 break-words whitespace-normal overflow-hidden"
+                  style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
+                >
+                  <strong className="text-amber-300 block mb-0.5" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    Work Desk, Locker &amp; Sleep Vastu Directions:
+                  </strong>
+                  <span className="text-slate-200 block leading-snug" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    Face East, North-East (Ishan Kon), or North during financial signings. Keep cash locker in South-West opening North. Sleep with head towards South or East, and install an energized Shree Yantra in North-East.
+                  </span>
+                </div>
+                <div
+                  className="p-2.5 rounded-lg bg-slate-900 border border-emerald-500/30 min-w-0 break-words whitespace-normal overflow-hidden"
+                  style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
+                >
+                  <strong className="text-emerald-300 block mb-0.5" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    Ratna Gemstone, Rudraksha &amp; Crystal Shield:
+                  </strong>
+                  <span className="text-slate-200 block leading-snug" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    Wear natural {gemRecommend.lifeStone.primaryGem} ({mPlanet.planet}) + {gemRecommend.destinyStone.primaryGem} ({bPlanet.planet}) and authentic Rudraksha after chanting "{bPlanet.beejMantra}" 108x.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    // PAGES 25–26: Islamic-Vedic Remedies (All 3 Personal Asma Cards, All 5 Quranic Surahs, 7-Day Schedule & Complete 1-to-9 Adad Reference)
+    if (selectedSections.islamicVedicRemedies) {
+      pages.push({
+        title: 'Page 25: Islamic-Vedic Remedies — 3 Personal Asma-ul-Husna Wazifas & All 5 Quranic Surah Remedies',
+        headImg: islamicNoorArt,
+        headLabel: 'Ilm-ul-Adad & Surahs',
+        content: (
+          <div
+            className="space-y-2.5 text-xs a4-text-box-wrap a4-section-no-break"
+            style={{
+              pageBreakInside: 'avoid',
+              breakInside: 'avoid',
+              overflowWrap: 'break-word',
+              whiteSpace: 'normal',
+              wordBreak: 'break-word',
+            }}
+          >
+            <div
+              className="relative rounded-xl overflow-hidden border border-emerald-500/45 min-h-[60px] a4-section-no-break"
+              style={{
+                pageBreakInside: 'avoid',
+                breakInside: 'avoid',
+                overflowWrap: 'break-word',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+              }}
+            >
+              <img
+                src={islamicNoorArt}
+                alt="Islamic-Vedic Noor Sacred Geometry"
+                referrerPolicy="no-referrer"
+                className="absolute inset-0 w-full h-full object-cover opacity-55"
+              />
+              <div className="relative z-10 bg-gradient-to-r from-slate-950/95 via-slate-950/80 to-slate-950/40 p-2.5 flex flex-col justify-center">
+                <span
+                  className="text-[8.5px] font-mono uppercase tracking-widest text-emerald-400 font-bold break-words whitespace-normal"
+                  style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
+                >
+                  09 • ISLAMIC-VEDIC REMEDIES (ILM-UL-ADAD • ASMA-UL-HUSNA • QURANIC DUAS)
+                </span>
+                <h3
+                  className="font-serif text-[10.2px] font-bold text-amber-100 leading-snug break-words whitespace-normal mt-0.5"
+                  style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
+                >
+                  Abjad Name Total: {islamicReport.abjadCompoundEstimate} ➔ Root {islamicReport.abjadRootNumber} • {islamicReport.personalizedSummaryParagraph}
+                </h3>
+              </div>
+            </div>
+
+            <div
+              className="grid grid-cols-3 gap-2 a4-print-grid-3 a4-section-no-break"
+              style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+            >
+              {[
+                { label: `1. Psychic (Adad ${m})`, item: islamicReport.primaryAsmaRemedy },
+                { label: `2. Destiny (Adad ${b})`, item: islamicReport.destinyAsmaRemedy },
+                { label: `3. Name Adad (${islamicReport.abjadRootNumber})`, item: islamicReport.nameAsmaRemedy },
+              ].map((card, idx) => (
+                <div
+                  key={idx}
+                  className="p-2.5 rounded-xl bg-slate-950 border border-emerald-500/35 text-[8px] space-y-1 min-w-0 break-words whitespace-normal overflow-hidden a4-section-no-break"
+                  style={{
+                    pageBreakInside: 'avoid',
+                    breakInside: 'avoid',
+                    overflowWrap: 'break-word',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  <span
+                    className="text-[7.5px] font-bold uppercase text-emerald-400 block break-words whitespace-normal"
+                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
+                  >
+                    {card.label} • {card.item.planetarySphere}
+                  </span>
+                  <div
+                    className="font-serif text-[10.5px] font-bold text-amber-200 break-words whitespace-normal"
+                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
+                  >
+                    {card.item.arabicName}
+                  </div>
+                  <div
+                    className="font-bold text-amber-100 break-words whitespace-normal"
+                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
+                  >
+                    {card.item.transliteration} ({card.item.meaning}) — Abjad {card.item.abjadCount}
+                  </div>
+                  <div
+                    className="text-emerald-300 font-mono break-words whitespace-normal"
+                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
+                  >
+                    Tasbih: {card.item.recommendedDailyCount} • {card.item.bestPrayerTime}
+                  </div>
+                  <p
+                    className="text-slate-200 leading-snug break-words whitespace-normal"
+                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
+                  >
+                    {card.item.spiritualBenefit}
+                  </p>
+                  <div
+                    className="text-sky-200 leading-snug break-words whitespace-normal"
+                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
+                  >
+                    <strong>Solves:</strong> {card.item.specificChallengeSolved}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div
+              className="space-y-1.5 min-w-0 break-words whitespace-normal a4-section-no-break"
+              style={{
+                pageBreakInside: 'avoid',
+                breakInside: 'avoid',
+                overflowWrap: 'break-word',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+              }}
+            >
+              <h5
+                className="font-serif text-[9.8px] font-bold text-amber-200 uppercase break-words whitespace-normal"
+                style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
+              >
+                All 5 Prescribed Quranic Surah, Dua, Sadaqah &amp; Sunnah Stone/Attar Remedies
+              </h5>
+              <div className="overflow-hidden rounded-xl border border-amber-500/35 bg-slate-950/95">
+                <div
+                  className="grid grid-cols-12 bg-amber-950/60 border-b border-amber-500/35 px-2.5 py-1.5 text-[7.6px] font-bold text-amber-200 uppercase"
+                  style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
+                >
+                  <div className="col-span-3 pr-2 min-w-0 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    Life Area &amp; Challenge
+                  </div>
+                  <div className="col-span-4 px-2 border-l border-amber-500/25 min-w-0 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    Surah / Dua &amp; Transliteration
+                  </div>
+                  <div className="col-span-2 px-2 border-l border-amber-500/25 min-w-0 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    Protocol
+                  </div>
+                  <div className="col-span-3 pl-2 border-l border-amber-500/25 min-w-0 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    Sadaqah &amp; Stone/Attar
+                  </div>
+                </div>
+                <div className="divide-y divide-amber-500/20">
+                  {islamicReport.quranicRemedies.map((qr, idx) => (
+                    <div
+                      key={idx}
+                      className="grid grid-cols-12 px-2.5 py-1.5 text-[7.6px] leading-snug items-start a4-section-no-break"
+                      style={{
+                        pageBreakInside: 'avoid',
+                        breakInside: 'avoid',
+                        overflowWrap: 'break-word',
+                        whiteSpace: 'normal',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      <div
+                        className="col-span-3 pr-2 min-w-0 break-words whitespace-normal overflow-hidden"
+                        style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
+                      >
+                        <div className="font-bold text-amber-200 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                          {idx + 1}. {qr.lifeArea}
+                        </div>
+                        <div className="text-rose-200/95 mt-0.5 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                          <strong>Challenge:</strong> {qr.planetaryChallenge}
+                        </div>
+                      </div>
+                      <div
+                        className="col-span-4 px-2 border-l border-amber-500/20 min-w-0 break-words whitespace-normal overflow-hidden space-y-0.5"
+                        style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
+                      >
+                        <div className="font-bold text-amber-100 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                          {qr.surahOrDuaName}
+                        </div>
+                        <div className="text-amber-200/95 font-serif text-[8px] break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                          {qr.arabicSnippet}
+                        </div>
+                        <div className="text-sky-200 italic break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                          "{qr.transliteration}"
+                        </div>
+                        <div className="text-slate-300 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                          ({qr.translationSummary})
+                        </div>
+                      </div>
+                      <div
+                        className="col-span-2 px-2 border-l border-amber-500/20 min-w-0 break-words whitespace-normal overflow-hidden text-emerald-200"
+                        style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
+                      >
+                        {qr.recitationProtocol}
+                      </div>
+                      <div
+                        className="col-span-3 pl-2 border-l border-amber-500/20 min-w-0 break-words whitespace-normal overflow-hidden space-y-0.5"
+                        style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
+                      >
+                        <div className="text-emerald-300 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                          <strong>Sadaqah:</strong> {qr.sadaqahCharityItem}
+                        </div>
+                        <div className="text-amber-200 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                          <strong>Stone/Attar:</strong> {qr.halalStoneAndAttar}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ),
+      });
+
+      pages.push({
+        title: 'Page 26: 7-Day Weekly Dhikr & Sadaqah Schedule, Complete 1–9 Asma Reference, QR & Healer Seal',
+        headImg: islamicNoorArt,
+        headLabel: 'Dhikr, 1–9 Adad & Seal',
+        content: (
+          <div
+            className="space-y-2 text-xs a4-text-box-wrap a4-section-no-break"
+            style={{
+              pageBreakInside: 'avoid',
+              breakInside: 'avoid',
+              overflowWrap: 'break-word',
+              whiteSpace: 'normal',
+              wordBreak: 'break-word',
+            }}
+          >
+            <div
+              className="p-2.5 rounded-xl bg-slate-900/90 border border-emerald-500/35 space-y-1.5 a4-section-no-break"
+              style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+            >
+              <h5 className="font-serif text-[9.5px] font-bold text-emerald-300 uppercase">
+                1. Complete 7-Day Daily Dhikr, Wazifa &amp; Sadaqah Harmony Schedule
+              </h5>
+              <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+                {islamicReport.weeklyDhikrSchedule.map((d, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2 rounded bg-slate-950 border border-emerald-500/25 text-[7.9px] leading-snug min-w-0 break-words whitespace-normal"
+                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
+                  >
+                    <strong className="text-amber-200">
+                      {d.day} ({d.islamicPlanet}):
+                    </strong>{' '}
+                    <span className="text-emerald-300 font-bold">{d.primaryDhikr}</span> ({d.count}) — {d.benefit} | <strong className="text-sky-300">Sadaqah:</strong> {d.sadaqahAction}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div
+              className="p-2.5 rounded-xl bg-slate-900/90 border border-amber-500/35 space-y-1.5 a4-section-no-break"
+              style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+            >
+              <h5 className="font-serif text-[9.5px] font-bold text-amber-200 uppercase">
+                2. Complete 1-to-9 Ilm-ul-Adad Asma-ul-Husna Reference Matrix
+              </h5>
+              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
+                {islamicReport.allNineAsmaRemedies.map((asma) => (
+                  <div
+                    key={asma.number}
+                    className="p-2 rounded bg-slate-950 border border-amber-500/25 text-[7.6px] leading-snug min-w-0 break-words whitespace-normal"
+                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
+                  >
+                    <div className="font-bold text-amber-200 break-words whitespace-normal">
+                      Adad #{asma.number} ({asma.planetarySphere.split('(')[0].trim()}) — {asma.arabicName}
+                    </div>
+                    <div className="text-emerald-300 break-words whitespace-normal">
+                      {asma.transliteration} ({asma.meaning}) • {asma.recommendedDailyCount}
+                    </div>
+                    <div className="text-slate-300 break-words whitespace-normal">
+                      {asma.bestPrayerTime} • {asma.spiritualBenefit}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div
+              className="p-2.5 rounded-xl bg-gradient-to-r from-amber-950/70 via-slate-950 to-emerald-950/70 border-2 border-amber-400/60 flex items-center justify-between gap-2.5 min-w-0 break-words whitespace-normal a4-section-no-break"
+              style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+            >
+              {reportQrDataUrl && (
+                <div className="p-1 rounded-xl bg-amber-100 border border-amber-400 shrink-0 text-center">
+                  <img
+                    src={reportQrDataUrl}
+                    alt="Scan for Mobile PDF Report"
+                    className="w-14 h-14 object-contain mx-auto"
+                  />
+                  <span className="block text-[6px] font-mono font-black text-slate-950 mt-0.5">
+                    SCAN LIVE REPORT
+                  </span>
+                </div>
+              )}
+              <div className="min-w-0 flex-1 break-words whitespace-normal">
+                <div className="text-[8px] font-mono uppercase tracking-widest text-amber-400 font-bold">
+                  OFFICIAL SPIRITUAL DOSSIER ATTESTATION &amp; DYNAMIC QR MOBILE VERIFICATION
+                </div>
+                <div className="font-serif text-[11px] font-black text-amber-100 mt-0.5 break-words whitespace-normal">
+                  {healerDisplayName} — {brandTitle}
+                </div>
+                <div className="text-[8.5px] text-emerald-300 font-mono break-words whitespace-normal">
+                  📞 {healerDisplayMobile} • ✉️ {healerDisplayEmail} • 📍 {healerDisplayAddress}
+                </div>
+                <div className="text-[8px] text-amber-200/90 mt-0.5 break-words whitespace-normal">
+                  Scan QR code with any smartphone camera for instant mobile verification of this personalized spiritual dossier.
+                </div>
+              </div>
+              <img
+                src={brandLogo}
+                alt={brandTitle}
+                referrerPolicy="no-referrer"
+                className="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shadow-lg shrink-0"
+              />
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    if (includeActiveTabInPrint) {
+      pages.push({
+        title: `Active Module View — ${sectionTitle}`,
+        headImg: spiritualReportBanner,
+        headLabel: sectionTitle,
+        isCover: pages.length === 0,
+        content: <div className="text-xs a4-section-no-break">{children}</div>,
+      });
+    }
+
+    return pages;
+  };
+
+  const discreteA4Pages = buildDiscreteA4Pages();
+  const totalPageCount =
+    pdfPageCountInfo.totalPdfPages > 0
+      ? pdfPageCountInfo.totalPdfPages + (includeActiveTabInPrint ? 1 : 0)
+      : discreteA4Pages.length;
+
+  const SHREE_YANTRA_PLATE_IMAGE_PATH = '/assets/aistudio/wp8754154_d55216c3.jpg';
+
+  const renderContextualChapterVisualFiller = (
+    headImg: string,
+    headLabel: string,
+    cleanTitle: string,
+    pageNum: number
+  ) => {
+    if (!activeProfile || !multiSectionReportData) return null;
+    const fillerMPlanet = PLANETARY_PROFILES[multiSectionReportData.m] || PLANETARY_PROFILES[1];
+    const fillerBPlanet = PLANETARY_PROFILES[multiSectionReportData.b] || PLANETARY_PROFILES[1];
+    const isIslamicPage =
+      headImg === islamicNoorArt ||
+      cleanTitle.toLowerCase().includes('islamic') ||
+      cleanTitle.toLowerCase().includes('dhikr') ||
+      headLabel.toLowerCase().includes('adad');
+
+    const primaryAsma = multiSectionReportData.islamicReport?.primaryAsmaRemedy;
+
+    return (
+      <div
+        className="a4-dynamic-page-spacer a4-section-no-break"
+        style={{
+          pageBreakInside: 'avoid',
+          breakInside: 'avoid',
+          overflowWrap: 'break-word',
+          whiteSpace: 'normal',
+          wordBreak: 'break-word',
+        }}
+      >
+        <div className="rounded-xl border border-amber-500/45 bg-slate-950/92 p-2.5 grid grid-cols-12 gap-2.5 items-center shadow-md">
+          {/* Left Highlighted Spiritual Key Box */}
+          <div className="col-span-5 p-2 rounded-lg bg-amber-950/45 border border-amber-500/35 space-y-0.5 min-w-0">
+            <div className="text-[7.5px] font-mono uppercase tracking-wider text-amber-300 font-bold">
+              {isIslamicPage
+                ? `ILM-UL-ADAD SPIRITUAL DIRECTIVE • PAGE #${pageNum}`
+                : `KEY SPIRITUAL DIRECTIVE • PAGE #${pageNum}`}
+            </div>
+            <div className="text-[9px] font-serif font-bold text-amber-100 leading-snug">
+              {cleanTitle}
+            </div>
+            <div className="text-[8px] text-slate-200 leading-snug">
+              {isIslamicPage ? (
+                <>
+                  Calibrated for <strong className="text-amber-200">{activeProfile.name}</strong> • Adad #{multiSectionReportData.m} &amp; Destiny Adad #{multiSectionReportData.b}
+                </>
+              ) : (
+                <>
+                  Calibrated for <strong className="text-amber-200">{activeProfile.name}</strong> • Mulank #{multiSectionReportData.m} ({fillerMPlanet.planet}) &amp; Bhagyank #{multiSectionReportData.b} ({fillerBPlanet.planet})
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Center Aspect-Ratio-Locked Unstretched Sacred Yantra Plate (Shree Yantra for Vedic/General, Islamic Noor Geometry for Islamic Remedies) */}
+          <div className="col-span-2 flex flex-col items-center justify-center min-w-0 overflow-hidden">
+            {isIslamicPage ? (
+              <>
+                <div className="relative w-14 h-14 rounded-lg overflow-hidden border-2 border-emerald-400 shadow-lg shrink-0 bg-slate-900">
+                  <img
+                    src={islamicNoorArt}
+                    alt={`Ilm-ul-Adad Noor Geometry Page ${pageNum}`}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                  <svg
+                    viewBox="0 0 100 100"
+                    className="absolute inset-0 w-full h-full pointer-events-none opacity-85"
+                  >
+                    <rect x="22" y="22" width="56" height="56" fill="none" stroke="#6EE7B7" strokeWidth="2" />
+                    <rect
+                      x="22"
+                      y="22"
+                      width="56"
+                      height="56"
+                      fill="none"
+                      stroke="#FDE68A"
+                      strokeWidth="2"
+                      transform="rotate(45 50 50)"
+                    />
+                    <circle cx="50" cy="50" r="16" fill="none" stroke="#FDE68A" strokeWidth="1.8" />
+                  </svg>
+                </div>
+                <span className="text-[6px] font-mono font-bold text-emerald-300 uppercase mt-0.5 text-center leading-tight break-words w-full px-0.5">
+                  Adad Noor #{pageNum}
+                </span>
+              </>
+            ) : (
+              <>
+                <div className="relative w-14 h-14 rounded-lg overflow-hidden border-2 border-amber-400 shadow-lg shrink-0 bg-[#f6ec65] p-0.5 flex items-center justify-center">
+                  <img
+                    src={SHREE_YANTRA_PLATE_IMAGE_PATH}
+                    alt={`Sacred Shree Yantra Plate Page ${pageNum}`}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <span className="text-[6px] font-mono font-bold text-amber-300 uppercase mt-0.5 text-center leading-tight break-words w-full px-0.5">
+                  Shree Yantra #{pageNum}
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* Right Highlighted Remedy & Mantra Box */}
+          <div className="col-span-5 p-2 rounded-lg bg-emerald-950/45 border border-emerald-500/35 space-y-0.5 min-w-0">
+            {isIslamicPage ? (
+              <>
+                <div className="text-[7.5px] font-mono uppercase tracking-wider text-emerald-300 font-bold">
+                  PRESCRIBED WAZIFA &amp; SADAQAH BOX
+                </div>
+                <div className="text-[8.5px] font-bold text-emerald-200 leading-snug">
+                  Dhikr: {primaryAsma ? `${primaryAsma.transliteration} (${primaryAsma.recommendedDailyCount})` : 'Ya Allahu Ya Rahmanu (100x Daily)'}
+                </div>
+                <div className="text-[8px] text-slate-200 leading-snug">
+                  Best Prayer Time: {primaryAsma?.bestPrayerTime || 'After Fajr & Maghrib'} • Guided by <strong className="text-amber-200">{healerDisplayName}</strong>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-[7.5px] font-mono uppercase tracking-wider text-emerald-300 font-bold">
+                  PRESCRIBED SANKALPA &amp; REMEDY BOX
+                </div>
+                <div className="text-[8.5px] font-bold text-emerald-200 leading-snug">
+                  Mantra: &ldquo;{fillerBPlanet.beejMantra}&rdquo; (108x Daily)
+                </div>
+                <div className="text-[8px] text-slate-200 leading-snug">
+                  Sacred Shree Yantra Direction: North-East (Ishan Kon) • Healer <strong className="text-amber-200">{healerDisplayName}</strong>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSacredClosingBlessingBanner = () => {
+    if (!activeProfile) return null;
+    return (
+      <div
+        className="a4-dynamic-page-spacer a4-section-no-break"
+        style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+      >
+        <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-950/90 via-slate-950/95 to-emerald-950/90 border-2 border-amber-400/75 text-center space-y-1 shadow-lg">
+          <div className="text-[9px] font-serif font-bold tracking-widest text-amber-300 uppercase">
+            ॥ सर्वे भवन्तु सुखिनः • सर्वे सन्तु निरामयाः • तथास्तु ॥
+          </div>
+          <p className="text-[9.5px] text-amber-100 leading-snug italic">
+            "Infinite Gratitude to the Supreme Universe &amp; Divine Cosmic Intelligence. May the sacred vibrations of your numbers, planets, and mantras illuminate every step of <strong className="text-amber-300 not-italic">{activeProfile.name}</strong>'s life with boundless health, abundance, harmony, and spiritual grace."
+          </p>
+          <div className="inline-block px-3 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/60 text-[9px] font-serif font-black tracking-wider text-emerald-300 uppercase">
+            ✨ Thank You for Being a Cherished Part of the TATHASTU Family — One Place, Every Divine Solution! ✨
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDiscreteA4PagesStack = () => (
+    <div className="space-y-6 print:space-y-0">
+      {discreteA4Pages.map((pg, idx) => {
+        const cleanTitle = pg.title.replace(/^Page\s+\d+:\s*/i, '');
+        const dynamicTitle = `Page ${idx + 1} of ${totalPageCount}: ${cleanTitle}`;
+        const isLastPage = idx === discreteA4Pages.length - 1;
+        return (
+          <div
+            key={idx}
+            className="a4-sheet-page rounded-2xl a4-text-box-wrap"
+            style={{
+              pageBreakInside: 'avoid',
+              breakInside: 'avoid',
+              overflowWrap: 'break-word',
+              whiteSpace: 'normal',
+              wordBreak: 'break-word',
+            }}
+          >
+            {renderA4PageSpiritualBackground()}
+            {renderCenteredBrandWatermark()}
+            {renderA4PageTopHeader(dynamicTitle, pg.headImg, pg.headLabel, pg.isCover)}
+            <div
+              className="relative z-10 flex-1 my-1 a4-page-body-fill a4-text-box-wrap"
+              style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
+            >
+              <div
+                className="a4-section-no-break space-y-2"
+                style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+              >
+                {pg.content}
+              </div>
+              {!isLastPage &&
+                renderContextualChapterVisualFiller(pg.headImg, pg.headLabel, cleanTitle, idx + 1)}
+              {isLastPage && renderSacredClosingBlessingBanner()}
+            </div>
+            {renderA4PageHealerFooter(idx + 1, totalPageCount)}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div className="w-full space-y-4">
+      {latestBroadcast && (
+        <div className="rounded-2xl bg-gradient-to-r from-amber-950/90 via-indigo-950/90 to-slate-900 border border-amber-400/50 px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-100 no-print">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 font-black text-[10px] uppercase">
+              <Bell className="w-3 h-3" />
+              <span>{latestBroadcast.category}</span>
+            </span>
+            <strong className="text-amber-200">{latestBroadcast.title}:</strong>
+            <span>{latestBroadcast.message}</span>
+            {latestBroadcast.couponCode && (
+              <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono font-bold">
+                Code: {latestBroadcast.couponCode}
+              </span>
+            )}
+            {latestBroadcast.category === 'update' && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    if ('serviceWorker' in navigator) {
+                      const regs = await navigator.serviceWorker.getRegistrations();
+                      await Promise.all(regs.map((r) => r.update()));
+                    }
+                    if ('caches' in window) {
+                      const keys = await caches.keys();
+                      await Promise.all(keys.map((k) => caches.delete(k)));
+                    }
+                  } catch {
+                    // Ignore
+                  }
+                  window.location.reload();
+                }}
+                className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[10px] uppercase tracking-wider cursor-pointer shadow"
+              >
+                ↻ Apply App Update Now (No Uninstall)
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setDismissedBroadcastId(latestBroadcast.id)}
+            className="text-slate-400 hover:text-amber-200 p-1 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {activeProfile && (
+        <div className="rounded-2xl border border-amber-500/40 bg-slate-900/95 p-3.5 sm:p-4 shadow-xl space-y-3 no-print">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={clearActiveProfile}
+                className="px-3.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <ArrowLeft className="w-4 h-4 text-amber-400" />
+                <span>Saved Profiles</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  clearActiveProfile();
+                  onOpenAdminPortal?.();
+                }}
+                className="px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 text-emerald-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                title="Create a New Profile"
+              >
+                <span>+ New Profile</span>
+              </button>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-serif text-base sm:text-lg font-black text-amber-100">
+                    {activeProfile.name}
+                  </span>
+                  <span className="text-xs font-mono text-amber-300">
+                    · DOB: {activeProfile.dob}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-200 font-bold text-[10px]">
+                    Healer: {healerDisplayName}
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-300/90 font-mono">
+                  Healer: <strong>{healerDisplayName}</strong> ({brandTitle} • {healerDisplayMobile}) · Detailed A4 Dossier ({totalPageCount} Pages)
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full lg:w-auto">
+              <button
+                type="button"
+                onClick={() => setIsSettingsDrawerOpen(true)}
+                className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/45 text-amber-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+                <span>Modules &amp; Watermark ({selectedCount}/{MODULE_OPTIONS.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowExportOptionsPanel((prev) => !prev)}
+                className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all ${
+                  showExportOptionsPanel
+                    ? 'bg-amber-500/25 border-amber-400 text-amber-100'
+                    : 'bg-slate-950 border-amber-500/40 text-amber-300 hover:bg-slate-800'
+                }`}
+              >
+                <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
+                <span>Quick Checkboxes</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenPrintPreview}
+                className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Print Preview ({totalPageCount} A4 Pages)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadPdfDirectly}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePrintPdfReport}
+                className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5 text-amber-400" />
+                <span>Print PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsQrModalOpen(true)}
+                className="px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/60 text-amber-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Download via QR Code or Direct Link"
+              >
+                <QrCode className="w-3.5 h-3.5 text-amber-400" />
+                <span>QR & Link Download</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCopyDirectDownloadLink}
+                className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-sky-500/45 text-sky-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Copy Direct Report PDF Download Link"
+              >
+                <Share2 className="w-3.5 h-3.5 text-sky-400" />
+                <span>Copy Download Link</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleWhatsAppReportLinkOnly}
+                className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-400/50 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                title="Send Direct Report Download Link on WhatsApp"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>WhatsApp Link</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDirectWhatsAppReport}
+                className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>WhatsApp Full Summary</span>
+              </button>
+
+              {(currentAccount.role === 'healer' || currentAccount.role === 'admin') && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!canCurrentAccountDownloadOrShare()) {
+                        triggerAdminRestrictionPopup('WhatsApp Event Muhurat');
+                        return;
+                      }
+                      sendWhatsAppSpecificEventAlert(activeProfile, currentAccount);
+                    }}
+                    className="px-2.5 py-2 rounded-xl bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-200 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                    title="1-Click WhatsApp Upcoming Vedic Event Muhurat to Client"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>WA Event</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!canCurrentAccountDownloadOrShare()) {
+                        triggerAdminRestrictionPopup('WhatsApp Auspicious Time');
+                        return;
+                      }
+                      sendWhatsAppAuspiciousTimeUpdate(activeProfile, currentAccount);
+                    }}
+                    className="px-2.5 py-2 rounded-xl bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-200 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                    title="1-Click WhatsApp Live Auspicious Time & Rahu Kaal Alert to Client"
+                  >
+                    <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>WA Good Time</span>
+                  </button>
+                </>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleEditOrDeleteAttempt('Edit Profile')}
+                className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow"
+                title="Edit & Save Report + Bride / Partner Details"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Edit &amp; Save Report</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleEditOrDeleteAttempt('Delete Profile')}
+                className="px-2.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 border border-rose-500/40 text-rose-300 font-semibold text-xs flex items-center gap-1 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-2.5 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-bold text-amber-300 mr-1">
+                Active Report Modules ({totalPageCount} Pages):
+              </span>
+              {MODULE_OPTIONS.map((item) => {
+                const active = selectedSections[item.key];
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => toggleSectionCheckbox(item.key)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all flex items-center gap-1 cursor-pointer ${
+                      active
+                        ? 'bg-amber-500/20 border-amber-400 text-amber-100'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-amber-200'
+                    }`}
+                  >
+                    {active ? (
+                      <CheckSquare className="w-3 h-3 text-amber-400" />
+                    ) : (
+                      <Square className="w-3 h-3 text-slate-500" />
+                    )}
+                    <span>
+                      {item.shortLabel} ({item.pageCount}p)
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenPrintPreview}
+              className="text-amber-300 hover:text-amber-200 font-bold text-[11px] flex items-center gap-1 underline cursor-pointer"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Open A4 Portrait Print Preview ({totalPageCount} Pages)</span>
+            </button>
+          </div>
+
+          {showExportOptionsPanel && (
+            <div className="p-4 rounded-2xl bg-slate-950 border border-amber-400/50 space-y-3 animate-fade-in">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/20 pb-2.5">
+                <div>
+                  <h4 className="font-serif text-sm font-bold text-amber-100 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-amber-400" />
+                    <span>
+                      Select Modules for Dynamic A4 Portrait PDF / Print / Share / WhatsApp ({reportDateRange.startFormatted} – {reportDateRange.endFormatted})
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-amber-300/75">
+                    PDF page count automatically adjusts to your selected active modules. Every page includes section artwork, centered watermark, and Healer Details.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllModules}
+                    className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-500/40 text-[11px] font-bold cursor-pointer"
+                  >
+                    Select All Modules
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSelectCoreFour}
+                    className="px-2.5 py-1 rounded-lg bg-slate-900 text-amber-300 border border-amber-500/30 text-[11px] font-bold cursor-pointer"
+                  >
+                    Core Modules
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowExportOptionsPanel(false)}
+                    className="p-1 text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {MODULE_OPTIONS.map((item) => {
+                  const checked = selectedSections[item.key];
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => toggleSectionCheckbox(item.key)}
+                      className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 cursor-pointer ${
+                        checked
+                          ? 'bg-amber-500/15 border-amber-400 text-amber-100'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-amber-500/30'
+                      }`}
+                    >
+                      {checked ? (
+                        <CheckSquare className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <div className="text-xs font-bold">{item.label}</div>
+                        <div className="text-[10px] opacity-80 mt-0.5">{item.sub}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-amber-500/20">
+                <button
+                  type="button"
+                  onClick={() => setIncludeActiveTabInPrint((prev) => !prev)}
+                  className="flex items-center gap-2 text-xs text-amber-200 cursor-pointer"
+                >
+                  {includeActiveTabInPrint ? (
+                    <CheckSquare className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <Square className="w-4 h-4 text-slate-500" />
+                  )}
+                  <span>Also append currently open screen tab ({sectionTitle}) as an extra A4 page</span>
+                </button>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleOpenPrintPreview}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Open A4 Print Preview ({totalPageCount} Pages)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadPdfDirectly}
+                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download PDF</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDirectWhatsAppReport}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>Send Selected on WhatsApp</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {shareToast && (
+        <div className="p-3 rounded-xl bg-emerald-950 border border-emerald-500/50 text-emerald-200 text-xs font-semibold flex items-center gap-2 no-print">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{shareToast}</span>
+        </div>
+      )}
+
+      {activeProfile && (
+        <div className="fixed right-4 bottom-6 z-40 flex flex-col gap-2 no-print">
+          <button
+            type="button"
+            onClick={() => setIsSettingsDrawerOpen(true)}
+            className="px-4 py-3 rounded-2xl bg-slate-900/95 hover:bg-slate-800 border-2 border-amber-400 text-amber-100 font-bold text-xs shadow-2xl flex items-center gap-2 cursor-pointer transition-all"
+          >
+            <SlidersHorizontal className="w-4 h-4 text-amber-400" />
+            <span>Modules &amp; Watermark ({selectedCount}/{MODULE_OPTIONS.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadPdfDirectly}
+            className="px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-2xl flex items-center justify-center gap-2 cursor-pointer transition-all"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download PDF</span>
+          </button>
+        </div>
+      )}
+
+      {activeProfile && isSettingsDrawerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex justify-end animate-fade-in no-print">
+          <div className="w-full max-w-md bg-slate-950 border-l-2 border-amber-400/60 h-full flex flex-col justify-between p-6 overflow-y-auto shadow-2xl">
+            <div className="space-y-5">
+              <div className="flex items-start justify-between gap-3 border-b border-amber-500/25 pb-4">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 block">
+                    Persistent Export, Watermark &amp; Print Setup
+                  </span>
+                  <h3 className="font-serif text-xl font-black text-amber-100 mt-0.5">
+                    Dynamic A4 Report &amp; Watermark Settings
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Configure which modules, centered brand watermark, and Healer social media handles appear on every A4 page for <strong className="text-amber-200">{activeProfile.name}</strong>.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsDrawerOpen(false)}
+                  className="p-2 rounded-xl bg-slate-900 text-slate-400 hover:text-amber-200 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-900 border border-amber-500/35 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <img
+                      src={brandLogo}
+                      alt={brandTitle}
+                      referrerPolicy="no-referrer"
+                      className="w-10 h-10 rounded-full object-cover border border-amber-400"
+                    />
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">
+                        {isHealerReport
+                          ? 'Healer Center Watermark & Logo'
+                          : 'TATHASTU Center Brand Watermark'}
+                      </span>
+                      <strong className="text-xs text-amber-100 block">{brandTitle}</strong>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setWatermarkSettings((prev) => ({ ...prev, enabled: !prev.enabled }))
+                    }
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                      watermarkSettings.enabled
+                        ? 'bg-emerald-950 border-emerald-400 text-emerald-300'
+                        : 'bg-slate-950 border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    {watermarkSettings.enabled ? 'Watermark ON' : 'Watermark OFF'}
+                  </button>
+                </div>
+
+                {watermarkSettings.enabled && (
+                  <div className="space-y-3 pt-2 border-t border-amber-500/20 text-xs">
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] text-amber-200 mb-1">
+                        <span>Center Watermark Opacity</span>
+                        <span className="font-mono font-bold">{watermarkSettings.opacityPercent}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={4}
+                        max={22}
+                        value={watermarkSettings.opacityPercent}
+                        onChange={(e) =>
+                          setWatermarkSettings((prev) => ({
+                            ...prev,
+                            opacityPercent: Number(e.target.value),
+                          }))
+                        }
+                        className="w-full accent-amber-400 cursor-pointer"
+                      />
+                    </div>
+
+                    {currentAccount.role === 'healer' && (
+                      <div className="pt-2 border-t border-emerald-500/25 flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-emerald-300 font-semibold">
+                          Update Healer Logo & Watermark:
+                        </span>
+                        <label className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1.5 cursor-pointer">
+                          <Upload className="w-3 h-3" />
+                          <span>Upload Logo</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                if (typeof reader.result === 'string') {
+                                  adminUpdateAccount({
+                                    ...currentAccount,
+                                    healerLogoUrl: reader.result,
+                                  });
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }}
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {MODULE_OPTIONS.map((item) => {
+                  const checked = selectedSections[item.key];
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => toggleSectionCheckbox(item.key)}
+                      className={`w-full p-3 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                        checked
+                          ? 'bg-amber-500/15 border-amber-400 text-amber-100'
+                          : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:border-amber-500/30'
+                      }`}
+                    >
+                      {checked ? (
+                        <CheckSquare className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <div className="text-xs font-bold">{item.label}</div>
+                        <div className="text-[11px] opacity-80 mt-0.5">{item.sub}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-amber-500/25 space-y-2.5 mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsDrawerOpen(false);
+                  handleOpenPrintPreview();
+                }}
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+              >
+                <Eye className="w-4 h-4" />
+                <span>Open A4 Print Preview ({totalPageCount} Pages)</span>
+              </button>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSettingsDrawerOpen(false);
+                    handleDownloadPdfDirectly();
+                  }}
+                  className="py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSettingsDrawerOpen(false);
+                    handlePrintPdfReport();
+                  }}
+                  className="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print PDF</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeProfile && isPrintPreviewOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/92 backdrop-blur-md flex flex-col animate-fade-in no-print">
+          <div className="w-full bg-slate-900 border-b-2 border-amber-400/50 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 shadow-xl">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-300">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-serif text-base sm:text-lg font-black text-amber-100">
+                    A4 Portrait Print Preview — {activeProfile.name}
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono text-[10px] font-bold">
+                    {totalPageCount} A4 Pages (210mm × 297mm)
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-200/80">
+                  Branding: <strong>{TATHASTU_BRAND_NAME} ({TATHASTU_TAGLINE})</strong> • Every page includes section artwork & Healer Social Handles
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 bg-slate-950 border border-amber-500/35 rounded-xl px-2.5 py-1">
+              <button
+                type="button"
+                onClick={() => setPreviewScale((s) => Math.max(70, s - 10))}
+                className="p-1 text-amber-300 hover:text-white cursor-pointer"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-mono font-bold text-amber-200 px-1.5">
+                {previewScale}%
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewScale((s) => Math.min(115, s + 10))}
+                className="p-1 text-amber-300 hover:text-white cursor-pointer"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadPdfDirectly}
+                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-lg cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePrintPdfReport}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 shadow-lg cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print All {totalPageCount} Pages</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsPrintPreviewOpen(false)}
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+                <span>Close Preview</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-3 sm:p-6 flex justify-center bg-slate-950/95">
+            <div
+              className="origin-top transition-transform duration-200"
+              style={{ transform: `scale(${previewScale / 100})` }}
+            >
+              {renderDiscreteA4PagesStack()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="w-full">
+        <div className="no-print relative rounded-3xl border-2 border-amber-500/35 bg-gradient-to-b from-slate-900/95 via-slate-950/98 to-slate-900/95 shadow-2xl overflow-hidden">
+          {activeProfile && renderCenteredBrandWatermark()}
+
+          <div className="relative z-10 p-4 sm:p-6 lg:p-8">{children}</div>
+
+          {activeProfile && (
+            <div className="relative z-10 px-4 sm:px-6 pb-4">
+              {renderA4PageHealerFooter(1, totalPageCount)}
+            </div>
+          )}
+        </div>
+
+        {activeProfile && (
+          <div className="hidden print:block a4-print-root">
+            {renderDiscreteA4PagesStack()}
+          </div>
+        )}
+      </div>
+
+      {restrictionModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+          <div className="w-full max-w-md rounded-3xl bg-slate-900 border-2 border-amber-500/60 p-6 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+                  <ShieldAlert className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-rose-400 block">
+                    Restricted Action
+                  </span>
+                  <h3 className="font-serif text-lg font-bold text-amber-100">
+                    {restrictionModal.actionAttempted}
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeRestrictionModal}
+                className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              For security and data integrity, <strong>{restrictionModal.actionAttempted}</strong> requires an active plan or Master Admin authorization. Please contact Tathastu Divine Light Admin Support:
+            </p>
+
+            <div className="p-4 rounded-2xl bg-slate-950 border border-amber-500/30 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Admin Helpline:</span>
+                <a
+                  href={`tel:+91${TATHASTU_ADMIN_PHONE}`}
+                  className="font-mono font-bold text-amber-300 hover:underline"
+                >
+                  +91 {TATHASTU_ADMIN_PHONE}
+                </a>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Official Email:</span>
+                <a
+                  href={`mailto:${TATHASTU_ADMIN_EMAIL}`}
+                  className="font-mono font-bold text-emerald-300 hover:underline"
+                >
+                  {TATHASTU_ADMIN_EMAIL}
+                </a>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <a
+                href={`https://wa.me/91${TATHASTU_ADMIN_PHONE}?text=${encodeURIComponent(
+                  validateAndNormalizeLocaleText(
+                    translateMultilineBlock(
+                      `Namaste Admin, I need assistance with ${restrictionModal.actionAttempted} on ${TATHASTU_APP_NAME} (${currentAccount.email}).`,
+                      language
+                    ),
+                    language,
+                    { context: 'whatsapp' }
+                  ).sanitizedText
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>WhatsApp Admin</span>
+              </a>
+              <button
+                type="button"
+                onClick={closeRestrictionModal}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic QR Code Modal for Instant Mobile PDF Report Access */}
+      {activeProfile && isQrModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/88 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in no-print">
+          <div className="w-full max-w-md rounded-3xl bg-slate-900 border-2 border-amber-400/60 p-6 shadow-2xl space-y-4 text-center">
+            <div className="flex items-center justify-between border-b border-amber-500/25 pb-3">
+              <div className="flex items-center gap-2 text-left">
+                <QrCode className="w-5 h-5 text-amber-400" />
+                <div>
+                  <h3 className="font-serif text-base font-black text-amber-100">
+                    Dynamic Report QR Code — {activeProfile.name}
+                  </h3>
+                  <p className="text-[10px] text-emerald-300 font-mono">
+                    Embedded on Every Printed A4 Page &amp; Dynamic PDF
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQrModalOpen(false)}
+                className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {reportQrDataUrl && (
+              <div className="p-4 rounded-2xl bg-amber-100 border-2 border-amber-400 inline-block mx-auto shadow-xl">
+                <img
+                  src={reportQrDataUrl}
+                  alt={`QR Code for ${activeProfile.name}`}
+                  className="w-48 h-48 object-contain mx-auto"
+                />
+                <span className="block text-[10px] font-mono font-black text-slate-950 mt-1.5">
+                  SCAN FOR MOBILE PDF REPORT
+                </span>
+              </div>
+            )}
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Scanning this QR code from a printed version of the report immediately opens{' '}
+              <strong className="text-amber-200">{activeProfile.name}</strong>'s mobile report view with 1-click access to download the personalized PDF report.
+            </p>
+
+            <div className="p-2.5 rounded-xl bg-slate-950 border border-amber-500/30 font-mono text-[10px] text-sky-300 break-all text-left">
+              {reportDirectDownloadLink}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsQrModalOpen(false);
+                  void handleDownloadPdfDirectly();
+                }}
+                className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void handleWhatsAppReportLinkOnly();
+                }}
+                className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>WhatsApp Download Link</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCopyDirectDownloadLink}
+                className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5 text-amber-400" />
+                <span>Copy Download Link</span>
+              </button>
+
+              {reportQrDataUrl && (
+                <a
+                  href={reportQrDataUrl}
+                  download={`Tathastu_Report_QR_${activeProfile.name.replace(/\s+/g, '_')}.png`}
+                  className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-emerald-500/40 text-emerald-200 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Download QR Image</span>
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
