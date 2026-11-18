@@ -583,7 +583,8 @@ export function calculateVedicAstrologyFromBirth(
 }
 
 /**
- * Calculate 7 Chakra Marital Challenges & Fortune Reading + Aura Scan Remedies for Partner Milan
+ * Calculate 9-Chakra Marital Challenges & Fortune Reading + Aura Scan Remedies for Partner Milan
+ * Covers #1 Earth Star (Vasundhara) through #9 Soul Star (Vyapini / Atma-Tara)
  */
 export function calculatePartnerChakraChallenges(
   m1: number,
@@ -611,10 +612,43 @@ export function calculatePartnerChakraChallenges(
 
   const groomHasEarthStress = [4, 8, 7].includes(b1) || [4, 8].includes(m1);
   const brideHasEarthStress = [4, 8, 7].includes(b2) || [4, 8].includes(m2);
+  const ancestralScore = hasSaturnClash && hasRahuKetuClash ? 54 : relBhagyank === 'friendly' ? 91 : relBhagyank === 'neutral' ? 76 : 60;
 
   const rawList: ChakraMaritalChallenge[] = [
     {
-      chakraName: 'Root Chakra (Security, Finances & In-Law Stability)',
+      chakraNumber: 1,
+      locationLabel: '12 Inches Below Feet (Sub-Personal Grounding)',
+      chakraName: '1. Earth Star Chakra (Ancestral Roots & Home Grounding)',
+      sanskritName: 'Vasundhara Chakra (वसुन्धरा)',
+      element: 'Deep Crystalline Earth',
+      color: '#78350F',
+      alignmentScore: ancestralScore,
+      status: ancestralScore >= 76 ? 'Harmonious' : ancestralScore >= 60 ? 'Moderate Blockage' : 'Severe Karmic Challenge',
+      affectedPartner:
+        groomHasEarthStress && !brideHasEarthStress
+          ? `Primary Carrier: Groom (${groomName} — Ancestral Grounding)`
+          : !groomHasEarthStress && brideHasEarthStress
+          ? `Primary Carrier: Bride (${brideName} — Ancestral Grounding)`
+          : `Joint Lineage: Groom (${groomName}) & Bride (${brideName})`,
+      groomChallengeDetail: `Groom (${groomName} — Mulank ${m1}, Bhagyank ${b1}): Carries ancestral (Pitru) expectations regarding lineage continuity, property roots, and balancing tradition with modern marriage.`,
+      brideChallengeDetail: `Bride (${brideName} — Mulank ${m2}, Bhagyank ${b2}): Navigates leaving natal home energetic roots and anchoring new household stability alongside ${groomName}'s family lineage.`,
+      postMarriageIssue:
+        ancestralScore < 75
+          ? 'Unresolved Pitru-Dosha restlessness, feeling ungrounded during relocation, or friction over ancestral family customs and property decisions.'
+          : 'Strong earthy foundation that naturally anchors both families’ lineages into a prosperous new home.',
+      fortuneReadingDiagnosis: `Earth Star (Vasundhara) scan connects ${groomRashi} & ${brideRashi} sub-personal roots (${ancestralScore}% ancestral grounding).`,
+      auraScanRemedy: 'Keep a natural Black Tourmaline or Smoky Quartz cluster near the main entrance and perform Pitru Tarpan / Sesame-water offering on Amavasya while playing 194.18 Hz Earth Star grounding tones.',
+      groomRemedy: `Groom (${groomName}): Walk barefoot on morning grass for 10 mins, keep Black Tourmaline on the work desk, and offer water & black sesame seeds to ancestors on Amavasya.`,
+      brideRemedy: `Bride (${brideName}): Place a sacred Tulsi plant in earthen pot in the North-East and keep Smoky Quartz near the home entrance to ground negative energies.`,
+      bothRemedy: `Both (${groomName} & ${brideName}): Mop floors with Himalayan Rock Salt water every Saturday and listen to 194.18 Hz Earth Star resonance together during home cleansing.`,
+      healingCrystal: 'Black Tourmaline & Smoky Quartz (194.18 Hz)',
+      beejMantra: 'Om Vasundharayai Vidmahe Bhumi Devyai Dhimahi',
+      soundFrequencyHz: '194.18 Hz (Earth Star Ancestral Grounding)',
+    },
+    {
+      chakraNumber: 2,
+      locationLabel: 'Base of Spine (Coccyx)',
+      chakraName: '2. Root Chakra (Security, Finances & In-Law Stability)',
       sanskritName: 'Muladhara Chakra (मूलाधार)',
       element: 'Earth (Prithvi)',
       color: '#EF4444',
@@ -779,7 +813,9 @@ export function calculatePartnerChakraChallenges(
       soundFrequencyHz: '852 Hz & 207.36 Hz (Ajna Intuition & Mental Peace)',
     },
     {
-      chakraName: 'Crown Chakra (Karmic Destiny, Ancestral Pitru Grace & Dharma)',
+      chakraNumber: 8,
+      locationLabel: 'Crown of the Head (Brahmarandhra)',
+      chakraName: '8. Crown Chakra (Karmic Destiny, Ancestral Pitru Grace & Dharma)',
       sanskritName: 'Sahasrara Chakra (सहस्रार)',
       element: 'Cosmic Consciousness',
       color: '#A855F7',
@@ -799,10 +835,36 @@ export function calculatePartnerChakraChallenges(
       beejMantra: 'Om Namah Shivaya / Gayatri Mantra',
       soundFrequencyHz: '963 Hz & 136.10 Hz (Sahasrara Crown & Ancestral Grace)',
     },
+    {
+      chakraNumber: 9,
+      locationLabel: '6 Inches Above the Head (Transpersonal Soul Portal)',
+      chakraName: '9. Soul Star Chakra (Past-Life Runanubandha & Soul Ascension)',
+      sanskritName: 'Vyapini / Atma-Tara Chakra (आत्म-तारा)',
+      element: 'Pure Divine Light (Parama Jyoti)',
+      color: '#F8FAFC',
+      alignmentScore: relBhagyank === 'friendly' && relMulank === 'friendly' ? 96 : relBhagyank === 'inimical' ? 58 : 79,
+      status: relBhagyank === 'inimical' ? 'Moderate Blockage' : 'Harmonious',
+      affectedPartner: `Transpersonal Soul Bond (${groomName} & ${brideName})`,
+      groomChallengeDetail: `Groom (${groomName} — Bhagyank ${b1}): Shares a deep past-life Runanubandha (karmic soul contract) awakening spiritual purpose alongside material ambition.`,
+      brideChallengeDetail: `Bride (${brideName} — Bhagyank ${b2}): Acts as a higher intuition catalyst; perceives unspoken soul truths when quiet reflection is honored.`,
+      postMarriageIssue:
+        relBhagyank === 'inimical'
+          ? 'Unspoken past-life karmic debts triggering sudden test-of-faith seasons until joint forgiveness and charity are practiced.'
+          : 'Elevated spiritual synchronicity where joint prayers and charitable acts rapidly unlock family grace.',
+      fortuneReadingDiagnosis: `Soul Star (Atma-Tara) scan across Destiny ${b1} & ${b2} confirms a sacred multi-lifetime partnership for dharma and harmony.`,
+      auraScanRemedy: 'Place an energized White Selenite Tower or Clear Quartz pyramid in the home prayer altar (Ishan Kon) and meditate together with 1074 Hz Soul Star celestial tones on Shukla Purnima.',
+      groomRemedy: `Groom (${groomName}): Offer morning gratitude for past-life blessings, wear a Gauri Shankar or 5-Mukhi Rudraksha, and donate white sweets on Purnima.`,
+      brideRemedy: `Bride (${brideName}): Charge drinking water under Full Moon moonlight in a silver/glass vessel and chant "Om Hreem Shreem Kleem Atma-Tarayai Namah" (11x).`,
+      bothRemedy: `Both (${groomName} & ${brideName}): Place a White Selenite Tower on the North-East prayer altar, sponsor Annadaan together once a month, and play 1074 Hz Soul Star light frequencies.`,
+      healingCrystal: 'White Selenite Tower & Herkimer Diamond Quartz (1074 Hz)',
+      beejMantra: 'Om Hreem Shreem Kleem Parama Jyoti Atma-Tarayai Namah',
+      soundFrequencyHz: '1074 Hz (Soul Star & Runanubandha Grace)',
+    },
   ];
 
-  return rawList.map((item) => ({
+  return rawList.map((item, idx) => ({
     ...item,
+    chakraNumber: item.chakraNumber ?? idx + 1,
     primaryCarrierName: item.affectedPartner,
   }));
 }
@@ -979,7 +1041,7 @@ export function calculateCareerAndAuraProfile(
 
   const fortuneReadingRemedies: CareerAndAuraProfile['fortuneReadingRemedies'] = [
     {
-      title: '7-Chakra & Bio-Field Aura Salt Cleansing',
+      title: '9-Chakra & Bio-Field Aura Salt Cleansing',
       category: 'Aura Scan Cleansing',
       issueAddressed: 'Removes psychic debris, evil eye (Nazar Dosha), and stagnant business blockages.',
       prescription: `Every Thursday & Saturday morning, bathe with a pinch of Himalayan Pink Salt + 2 drops of Lavender/Sandalwood essential oil while listening to 396 Hz & 528 Hz Solfeggio frequencies. Visualize a ${mData.auraColor} expanding 3 feet around your body.`,

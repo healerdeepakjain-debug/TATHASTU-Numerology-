@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   HeartHandshake,
   Heart,
@@ -19,49 +19,103 @@ import {
 import { BirthProfile, CompatibilityAnalysis, CityLocation } from '../types';
 import {
   calculateCompatibility,
-  resolveGroomAndBrideProfiles,
   PLANETARY_PROFILES,
   analyzeName,
 } from '../utils/numerology';
 import { searchCityGeocode } from '../utils/astrologyAndCities';
 import { CityAutocompleteInput } from './CityAutocompleteInput';
 import { BirthTimeAmPmInput, formatTime12HourAmPm } from './BirthTimeAmPmInput';
+import { calculatePartnerMilanRatnaRecommendations } from './GemstoneRecommendation';
 import { useTathastu } from '../utils/tathastuStore';
 
 interface PartnerCompatibilityProps {
   profile: BirthProfile;
 }
 
+function buildInitialGroomAndBrideForm(prof: BirthProfile) {
+  const isFemale = prof.gender === 'female';
+  const rawPartnerName = (prof.partnerName || '').trim();
+  const isDummyPartner =
+    !rawPartnerName ||
+    rawPartnerName.toLowerCase() === 'rohit sharma' ||
+    rawPartnerName.toLowerCase() === 'priyanka sharma';
+
+  const cleanPartnerName = isDummyPartner ? '' : rawPartnerName;
+  const cleanPartnerDob =
+    isDummyPartner ||
+    !prof.partnerDob ||
+    prof.partnerDob === '1988-06-15' ||
+    prof.partnerDob === '1990-11-24'
+      ? ''
+      : prof.partnerDob;
+  const cleanPartnerTob = prof.partnerTob || '09:30';
+  const cleanPartnerPob =
+    isDummyPartner || prof.partnerPob === 'Mumbai, Maharashtra, India'
+      ? ''
+      : prof.partnerPob || '';
+
+  // Keep Groom form blank by default unless explicit Groom details were saved
+  if (isFemale) {
+    return {
+      groom: {
+        name: cleanPartnerName,
+        dob: cleanPartnerDob,
+        tob: cleanPartnerTob,
+        pob: cleanPartnerPob,
+        lat: prof.partnerLat ?? 28.6139,
+        lng: prof.partnerLng ?? 77.209,
+      },
+      bride: {
+        name: prof.name || '',
+        dob: prof.dob || '',
+        tob: prof.tob || '09:30',
+        pob: prof.pob || '',
+        lat: prof.lat ?? 28.6139,
+        lng: prof.lng ?? 77.209,
+      },
+    };
+  }
+
+  return {
+    groom: {
+      name: '',
+      dob: '',
+      tob: prof.tob || '09:30',
+      pob: '',
+      lat: prof.lat ?? 28.6139,
+      lng: prof.lng ?? 77.209,
+    },
+    bride: {
+      name: cleanPartnerName,
+      dob: cleanPartnerDob,
+      tob: cleanPartnerTob,
+      pob: cleanPartnerPob,
+      lat: prof.partnerLat ?? 28.6139,
+      lng: prof.partnerLng ?? 77.209,
+    },
+  };
+}
+
 export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ profile }) => {
   const { activeProfile, adminUpdateProfile } = useTathastu();
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
-  const initialPair = resolveGroomAndBrideProfiles(profile);
+  const initialPair = buildInitialGroomAndBrideForm(profile);
   const [partner1, setPartner1] = useState(initialPair.groom);
   const [partner2, setPartner2] = useState(initialPair.bride);
+  const lastProfileIdRef = useRef<string | undefined>(profile.id);
 
   const isFemaleClient = (activeProfile?.gender || profile.gender) === 'female';
 
+  // Only re-initialize form fields when switching to a different profile ID so typing is never interrupted
   useEffect(() => {
-    const resolved = resolveGroomAndBrideProfiles(profile);
-    setPartner1(resolved.groom);
-    setPartner2(resolved.bride);
-  }, [
-    profile.id,
-    profile.name,
-    profile.gender,
-    profile.dob,
-    profile.tob,
-    profile.pob,
-    profile.lat,
-    profile.lng,
-    profile.partnerName,
-    profile.partnerDob,
-    profile.partnerTob,
-    profile.partnerPob,
-    profile.partnerLat,
-    profile.partnerLng,
-  ]);
+    if (lastProfileIdRef.current !== profile.id) {
+      lastProfileIdRef.current = profile.id;
+      const resolved = buildInitialGroomAndBrideForm(profile);
+      setPartner1(resolved.groom);
+      setPartner2(resolved.bride);
+    }
+  }, [profile]);
 
   const [p1CitySuggestions, setP1CitySuggestions] = useState<CityLocation[]>([]);
   const [p2CitySuggestions, setP2CitySuggestions] = useState<CityLocation[]>([]);
@@ -99,49 +153,30 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
     const currentGender = activeProfile.gender === 'female' ? 'female' : 'male';
     if (currentGender === newGender) return;
 
-    // Preserve whichever card currently holds the primary client vs life partner
-    const clientData = currentGender === 'female' ? partner2 : partner1;
     const partnerData = currentGender === 'female' ? partner1 : partner2;
-    const fallbackPartnerName = newGender === 'female' ? 'Rohit Sharma' : 'Priyanka Sharma';
-    const fallbackPartnerDob = newGender === 'female' ? '1988-06-15' : '1990-11-24';
-    const fallbackPartnerTob = newGender === 'female' ? '10:30' : '14:20';
-
-    const cleanPartnerName =
-      !partnerData.name.trim() ||
-      (newGender === 'female' && partnerData.name.trim() === 'Priyanka Sharma') ||
-      (newGender === 'male' && partnerData.name.trim() === 'Rohit Sharma')
-        ? fallbackPartnerName
-        : partnerData.name.trim();
 
     await adminUpdateProfile({
       ...activeProfile,
       gender: newGender,
-      name: clientData.name.trim() || activeProfile.name,
-      dob: clientData.dob || activeProfile.dob,
-      tob: clientData.tob || activeProfile.tob,
-      pob: clientData.pob || activeProfile.pob,
-      lat: clientData.lat ?? activeProfile.lat,
-      lng: clientData.lng ?? activeProfile.lng,
-      partnerName: cleanPartnerName,
-      partnerDob: partnerData.dob || fallbackPartnerDob,
-      partnerTob: partnerData.tob || fallbackPartnerTob,
-      partnerPob: partnerData.pob || 'Mumbai, Maharashtra, India',
-      partnerLat: partnerData.lat ?? 19.0760,
-      partnerLng: partnerData.lng ?? 72.8777,
+      partnerName: partnerData.name.trim(),
+      partnerDob: partnerData.dob,
+      partnerTob: partnerData.tob || '09:30',
+      partnerPob: partnerData.pob,
+      partnerLat: partnerData.lat ?? 28.6139,
+      partnerLng: partnerData.lng ?? 77.209,
     });
 
     setSaveSuccessMessage(
       newGender === 'female'
-        ? `Profile set to Female! ${clientData.name} is now automatically placed in Bride, and ${cleanPartnerName} in Groom.`
-        : `Profile set to Male! ${clientData.name} is now automatically placed in Groom, and ${cleanPartnerName} in Bride.`
+        ? `Profile role set to Female (Bride).`
+        : `Profile role set to Male (Groom).`
     );
-    setTimeout(() => setSaveSuccessMessage(null), 5000);
+    setTimeout(() => setSaveSuccessMessage(null), 4000);
   };
 
   const handleSavePartnerMilanToReport = async () => {
     if (!activeProfile) return;
     if (activeProfile.gender === 'female') {
-      // Female client is Bride (partner2), her partner is Groom (partner1)
       await adminUpdateProfile({
         ...activeProfile,
         name: partner2.name.trim() || activeProfile.name,
@@ -150,15 +185,15 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
         pob: partner2.pob || activeProfile.pob,
         lat: partner2.lat ?? activeProfile.lat,
         lng: partner2.lng ?? activeProfile.lng,
-        partnerName: partner1.name.trim() || 'Rohit Sharma',
-        partnerDob: partner1.dob || '1988-06-15',
-        partnerTob: partner1.tob || '10:30',
-        partnerPob: partner1.pob || 'Mumbai, Maharashtra, India',
-        partnerLat: partner1.lat ?? 19.0760,
-        partnerLng: partner1.lng ?? 72.8777,
+        partnerName: partner1.name.trim(),
+        partnerDob: partner1.dob,
+        partnerTob: partner1.tob || '09:30',
+        partnerPob: partner1.pob,
+        partnerLat: partner1.lat ?? 28.6139,
+        partnerLng: partner1.lng ?? 77.209,
+        includePartnerMilan: true,
       });
     } else {
-      // Male client is Groom (partner1), his partner is Bride (partner2)
       await adminUpdateProfile({
         ...activeProfile,
         name: partner1.name.trim() || activeProfile.name,
@@ -167,17 +202,17 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
         pob: partner1.pob || activeProfile.pob,
         lat: partner1.lat ?? activeProfile.lat,
         lng: partner1.lng ?? activeProfile.lng,
-        partnerName: partner2.name.trim() || 'Priyanka Sharma',
-        partnerDob: partner2.dob || '1990-11-24',
-        partnerTob: partner2.tob || '14:20',
-        partnerPob: partner2.pob || 'Mumbai, Maharashtra, India',
-        partnerLat: partner2.lat ?? 19.0760,
-        partnerLng: partner2.lng ?? 72.8777,
+        partnerName: partner2.name.trim(),
+        partnerDob: partner2.dob,
+        partnerTob: partner2.tob || '09:30',
+        partnerPob: partner2.pob,
+        partnerLat: partner2.lat ?? 28.6139,
+        partnerLng: partner2.lng ?? 77.209,
         includePartnerMilan: true,
       });
     }
     setSaveSuccessMessage(
-      `Saved! Groom (${partner1.name}) & Bride (${partner2.name}) details are now synced to the A4 Report & PDF!`
+      `Saved Groom & Bride details to the Report!`
     );
     setTimeout(() => setSaveSuccessMessage(null), 5000);
   };
@@ -192,20 +227,41 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
     });
     setSaveSuccessMessage(
       checked
-        ? `Partner Milan Activated for ${activeProfile.name}! Partner Milan & 7-Chakra pages are now enabled in the A4 Report.`
-        : `Partner Milan Deactivated for ${activeProfile.name}. It will remain hidden unless checked again.`
+        ? `Partner Milan Activated for ${activeProfile.name}.`
+        : `Partner Milan Deactivated for ${activeProfile.name}.`
     );
     setTimeout(() => setSaveSuccessMessage(null), 4000);
   };
 
-  const analysis: CompatibilityAnalysis = calculateCompatibility(partner1, partner2);
+  const safePartner1 = {
+    ...partner1,
+    name: partner1.name.trim() || (!isFemaleClient ? profile.name || 'Groom' : 'Groom'),
+    dob: partner1.dob || (!isFemaleClient ? profile.dob || '1990-01-01' : '1990-01-01'),
+    tob: partner1.tob || '09:30',
+    pob: partner1.pob || (!isFemaleClient ? profile.pob || 'New Delhi, India' : 'New Delhi, India'),
+  };
+
+  const safePartner2 = {
+    ...partner2,
+    name: partner2.name.trim() || (isFemaleClient ? profile.name || 'Bride' : 'Bride'),
+    dob: partner2.dob || (isFemaleClient ? profile.dob || '1992-01-01' : '1992-01-01'),
+    tob: partner2.tob || '09:30',
+    pob: partner2.pob || (isFemaleClient ? profile.pob || 'New Delhi, India' : 'New Delhi, India'),
+  };
+
+  const analysis: CompatibilityAnalysis = calculateCompatibility(safePartner1, safePartner2);
 
   const p1MulankData = PLANETARY_PROFILES[analysis.p1Mulank];
   const p2MulankData = PLANETARY_PROFILES[analysis.p2Mulank];
   const p1BhagyankData = PLANETARY_PROFILES[analysis.p1Bhagyank];
   const p2BhagyankData = PLANETARY_PROFILES[analysis.p2Bhagyank];
-  const p1NameData = analyzeName(partner1.name, analysis.p1Mulank, analysis.p1Bhagyank);
-  const p2NameData = analyzeName(partner2.name, analysis.p2Mulank, analysis.p2Bhagyank);
+  const p1NameData = analyzeName(safePartner1.name, analysis.p1Mulank, analysis.p1Bhagyank);
+  const p2NameData = analyzeName(safePartner2.name, analysis.p2Mulank, analysis.p2Bhagyank);
+  const partnerRatnaRec = calculatePartnerMilanRatnaRecommendations(
+    safePartner1,
+    safePartner2,
+    analysis
+  );
 
   return (
     <div className="space-y-6 pb-12 animate-fade-in">
@@ -215,13 +271,13 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold uppercase tracking-wider">
               <HeartHandshake className="w-3.5 h-3.5 text-amber-400" />
-              <span>Ashtakoot Guna Milan • 7-Chakra Marital Diagnostics • Pranic Remedies</span>
+              <span>Ashtakoot Guna Milan • 9-Chakra Marital Diagnostics • Pranic Remedies</span>
             </div>
             <h1 className="font-serif text-2xl sm:text-3xl font-bold text-amber-100">
               Vedic Partner Milan & Ashtakoot Milan Chart
             </h1>
             <p className="text-sm text-amber-200/70 max-w-2xl">
-              Synthesizes Sidereal Moon Sign (Rashi), Sun Sign, and Nakshatra from birth coordinates with 36-point Ashtakoot Guna Milan and Bride/Groom 7-Chakra bio-field compatibility.
+              Synthesizes Sidereal Moon Sign (Rashi), Sun Sign, and Nakshatra from birth coordinates with 36-point Ashtakoot Guna Milan and Bride/Groom 9-Chakra bio-field compatibility (#1 Earth Star to #9 Soul Star).
             </p>
 
             {/* Partner Milan Activation Checkbox + Gender Role Switcher */}
@@ -241,13 +297,13 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
                 />
                 <span>
                   {isPartnerMilanActive
-                    ? `✓ Partner Milan Active for ${profile.name} (Included in Report)`
-                    : `Enable Partner Milan for ${profile.name} (Click Checkbox to Activate)`}
+                    ? `✓ Partner Milan Active for ${profile.name}`
+                    : `Enable Partner Milan for ${profile.name}`}
                 </span>
               </label>
 
               <span className="text-[11px] font-bold text-slate-300">
-                Active Client Role ({profile.name}):
+                Client Role ({profile.name}):
               </span>
               <button
                 type="button"
@@ -258,7 +314,7 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
                     : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-slate-200'
                 }`}
               >
-                ♂ Male (Auto Groom)
+                ♂ Male (Groom)
               </button>
               <button
                 type="button"
@@ -269,7 +325,7 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
                     : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-slate-200'
                 }`}
               >
-                ♀ Female (Auto Bride)
+                ♀ Female (Bride)
               </button>
             </div>
           </div>
@@ -282,7 +338,7 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
                 className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
               >
                 <Save className="w-4 h-4" />
-                <span>Save Groom & Bride Details to Report</span>
+                <span>Save Groom & Bride Details</span>
               </button>
             )}
 
@@ -314,10 +370,10 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
             <HeartHandshake className="w-7 h-7" />
           </div>
           <h2 className="font-serif text-xl sm:text-2xl font-bold text-amber-100">
-            Partner Milan is Currently Optional / Inactive for {profile.name}
+            Partner Milan for {profile.name}
           </h2>
           <p className="text-xs sm:text-sm text-slate-300 max-w-xl mx-auto leading-relaxed">
-            As requested, Partner Milan is controlled by a checkbox so it is only active for clients who require marriage/partner compatibility. Check the box below to activate Groom &amp; Bride Ashtakoot Milan and include it in {profile.name}’s A4 Spiritual Report.
+            Enable Partner Milan below to enter Groom &amp; Bride details and calculate 36-Guna Ashtakoot Compatibility.
           </p>
           <div className="pt-2">
             <label className="inline-flex items-center gap-3 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider shadow-xl cursor-pointer hover:from-amber-400 hover:to-orange-500 transition-all">
@@ -341,17 +397,40 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Users className="w-4 h-4" />
-                <span>Groom / Partner 1 Natal Profile</span>
+                <span>Groom / Partner 1 Profile</span>
               </span>
-              <span
-                className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                  !isFemaleClient
-                    ? 'bg-sky-950/90 border-sky-400/50 text-sky-200'
-                    : 'bg-slate-950 border-amber-500/30 text-amber-300'
-                }`}
+              <button
+                type="button"
+                onClick={() =>
+                  setPartner1({
+                    name: profile.name || '',
+                    dob: profile.dob || '',
+                    tob: profile.tob || '09:30',
+                    pob: profile.pob || '',
+                    lat: profile.lat ?? 28.6139,
+                    lng: profile.lng ?? 77.209,
+                  })
+                }
+                className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-950/90 hover:bg-sky-900 border border-sky-400/50 text-sky-200 cursor-pointer"
               >
-                {!isFemaleClient ? '♂ Primary Client (Groom)' : '♂ Partner (Groom)'}
-              </span>
+                Fill Client Details
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setPartner1({
+                    name: '',
+                    dob: '',
+                    tob: '09:30',
+                    pob: '',
+                    lat: 28.6139,
+                    lng: 77.209,
+                  })
+                }
+                className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-950 hover:bg-slate-800 border border-amber-500/30 text-slate-300 cursor-pointer"
+              >
+                Clear
+              </button>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-amber-300">
@@ -371,12 +450,13 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
             <div>
               <label className="block text-[11px] font-medium text-slate-300 mb-1.5 truncate">
-                Groom Full Name {!isFemaleClient ? '(Primary Client)' : '(Partner)'}
+                Groom Full Name
               </label>
               <input
                 type="text"
                 value={partner1.name}
-                onChange={(e) => setPartner1({ ...partner1, name: e.target.value })}
+                onChange={(e) => setPartner1((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Enter Groom Full Name..."
                 className="w-full h-[38px] bg-slate-950 border border-amber-500/30 rounded-xl px-3 text-xs text-amber-100 focus:outline-none focus:border-amber-400"
               />
             </div>
@@ -387,7 +467,7 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
               <input
                 type="date"
                 value={partner1.dob}
-                onChange={(e) => setPartner1({ ...partner1, dob: e.target.value })}
+                onChange={(e) => setPartner1((prev) => ({ ...prev, dob: e.target.value }))}
                 className="w-full h-[38px] bg-slate-950 border border-amber-500/30 rounded-xl px-3 text-xs text-amber-100 focus:outline-none focus:border-amber-400"
               />
             </div>
@@ -397,28 +477,28 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
               </label>
               <BirthTimeAmPmInput
                 value={partner1.tob}
-                onChange={(newTob) => setPartner1({ ...partner1, tob: newTob })}
+                onChange={(newTob) => setPartner1((prev) => ({ ...prev, tob: newTob }))}
                 compact
               />
             </div>
             <div className="relative">
               <label className="block text-[11px] font-medium text-slate-300 mb-1.5 truncate">
-                Groom Birth City (Type 1st 3 Letters)
+                Groom Birth City
               </label>
               <CityAutocompleteInput
                 value={partner1.pob}
                 lat={partner1.lat}
                 lng={partner1.lng}
-                onChangeText={(txt) => setPartner1({ ...partner1, pob: txt })}
+                onChangeText={(txt) => setPartner1((prev) => ({ ...prev, pob: txt }))}
                 onSelectCity={(res) =>
-                  setPartner1({
-                    ...partner1,
+                  setPartner1((prev) => ({
+                    ...prev,
                     pob: res.formattedPob,
                     lat: res.lat,
                     lng: res.lng,
-                  })
+                  }))
                 }
-                placeholder="Type 1st 3 letters of Groom City..."
+                placeholder="Enter Groom Birth City..."
                 inputClassName="w-full h-[38px] bg-slate-950 border border-amber-500/30 rounded-xl pl-9 pr-8 text-xs text-amber-100"
               />
             </div>
@@ -449,17 +529,40 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-bold text-rose-300 uppercase tracking-wider flex items-center gap-1.5">
                 <Heart className="w-4 h-4 text-rose-400" />
-                <span>Bride / Partner 2 Natal Profile</span>
+                <span>Bride / Partner 2 Profile</span>
               </span>
-              <span
-                className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                  isFemaleClient
-                    ? 'bg-rose-950/90 border-rose-400/50 text-rose-200'
-                    : 'bg-slate-950 border-rose-500/30 text-rose-300'
-                }`}
+              <button
+                type="button"
+                onClick={() =>
+                  setPartner2({
+                    name: profile.name || '',
+                    dob: profile.dob || '',
+                    tob: profile.tob || '09:30',
+                    pob: profile.pob || '',
+                    lat: profile.lat ?? 28.6139,
+                    lng: profile.lng ?? 77.209,
+                  })
+                }
+                className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-950/90 hover:bg-rose-900 border border-rose-400/50 text-rose-200 cursor-pointer"
               >
-                {isFemaleClient ? '♀ Primary Client (Bride)' : '♀ Partner (Bride)'}
-              </span>
+                Fill Client Details
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setPartner2({
+                    name: '',
+                    dob: '',
+                    tob: '09:30',
+                    pob: '',
+                    lat: 28.6139,
+                    lng: 77.209,
+                  })
+                }
+                className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-950 hover:bg-slate-800 border border-rose-500/30 text-slate-300 cursor-pointer"
+              >
+                Clear
+              </button>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-amber-300">
@@ -471,7 +574,7 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
                 className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[11px] font-extrabold transition-all cursor-pointer shadow"
               >
                 <Save className="w-3.5 h-3.5" />
-                <span>Save Bride Details</span>
+                <span>Save</span>
               </button>
             </div>
           </div>
@@ -479,12 +582,12 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
             <div>
               <label className="block text-[11px] font-medium text-rose-200/90 mb-1.5 truncate">
-                Bride Full Name {isFemaleClient ? '(Primary Client)' : '(Partner)'}
+                Bride Full Name
               </label>
               <input
                 type="text"
                 value={partner2.name}
-                onChange={(e) => setPartner2({ ...partner2, name: e.target.value })}
+                onChange={(e) => setPartner2((prev) => ({ ...prev, name: e.target.value }))}
                 className="w-full h-[38px] bg-slate-950 border border-rose-500/35 rounded-xl px-3 text-xs text-amber-100 focus:outline-none focus:border-rose-400"
                 placeholder="Enter Bride Full Name..."
               />
@@ -496,7 +599,7 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
               <input
                 type="date"
                 value={partner2.dob}
-                onChange={(e) => setPartner2({ ...partner2, dob: e.target.value })}
+                onChange={(e) => setPartner2((prev) => ({ ...prev, dob: e.target.value }))}
                 className="w-full h-[38px] bg-slate-950 border border-rose-500/35 rounded-xl px-3 text-xs text-amber-100 focus:outline-none focus:border-rose-400"
               />
             </div>
@@ -506,29 +609,29 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
               </label>
               <BirthTimeAmPmInput
                 value={partner2.tob}
-                onChange={(newTob) => setPartner2({ ...partner2, tob: newTob })}
+                onChange={(newTob) => setPartner2((prev) => ({ ...prev, tob: newTob }))}
                 compact
                 className="border-rose-500/35"
               />
             </div>
             <div className="relative">
               <label className="block text-[11px] font-medium text-rose-200/90 mb-1.5 truncate">
-                Bride Birth City (Type 1st 3 Letters)
+                Bride Birth City
               </label>
               <CityAutocompleteInput
                 value={partner2.pob}
                 lat={partner2.lat}
                 lng={partner2.lng}
-                onChangeText={(txt) => setPartner2({ ...partner2, pob: txt })}
+                onChangeText={(txt) => setPartner2((prev) => ({ ...prev, pob: txt }))}
                 onSelectCity={(res) =>
-                  setPartner2({
-                    ...partner2,
+                  setPartner2((prev) => ({
+                    ...prev,
                     pob: res.formattedPob,
                     lat: res.lat,
                     lng: res.lng,
-                  })
+                  }))
                 }
-                placeholder="Type 1st 3 letters of Bride City..."
+                placeholder="Enter Bride Birth City..."
                 inputClassName="w-full h-[38px] bg-slate-950 border border-rose-500/35 rounded-xl pl-9 pr-8 text-xs text-amber-100"
               />
             </div>
@@ -553,6 +656,150 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
           </div>
         </div>
       </div>
+
+      {/* AUTOMATIC NAME + DOB VIBRATIONS COMPATIBILITY SCORE GAUGE GRAPHIC */}
+      {analysis.nameDobCompatibility && (
+        <div className="bg-gradient-to-br from-slate-900 via-indigo-950/35 to-slate-950 border-2 border-amber-500/40 rounded-3xl p-6 shadow-2xl">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            {/* Left: Prominent SVG Semi-Circular Dial Gauge Graphic */}
+            <div className="lg:col-span-5 flex flex-col items-center justify-center bg-slate-950/90 border border-amber-500/30 rounded-2xl p-5">
+              <div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-1">
+                Automatic Name &amp; DOB Compatibility Score
+              </div>
+              {(() => {
+                const score = Math.max(0, Math.min(100, analysis.nameDobCompatibility.overallScore));
+                const needleDeg = -90 + (score / 100) * 180;
+                const arcLen = 314.16; // pi * 100 radius semi-circle
+                const dashOffset = arcLen * (1 - score / 100);
+                const scoreColor =
+                  score >= 80
+                    ? '#10b981'
+                    : score >= 68
+                    ? '#f59e0b'
+                    : '#f43f5e';
+                return (
+                  <div className="relative w-full max-w-[280px] flex flex-col items-center">
+                    <svg viewBox="0 0 260 150" className="w-full h-auto overflow-visible" aria-label={`Compatibility Score Gauge ${score}%`}>
+                      <defs>
+                        <linearGradient id="compatGaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor="#ef4444" />
+                          <stop offset="50%" stopColor="#f59e0b" />
+                          <stop offset="100%" stopColor="#10b981" />
+                        </linearGradient>
+                      </defs>
+                      {/* Background Track Arc */}
+                      <path
+                        d="M 30 130 A 100 100 0 0 1 230 130"
+                        fill="none"
+                        stroke="#1e293b"
+                        strokeWidth="18"
+                        strokeLinecap="round"
+                      />
+                      {/* Colored Spectrum Arc */}
+                      <path
+                        d="M 30 130 A 100 100 0 0 1 230 130"
+                        fill="none"
+                        stroke="url(#compatGaugeGrad)"
+                        strokeWidth="18"
+                        strokeLinecap="round"
+                        strokeDasharray={arcLen}
+                        strokeDashoffset={dashOffset}
+                        style={{ transition: 'stroke-dashoffset 0.6s ease' }}
+                      />
+                      {/* Scale Labels */}
+                      <text x="18" y="146" fill="#94a3b8" fontSize="10" fontWeight="bold" textAnchor="middle">0%</text>
+                      <text x="130" y="18" fill="#fbbf24" fontSize="10" fontWeight="bold" textAnchor="middle">50%</text>
+                      <text x="242" y="146" fill="#34d399" fontSize="10" fontWeight="bold" textAnchor="middle">100%</text>
+
+                      {/* Calibrated Gauge Needle */}
+                      <g transform={`translate(130, 130) rotate(${needleDeg})`} style={{ transition: 'transform 0.6s ease' }}>
+                        <polygon points="-4,0 0,-84 4,0" fill="#fde68a" />
+                        <circle cx="0" cy="0" r="8" fill={scoreColor} stroke="#fef3c7" strokeWidth="2.5" />
+                      </g>
+                    </svg>
+
+                    <div className="-mt-2 text-center">
+                      <div className="text-4xl font-black font-mono text-white">
+                        {score}%
+                      </div>
+                      <span
+                        className={`inline-block mt-1 px-3 py-1 rounded-full text-[11px] font-black uppercase border ${
+                          score >= 80
+                            ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
+                            : score >= 68
+                            ? 'bg-amber-500/20 border-amber-400/50 text-amber-300'
+                            : 'bg-rose-500/20 border-rose-400/50 text-rose-300'
+                        }`}
+                      >
+                        {analysis.nameDobCompatibility.verdict}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Right: 4 Name + DOB Vibration Sub-Meters & Narrative Summary */}
+            <div className="lg:col-span-7 space-y-4">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-[10px] font-bold uppercase tracking-wider mb-1">
+                  <Sparkles className="w-3 h-3" />
+                  <span>Chaldean Name + Mulank/Bhagyank DOB Vibration Engine</span>
+                </div>
+                <h2 className="font-serif text-xl sm:text-2xl font-bold text-amber-100">
+                  Name &amp; Birth-Number Compatibility Breakdown
+                </h2>
+                <p className="text-xs text-slate-300 leading-relaxed mt-1">
+                  {analysis.nameDobCompatibility.summary}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  {
+                    label: `Mulank Psychic Resonance (${analysis.p1Mulank} vs ${analysis.p2Mulank})`,
+                    val: analysis.nameDobCompatibility.mulankHarmony,
+                  },
+                  {
+                    label: `Bhagyank Destiny Synergy (${analysis.p1Bhagyank} vs ${analysis.p2Bhagyank})`,
+                    val: analysis.nameDobCompatibility.bhagyankHarmony,
+                  },
+                  {
+                    label: `Chaldean Namank Harmony (${p1NameData.chaldeanSingle} vs ${p2NameData.chaldeanSingle})`,
+                    val: analysis.nameDobCompatibility.namankHarmony,
+                  },
+                  {
+                    label: 'Cross Name-to-Birth Resonance',
+                    val: analysis.nameDobCompatibility.crossNumberHarmony,
+                  },
+                ].map((metric, mIdx) => (
+                  <div
+                    key={mIdx}
+                    className="p-3 rounded-xl bg-slate-950/85 border border-amber-500/25 space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-amber-200">{metric.label}</span>
+                      <span className="font-mono font-black text-emerald-300">{metric.val}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-slate-900 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${
+                          metric.val >= 80
+                            ? 'bg-emerald-500'
+                            : metric.val >= 65
+                            ? 'bg-amber-400'
+                            : 'bg-rose-500'
+                        }`}
+                        style={{ width: `${Math.max(8, Math.min(100, metric.val))}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* NEW: Groom vs Bride Complete Natal & Astrological Details Ledger + Visual Ashtakoot Milan Chart */}
       <div className="bg-slate-900/90 border border-amber-500/35 rounded-2xl p-6 shadow-xl space-y-6">
@@ -755,7 +1002,189 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
         </div>
       </div>
 
-      {/* 7-Chakra Post-Marriage Life Challenges (Bride vs Groom Attribution) & Remedies */}
+      {/* Vedic Astrology Precious Stone (Ratna) Recommendation for Relationship Harmony (Groom & Bride) */}
+      <div className="bg-gradient-to-br from-slate-900 via-amber-950/20 to-rose-950/20 border-2 border-amber-500/40 rounded-3xl p-6 shadow-2xl space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-amber-500/25 pb-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 text-[11px] font-bold uppercase tracking-wider">
+              <Gem className="w-3.5 h-3.5 text-amber-400" />
+              <span>Vedic Astrology Relationship Harmony Ratna-Shastra • Groom &amp; Bride Prescription</span>
+            </div>
+            <h2 className="font-serif text-xl sm:text-2xl font-bold text-amber-100">
+              Precious Stone Recommendation for Relationship Harmony (Bride &amp; Groom)
+            </h2>
+            <p className="text-xs text-amber-200/80 max-w-3xl leading-relaxed">
+              Prescribed according to Vedic Sidereal Astrology (Janma Rashi, 7th House Kalatra/Mangalya Karaka, 36-Guna Ashtakoot Milan, and 9-Chakra Bio-Field Diagnostics) with complete wearing instructions (Which Finger, Hand, Metal, Day/Time, Purification &amp; Mantra). Automatically included in your PDF Report.
+            </p>
+          </div>
+          <div className="px-4 py-2.5 rounded-2xl bg-emerald-950/80 border border-emerald-500/40 text-xs text-emerald-200 shrink-0">
+            <span className="text-[10px] text-emerald-400 uppercase font-bold block">
+              Who Needs To Wear For Harmony
+            </span>
+            <strong className="text-sm font-serif text-amber-200 block">
+              {partnerRatnaRec.whoNeedsItBadge}
+            </strong>
+          </div>
+        </div>
+
+        {/* Vedic Astrological Assessment Banner: Who Needs It & Why */}
+        <div className="p-4 rounded-2xl bg-slate-950/90 border border-amber-500/35 text-xs sm:text-sm text-slate-200 leading-relaxed space-y-2">
+          <div className="flex items-center gap-2 text-amber-300 font-bold uppercase tracking-wider text-xs">
+            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Vedic Astrological Harmony Verdict (Bride vs Groom Requirement):</span>
+          </div>
+          <p>{partnerRatnaRec.whoNeedsItSummary}</p>
+        </div>
+
+        {/* Groom & Bride Precious Stone Cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[
+            { rec: partnerRatnaRec.groomStone, isBride: false },
+            { rec: partnerRatnaRec.brideStone, isBride: true },
+          ].map(({ rec, isBride }, idx) => (
+            <div
+              key={idx}
+              className={`rounded-2xl border p-5 space-y-4 flex flex-col justify-between ${
+                isBride
+                  ? 'bg-slate-950/95 border-rose-500/45 shadow-lg shadow-rose-500/5'
+                  : 'bg-slate-950/95 border-amber-500/45 shadow-lg shadow-amber-500/5'
+              }`}
+            >
+              <div className="space-y-4">
+                {/* Priority Badge & Planet */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span
+                    className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${
+                      isBride
+                        ? 'bg-rose-500/20 text-rose-200 border-rose-500/40'
+                        : 'bg-amber-500/20 text-amber-200 border-amber-500/40'
+                    }`}
+                  >
+                    {rec.priorityBadge}
+                  </span>
+                  <span className="text-xs font-mono font-bold text-amber-200 bg-slate-900 px-2.5 py-1 rounded-lg border border-amber-500/25">
+                    Planet: {rec.ratna.planet} ({rec.ratna.sanskritPlanet})
+                  </span>
+                </div>
+
+                <div>
+                  <h3 className="font-serif text-lg font-bold text-amber-100 leading-snug">
+                    {rec.purposeTitle}
+                  </h3>
+                  <p className="text-xs text-amber-300/80 mt-0.5">{rec.purposeSubtitle}</p>
+                </div>
+
+                {/* Primary Gem & Upratna Highlight Box */}
+                <div
+                  className={`p-4 rounded-xl bg-gradient-to-r ${rec.ratna.badgeColor} border space-y-1.5`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider opacity-85 block">
+                        Primary Precious Stone (Maharatna)
+                      </span>
+                      <div className="text-base sm:text-lg font-serif font-black text-white">
+                        {rec.ratna.primaryGem} ({rec.ratna.sanskritGem})
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-lg bg-black/40 border border-white/20 text-xs font-mono font-bold text-amber-200">
+                      {rec.idealRattiRange} ({rec.idealCaratRange})
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-100 pt-1 border-t border-white/15">
+                    <strong>Substitute Stone (Upratna):</strong> {rec.ratna.upratna}
+                  </div>
+                </div>
+
+                {/* Astrological Reason for Relationship Harmony */}
+                <div className="p-3.5 rounded-xl bg-slate-900/90 border border-amber-500/20 text-xs text-slate-200 leading-relaxed">
+                  <strong className="text-amber-300 uppercase text-[10px] tracking-wider block mb-1">
+                    How It Creates Relationship &amp; Marital Harmony:
+                  </strong>
+                  {rec.astrologicalReason}
+                </div>
+
+                {/* 4-Box Wearing Details Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 rounded-xl bg-slate-900 border border-amber-500/25">
+                    <span className="text-[10px] font-bold uppercase text-amber-400 block mb-0.5">
+                      1. Which Finger &amp; Hand to Wear
+                    </span>
+                    <strong className="text-amber-100 block">{rec.wearingHandAndFinger}</strong>
+                    <span className="text-[11px] text-slate-400">
+                      Chakra: {rec.ratna.chakra}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-900 border border-amber-500/25">
+                    <span className="text-[10px] font-bold uppercase text-amber-400 block mb-0.5">
+                      2. In Which Metal &amp; Setting
+                    </span>
+                    <strong className="text-amber-100 block">{rec.ratna.metal}</strong>
+                    <span className="text-[11px] text-slate-400">
+                      Open-back ring/pendant touching skin
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-900 border border-amber-500/25">
+                    <span className="text-[10px] font-bold uppercase text-emerald-400 block mb-0.5">
+                      3. Auspicious Day, Time &amp; Nakshatra
+                    </span>
+                    <strong className="text-emerald-200 block">{rec.dayAndMuhurat}</strong>
+                    <span className="text-[11px] text-slate-400">
+                      {rec.pakshaAndNakshatra}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-900 border border-amber-500/25">
+                    <span className="text-[10px] font-bold uppercase text-sky-400 block mb-0.5">
+                      4. Panchamrit Purification Liquid
+                    </span>
+                    <strong className="text-sky-200 block text-[11px]">
+                      {rec.purificationIngredients}
+                    </strong>
+                    <span className="text-[10px] text-slate-400">
+                      Soak 21–30 mins before sunrise
+                    </span>
+                  </div>
+                </div>
+
+                {/* Energization Beej Mantra */}
+                <div className="p-3 rounded-xl bg-amber-950/35 border border-amber-500/35">
+                  <span className="text-[10px] font-bold uppercase text-amber-400 block">
+                    5. Prana-Pratishtha Beej Mantra (Chant 108 Times Before Wearing)
+                  </span>
+                  <span className="text-xs font-serif font-bold text-amber-100">
+                    {rec.beejMantra}
+                  </span>
+                </div>
+
+                {/* Step-by-Step How to Wear Vidhi */}
+                <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-1.5 text-xs">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 block">
+                    Complete Step-by-Step Wearing Ritual (Ratna Dharan Vidhi):
+                  </span>
+                  {rec.howToWearStepByStep.map((step, sIdx) => (
+                    <p key={sIdx} className="text-[11px] text-slate-200 leading-relaxed">
+                      • {step}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Joint Couple Harmony Stone Note */}
+        <div className="p-4 rounded-2xl bg-emerald-950/25 border border-emerald-500/40 text-xs text-emerald-100 leading-relaxed">
+          <strong className="text-emerald-300 uppercase tracking-wider block mb-0.5">
+            Joint Couple Relationship Harmony &amp; Bedroom Crystal Synergy:
+          </strong>
+          {partnerRatnaRec.jointHarmonyStoneSummary}
+        </div>
+      </div>
+
+      {/* 9-Chakra Post-Marriage Life Challenges (Bride vs Groom Attribution) & Remedies */}
       <div className="bg-slate-900/90 border border-amber-500/30 rounded-2xl p-6 shadow-xl space-y-5">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-amber-500/20 pb-4">
           <div>
@@ -764,10 +1193,10 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
               <span>Bio-Energetic Marital Diagnostics • Bride & Groom Attribution</span>
             </div>
             <h2 className="font-serif text-xl font-bold text-amber-100">
-              7-Chakra Post-Marriage Life Challenges & Remedial Prescriptions
+              9-Chakra Post-Marriage Life Challenges & Remedial Prescriptions
             </h2>
             <p className="text-xs text-amber-300/70">
-              Pinpoints the specific karmic challenges carried by the Groom ({partner1.name}) and the Bride ({partner2.name}) across all 7 Chakras after marriage, with targeted Pranic Aura & Crystal remedies.
+              Pinpoints the specific karmic challenges carried by the Groom ({partner1.name}) and the Bride ({partner2.name}) across all 9 Chakras (#1 Earth Star to #9 Soul Star) after marriage, with targeted Pranic Aura & Crystal remedies.
             </p>
           </div>
         </div>

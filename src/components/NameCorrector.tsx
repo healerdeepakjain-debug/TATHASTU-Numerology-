@@ -29,6 +29,7 @@ import {
   calculateCareerAndAuraProfile,
   calculateVedicAstrologyFromBirth,
 } from '../utils/astrologyAndCities';
+import { calculateNameAndPersonalGrowthRatnaRecommendation } from './GemstoneRecommendation';
 import vedicNameCareerYantra from '../assets/images/vedic_name_career_yantra_1794305504547.jpg';
 
 interface NameCorrectorProps {
@@ -137,6 +138,12 @@ export const NameCorrector: React.FC<NameCorrectorProps> = ({
     profile.tob || '09:30',
     profile.lat ?? 28.6139,
     profile.lng ?? 77.2090
+  );
+
+  const nameAndGrowthRatna = calculateNameAndPersonalGrowthRatnaRecommendation(
+    profile,
+    realOriginalName || activeFinalName,
+    68
   );
 
   const handleCopy = (name: string) => {
@@ -796,6 +803,189 @@ export const NameCorrector: React.FC<NameCorrectorProps> = ({
           )}
         </>
       )}
+
+      {/* Precious Stone (Ratna) Recommendation If Client Does Not Want to Change Name & For Personal Growth */}
+      <div className="bg-gradient-to-br from-slate-900 via-amber-950/20 to-slate-950 border-2 border-amber-500/40 rounded-3xl p-6 shadow-2xl space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-amber-500/25 pb-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 text-[11px] font-bold uppercase tracking-wider">
+              <Gem className="w-3.5 h-3.5 text-amber-400" />
+              <span>Vedic Ratna-Shastra • No-Name-Change Harmony &amp; Personal Growth Precious Stones</span>
+            </div>
+            <h2 className="font-serif text-xl sm:text-2xl font-bold text-amber-100">
+              Precious Stone Recommendation — If You Do Not Want to Change Name &amp; For Personal Growth
+            </h2>
+            <p className="text-xs text-amber-200/80 max-w-3xl leading-relaxed">
+              If a client prefers <strong>not to change their existing name spelling</strong> in documents or social use, or seeks accelerated <strong>Personal Growth &amp; Career Breakthroughs</strong>, Vedic Astrology prescribes these consecrated Precious Stones (Ratna &amp; Upratna) with complete wearing instructions (Metal, Finger, Hand, Day/Time, Purification &amp; Mantra). Automatically included in your PDF Report.
+            </p>
+          </div>
+          <div className="px-4 py-2.5 rounded-2xl bg-slate-950 border border-amber-500/35 text-xs text-amber-200 shrink-0">
+            <span className="text-[10px] text-amber-400 uppercase font-bold block">Prescribed Stone Weight</span>
+            <strong className="text-sm font-mono text-emerald-300">
+              {nameAndGrowthRatna.noNameChangeStone.idealRattiRange}
+            </strong>
+            <span className="text-[10px] text-slate-400 block">
+              ({nameAndGrowthRatna.noNameChangeStone.idealCaratRange})
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[nameAndGrowthRatna.noNameChangeStone, nameAndGrowthRatna.personalGrowthStone].map(
+            (stoneRec, idx) => (
+              <div
+                key={idx}
+                className={`rounded-2xl border p-5 space-y-4 flex flex-col justify-between ${
+                  idx === 0
+                    ? 'bg-slate-950/95 border-amber-500/45 shadow-lg shadow-amber-500/5'
+                    : 'bg-slate-950/95 border-emerald-500/45 shadow-lg shadow-emerald-500/5'
+                }`}
+              >
+                <div className="space-y-4">
+                  {/* Top Badge & Title */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span
+                      className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${
+                        idx === 0
+                          ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                          : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                      }`}
+                    >
+                      {stoneRec.priorityBadge}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-amber-200 bg-slate-900 px-2.5 py-1 rounded-lg border border-amber-500/25">
+                      Planet: {stoneRec.ratna.planet} ({stoneRec.ratna.sanskritPlanet})
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="font-serif text-lg font-bold text-amber-100 leading-snug">
+                      {stoneRec.purposeTitle}
+                    </h3>
+                    <p className="text-xs text-amber-300/80 mt-0.5">{stoneRec.purposeSubtitle}</p>
+                  </div>
+
+                  {/* Primary Gem & Upratna Highlight Box */}
+                  <div
+                    className={`p-4 rounded-xl bg-gradient-to-r ${stoneRec.ratna.badgeColor} border space-y-1.5`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold tracking-wider opacity-85 block">
+                          Primary Precious Stone (Maharatna)
+                        </span>
+                        <div className="text-base sm:text-lg font-serif font-black text-white">
+                          {stoneRec.ratna.primaryGem} ({stoneRec.ratna.sanskritGem})
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-lg bg-black/40 border border-white/20 text-xs font-mono font-bold text-amber-200">
+                        {stoneRec.idealRattiRange}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-100 pt-1 border-t border-white/15">
+                      <strong>Substitute Stone (Upratna):</strong> {stoneRec.ratna.upratna}
+                    </div>
+                  </div>
+
+                  {/* Astrological Reason */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/90 border border-amber-500/20 text-xs text-slate-200 leading-relaxed">
+                    <strong className="text-amber-300 uppercase text-[10px] tracking-wider block mb-1">
+                      Why Recommended According to Vedic Astrology &amp; Chaldean Numerology:
+                    </strong>
+                    {stoneRec.astrologicalReason}
+                  </div>
+
+                  {/* Complete Wearing Details Grid (Finger, Metal, Day/Time, Purification) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 rounded-xl bg-slate-900 border border-amber-500/25">
+                      <span className="text-[10px] font-bold uppercase text-amber-400 block mb-0.5">
+                        1. Which Finger &amp; Hand to Wear
+                      </span>
+                      <strong className="text-amber-100 block">{stoneRec.wearingHandAndFinger}</strong>
+                      <span className="text-[11px] text-slate-400">
+                        Activates {stoneRec.ratna.chakra}
+                      </span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-900 border border-amber-500/25">
+                      <span className="text-[10px] font-bold uppercase text-amber-400 block mb-0.5">
+                        2. In Which Metal &amp; Setting
+                      </span>
+                      <strong className="text-amber-100 block">{stoneRec.ratna.metal}</strong>
+                      <span className="text-[11px] text-slate-400">
+                        Open-back ring/pendant touching skin
+                      </span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-900 border border-amber-500/25">
+                      <span className="text-[10px] font-bold uppercase text-emerald-400 block mb-0.5">
+                        3. Auspicious Day, Time &amp; Nakshatra
+                      </span>
+                      <strong className="text-emerald-200 block">{stoneRec.dayAndMuhurat}</strong>
+                      <span className="text-[11px] text-slate-400">
+                        {stoneRec.pakshaAndNakshatra}
+                      </span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-900 border border-amber-500/25">
+                      <span className="text-[10px] font-bold uppercase text-sky-400 block mb-0.5">
+                        4. Panchamrit Purification Liquid
+                      </span>
+                      <strong className="text-sky-200 block text-[11px]">
+                        {stoneRec.purificationIngredients}
+                      </strong>
+                      <span className="text-[10px] text-slate-400">
+                        Soak 21–30 mins before sunrise
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Energization Mantra Box */}
+                  <div className="p-3 rounded-xl bg-amber-950/35 border border-amber-500/35 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-amber-400 block">
+                        5. Prana-Pratishtha Beej Mantra (Chant 108 Times Before Wearing)
+                      </span>
+                      <span className="text-xs font-serif font-bold text-amber-100">
+                        {stoneRec.beejMantra}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(stoneRec.beejMantra)}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-amber-500/30 text-amber-200 text-[11px] font-semibold flex items-center gap-1 shrink-0 cursor-pointer"
+                    >
+                      {copiedName === stoneRec.beejMantra ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy Mantra</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Step-by-Step How to Wear Vidhi */}
+                  <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-1.5 text-xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 block">
+                      Complete Step-by-Step Wearing Ritual (Ratna Dharan Vidhi):
+                    </span>
+                    {stoneRec.howToWearStepByStep.map((step, sIdx) => (
+                      <p key={sIdx} className="text-[11px] text-slate-200 leading-relaxed">
+                        • {step}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      </div>
 
       {/* Vocation, Enterprise & Industry Alignment (Dynamically Synced to Final Selected Profile Name) */}
       <div className="bg-slate-900/90 border border-amber-500/25 rounded-2xl p-6 shadow-xl space-y-6">

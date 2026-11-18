@@ -72,7 +72,11 @@ import {
 import { generateAdvanceMobileReport } from '../utils/advanceMobileReport';
 import { calculateIslamicVedicReport } from '../utils/islamicVedicRemedies';
 import { getBestUpcomingEventsNext12Months } from './CosmicCalendar';
-import { calculateGemstoneRecommendationsForProfile } from './GemstoneRecommendation';
+import {
+  calculateGemstoneRecommendationsForProfile,
+  calculateNameAndPersonalGrowthRatnaRecommendation,
+  calculatePartnerMilanRatnaRecommendations,
+} from './GemstoneRecommendation';
 import { LO_SHU_VEDIC_REMEDIES_DB } from './InteractiveLoShuGrid';
 import { SANSKRit_BEEJ_DEVANAGARI } from './DailyMantras';
 import {
@@ -92,6 +96,7 @@ import {
 import { formatTime12HourAmPm } from './BirthTimeAmPmInput';
 import { calculateYogaPranayamaPlan } from '../utils/yogaPranayamaData';
 import { YogaPostureIllustration, PranayamaIllustration } from './YogaPranayamaModule';
+import { calculateParivarMilanReport, ParivarMemberRecord } from '../utils/parivarMilan';
 import {
   db,
   auth,
@@ -126,6 +131,7 @@ export interface ReportSectionSelection {
   dailyMantras: boolean;
   yogaAndPranayama: boolean;
   partnerMilanChakras: boolean;
+  parivarMilan: boolean;
   festivals12Months: boolean;
   islamicVedicRemedies: boolean;
 }
@@ -137,7 +143,7 @@ export interface CenterWatermarkSettings {
   showBrandText: boolean;
 }
 
-const REPORT_SETTINGS_STORAGE_KEY = 'tathastu_a4_report_module_selection_v7';
+const REPORT_SETTINGS_STORAGE_KEY = 'tathastu_a4_report_module_selection_v8';
 const INCLUDE_ACTIVE_TAB_STORAGE_KEY = 'tathastu_a4_include_active_tab_v5';
 const WATERMARK_SETTINGS_STORAGE_KEY = 'tathastu_a4_center_watermark_v3';
 
@@ -150,6 +156,7 @@ const DEFAULT_REPORT_SECTIONS: ReportSectionSelection = {
   dailyMantras: true,
   yogaAndPranayama: true,
   partnerMilanChakras: true,
+  parivarMilan: true,
   festivals12Months: true,
   islamicVedicRemedies: true,
 };
@@ -281,14 +288,15 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     }
   }, [selectedSections]);
 
-  // Sync Partner Milan report section with the client's opt-in checkbox (`includePartnerMilan`, enabled by default unless explicitly set to false)
+  // Sync Partner Milan & Parivar Milan report sections with the client's opt-in checkboxes
   useEffect(() => {
     if (!activeProfile) return;
     setSelectedSections((prev) => ({
       ...prev,
       partnerMilanChakras: activeProfile.includePartnerMilan !== false,
+      parivarMilan: activeProfile.includeParivarMilan !== false,
     }));
-  }, [activeProfile?.id, activeProfile?.includePartnerMilan]);
+  }, [activeProfile?.id, activeProfile?.includePartnerMilan, activeProfile?.includeParivarMilan]);
 
   useEffect(() => {
     try {
@@ -365,9 +373,23 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     const m = calculateMulank(activeProfile.dob);
     const b = calculateBhagyank(activeProfile.dob);
     const nameAnalysis = analyzeName(activeProfile.name, m, b);
+    const nPlanetFallback =
+      PLANETARY_PROFILES[nameAnalysis.chaldeanSingle] || PLANETARY_PROFILES[1];
     const nameSuggestions = generateNameCorrections(activeProfile.name, m, b);
     const topPerfectChoice =
-      nameSuggestions.find((s) => s.harmonyScore >= 90) || nameSuggestions[0];
+      nameSuggestions.find((s) => s.harmonyScore >= 90) ||
+      nameSuggestions[0] || {
+        originalName: activeProfile.name,
+        suggestedName: activeProfile.name,
+        compoundNumber: nameAnalysis.totalChaldeanCompound,
+        singleDigit: nameAnalysis.chaldeanSingle,
+        compoundTitle: nameAnalysis.compoundInfo.title,
+        changeExplanation: 'Current name spelling is already in auspicious cosmic harmony.',
+        harmonyScore: nameAnalysis.harmonyScore,
+        targetPlanet: nPlanetFallback.planet,
+        planetaryBlessing: `Naturally aligned with ${nPlanetFallback.planet}.`,
+        isTopPerfectChoice: true,
+      };
     const mobileAnalysis = analyzeMobileNumber(activeProfile.mobile || '', m, b);
     const advMobile = generateAdvanceMobileReport(
       activeProfile.dob,
@@ -401,7 +423,23 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       lat: activeProfile.lat ?? 28.6139,
       lng: activeProfile.lng ?? 77.209,
       mobile: activeProfile.mobile || '9876543210',
+      gender: activeProfile.gender,
     });
+    const nameAndGrowthRatna = calculateNameAndPersonalGrowthRatnaRecommendation(
+      {
+        id: activeProfile.id,
+        name: activeProfile.name,
+        dob: activeProfile.dob,
+        tob: activeProfile.tob || '09:30',
+        pob: activeProfile.pob || 'New Delhi, India',
+        lat: activeProfile.lat ?? 28.6139,
+        lng: activeProfile.lng ?? 77.209,
+        mobile: activeProfile.mobile || '9876543210',
+        gender: activeProfile.gender,
+      },
+      activeProfile.originalName || activeProfile.name,
+      68
+    );
 
     const triadCompound =
       m + b + nameAnalysis.totalChaldeanCompound + advMobile.mobileCompound;
@@ -507,6 +545,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       partnerMilan.p2Mulank,
       partnerMilan.p2Bhagyank
     );
+    const partnerRatnaRec = calculatePartnerMilanRatnaRecommendations(
+      groomProfile,
+      brideProfile,
+      partnerMilan
+    );
     const lunar12Months = generate12MonthLunarAndAstroForecast(
       todayIso,
       astro.rashi,
@@ -526,6 +569,20 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       mobile: activeProfile.mobile || '9876543210',
       healthConcerns: activeProfile.healthConcerns || [],
     });
+    const parivarSavedMembers = ((activeProfile.parivarMembers || []) as ParivarMemberRecord[])
+      .filter((fm) => fm && fm.isSaved && fm.name?.trim() && fm.dob?.trim())
+      .slice(0, 5);
+    const parivarReport = calculateParivarMilanReport(
+      {
+        name: activeProfile.name,
+        dob: activeProfile.dob,
+        tob: activeProfile.tob || '09:30',
+        pob: activeProfile.pob || 'New Delhi, India',
+        lat: activeProfile.lat ?? 28.6139,
+        lng: activeProfile.lng ?? 77.209,
+      },
+      parivarSavedMembers
+    );
     return {
       m,
       b,
@@ -539,6 +596,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       astro,
       career,
       gemRecommend,
+      nameAndGrowthRatna,
       triadCompound,
       triadSingle,
       triadPlanet,
@@ -560,8 +618,10 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       groomNameAnalysis,
       brideNameAnalysis,
       partnerMilan,
+      partnerRatnaRec,
       lunar12Months,
       yogaPlan,
+      parivarReport,
     };
   }, [activeProfile]);
 
@@ -605,9 +665,23 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           dailyMantras: 1,
           yogaAndPranayama: 2,
           partnerMilanChakras: 3,
+          parivarMilan: 1,
           festivals12Months: 3,
           islamicVedicRemedies: 2,
         } as Record<keyof ReportSectionSelection, number>,
+        modulePageRanges: {
+          nameAndCareer: { startPage: 2, endPage: 6, pageCount: 5 },
+          advanceMobileAudit: { startPage: 7, endPage: 11, pageCount: 5 },
+          forecast12Months: { startPage: 12, endPage: 14, pageCount: 3 },
+          auditedCalendar12Months: { startPage: 15, endPage: 16, pageCount: 2 },
+          transitsAndMoon12Months: { startPage: 17, endPage: 18, pageCount: 2 },
+          dailyMantras: { startPage: 19, endPage: 19, pageCount: 1 },
+          yogaAndPranayama: { startPage: 20, endPage: 21, pageCount: 2 },
+          partnerMilanChakras: { startPage: 22, endPage: 24, pageCount: 3 },
+          parivarMilan: { startPage: 25, endPage: 25, pageCount: 1 },
+          festivals12Months: { startPage: 26, endPage: 28, pageCount: 3 },
+          islamicVedicRemedies: { startPage: 29, endPage: 30, pageCount: 2 },
+        } as Record<keyof ReportSectionSelection, { startPage: number; endPage: number; pageCount: number }>,
       };
     }
     return calculateExactPdfPageCounts({
@@ -716,10 +790,10 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     },
     {
       key: 'partnerMilanChakras',
-      label: tr(`8. Complete Partner Milan & 7-Chakras (Opt-In • ${fmtPg(modulePageCounts.partnerMilanChakras)})`),
+      label: tr(`8. Complete Partner Milan & 9-Chakras (Opt-In • ${fmtPg(modulePageCounts.partnerMilanChakras)})`),
       shortLabel: tr('Partner Milan (Opt-In)'),
       pageCount: modulePageCounts.partnerMilanChakras,
-      sub: tr('Groom/Bride Natal Table, 8-Koota Ashtakoot Chart & All 7 Chakras Complete Diagnostics/Remedies'),
+      sub: tr('Groom/Bride Natal Table, 8-Koota Ashtakoot Chart & All 9 Chakras Complete Diagnostics/Remedies'),
     },
     {
       key: 'festivals12Months',
@@ -735,6 +809,13 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       pageCount: modulePageCounts.islamicVedicRemedies,
       sub: tr('3 Personal Asma-ul-Husna Cards, All 5 Quranic Surahs, 7-Day Schedule & 1-to-9 Adad Reference Table'),
     },
+    {
+      key: 'parivarMilan',
+      label: tr(`11. Parivar Milan & 9-Chakra Family Report (Opt-In • ${fmtPg(modulePageCounts.parivarMilan ?? 0)})`),
+      shortLabel: tr('Parivar Milan (Opt-In)'),
+      pageCount: modulePageCounts.parivarMilan ?? 0,
+      sub: tr('Conclusive Harmony Graph, 9-Chakra Family Diagnostics, Vedic Astrology & Gemstone/Rudraksha Remedies'),
+    },
   ];
 
   const toggleSectionCheckbox = (key: keyof ReportSectionSelection) => {
@@ -743,15 +824,23 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     if (key === 'partnerMilanChakras' && activeProfile) {
       void adminUpdateProfile({ ...activeProfile, includePartnerMilan: nextVal });
     }
+    if (key === 'parivarMilan' && activeProfile) {
+      void adminUpdateProfile({ ...activeProfile, includeParivarMilan: nextVal });
+    }
   };
 
   const handleSelectAllModules = () => {
     setSelectedSections({
       ...DEFAULT_REPORT_SECTIONS,
       partnerMilanChakras: true,
+      parivarMilan: true,
     });
     if (activeProfile) {
-      void adminUpdateProfile({ ...activeProfile, includePartnerMilan: true });
+      void adminUpdateProfile({
+        ...activeProfile,
+        includePartnerMilan: true,
+        includeParivarMilan: true,
+      });
     }
   };
 
@@ -765,6 +854,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       dailyMantras: false,
       yogaAndPranayama: true,
       partnerMilanChakras: false,
+      parivarMilan: false,
       festivals12Months: false,
       islamicVedicRemedies: false,
     });
@@ -779,7 +869,8 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     if (selectedSections.transitsAndMoon12Months) labels.push(tr('Planetary Transits & Moon Phases'));
     if (selectedSections.dailyMantras) labels.push(tr('Daily Vedic Mantras'));
     if (selectedSections.yogaAndPranayama) labels.push(tr('Vedic Yoga, Pranayama & 7-Day Planner'));
-    if (selectedSections.partnerMilanChakras) labels.push(tr('Complete Partner Milan & 7-Chakras'));
+    if (selectedSections.partnerMilanChakras) labels.push(tr('Complete Partner Milan & 9-Chakras'));
+    if (selectedSections.parivarMilan) labels.push(tr('Complete Parivar Milan & 9-Chakra Family Report'));
     if (selectedSections.festivals12Months) labels.push(tr('All-India 12-Month Festivals'));
     if (selectedSections.islamicVedicRemedies && !excludeIslamicLabel) {
       labels.push(tr('Islamic-Vedic Remedies'));
@@ -1158,6 +1249,24 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       );
     }
 
+    if (
+      selectedSections.parivarMilan &&
+      multiSectionReportData.parivarReport &&
+      multiSectionReportData.parivarReport.memberResults.length > 0
+    ) {
+      const pRep = multiSectionReportData.parivarReport;
+      lines.push(
+        `👨‍👩‍👧‍👦 *5. PARIVAR MILAN & 9-CHAKRA FAMILY HARMONY:*`,
+        `• Overall Parivar Harmony: *${pRep.averageFamilyHarmony}%* (${pRep.familyCollectiveVerdict})`,
+        ...pRep.memberResults.map(
+          (mr) =>
+            `• ${mr.member.name} (${mr.member.relation}): *${mr.overallHarmonyScore}%* | Rashi: ${mr.vedicAstrologyHarmony.bhakootAxisLabel.split(' ')[0]} (${mr.vedicAstrologyHarmony.rashiHarmonyScore}%) | Rudraksha: ${mr.gemstoneAndRudrakshaRemedy.familyUnityRudraksha}`
+        ),
+        `_${pRep.importantDisclaimer}_`,
+        ``
+      );
+    }
+
     lines.push(
       ...deepLinkSection,
       ``,
@@ -1335,7 +1444,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
   ) => {
     if (!activeProfile || !multiSectionReportData) return null;
     return (
-      <div className="relative z-10 pb-2.5 mb-2.5 border-b-2 border-amber-500/45">
+      <div className="a4-page-header relative z-10 pb-2 mb-2 border-b-2 border-amber-500/45">
         <div className="flex items-center justify-between text-[9.5px] font-serif text-amber-300/90 pb-1 mb-1.5 border-b border-amber-500/20">
           <span>॥ श्री गणेशाय नमः • ॐ ऐं ह्रीं क्लीं चामुण्डायै विच्चे ॥</span>
           <span className="font-mono uppercase tracking-widest text-amber-400 font-bold">
@@ -1511,6 +1620,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       astro,
       career,
       gemRecommend,
+      nameAndGrowthRatna,
       triadCompound,
       triadSingle,
       triadPlanet,
@@ -1532,8 +1642,10 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       groomNameAnalysis,
       brideNameAnalysis,
       partnerMilan,
+      partnerRatnaRec,
       lunar12Months,
       yogaPlan,
+      parivarReport,
     } = multiSectionReportData;
 
     const mPlanet = PLANETARY_PROFILES[m] || PLANETARY_PROFILES[1];
@@ -1560,14 +1672,268 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       content: React.ReactNode;
     }[] = [];
 
-    // PAGES 1–5: Detailed Name Numerology, Career Harmony, Gemstone Recommendation & Universal Validator
+    // PAGE 1: DYNAMIC 'INDEX OF MODULES' & MASTER SPIRITUAL DOSSIER TABLE OF CONTENTS
+    const activeModuleDefinitions: {
+      key: keyof ReportSectionSelection;
+      title: string;
+      chaptersAndScope: string;
+      personalizedHighlight: string;
+    }[] = [
+      {
+        key: 'nameAndCareer',
+        title: 'Name, Career, 5-Pillar Ratna & Universal Validator',
+        chaptersAndScope:
+          'Birth Chart, 3×3 Lo-Shu Matrix, 8 Planes, Name Spellings, All Career Sectors, 5-Pillar Ratna & Vehicle/Flat/Business Validator',
+        personalizedHighlight: `Mulank ${m} (${mPlanet.planet}) | Bhagyank ${b} (${bPlanet.planet}) • Top Name: ${topPerfectChoice?.suggestedName || activeProfile.name} • Primary Gem: ${gemRecommend.lifeStone.primaryGem}`,
+      },
+      {
+        key: 'advanceMobileAudit',
+        title: 'Advance Mobile Numerology, Dasha & Lo-Shu Matrix',
+        chaptersAndScope:
+          '10-Digit Mobile Pair Scanner, Missing/Repeated Digits, Planetary Dasha Timeline, Remedies & Ideal Number Synthesis',
+        personalizedHighlight: `Mobile: ${activeProfile.mobile || '9876543210'} → Compound ${mobileAnalysis.compoundNumber} / Root #${mobileAnalysis.singleDigit} (${mobileAnalysis.verdict})`,
+      },
+      {
+        key: 'forecast12Months',
+        title: `12-Month Vedic & Numerology Monthly Forecast (${reportDateRange.startFormatted} – ${reportDateRange.endFormatted})`,
+        chaptersAndScope:
+          'Month-by-Month Personal Month Vibrations, Career, Finance, Health, Relationships & Monthly Remedies across 12 Months',
+        personalizedHighlight: `12-Month Cycle for Mulank ${m} & Bhagyank ${b} • Peak Growth & Precaution Windows Mapped`,
+      },
+      {
+        key: 'auditedCalendar12Months',
+        title: '12-Month Audited Good / Bad / Best Dates Calendar',
+        chaptersAndScope:
+          'Complete 365-Day Date-by-Date Classification (Siddha Best Dates, Good Dates, Neutral & Precaution/Avoid Dates)',
+        personalizedHighlight: `Lucky Days: ${mPlanet.luckyDays.join(', ')} • Event-Specific Muhurat Dates for Business, Property & Travel`,
+      },
+      {
+        key: 'transitsAndMoon12Months',
+        title: 'Planetary Transits (Gochar), Hora, Purnima & Amavasya',
+        chaptersAndScope:
+          'Guru, Shani, Rahu-Ketu & Surya Gochar Impact on Moon Rashi + 24-Hour Planetary Hora Table + 12-Month Purnima/Amavasya',
+        personalizedHighlight: `Vedic Moon Rashi: ${astro.rashi} (${astro.nakshatra}) • Lord: ${astro.rashiLord}`,
+      },
+      {
+        key: 'dailyMantras',
+        title: '7-Day Planetary Mantras & Sacred Sankalpa Schedule',
+        chaptersAndScope:
+          'Complete Sunday-to-Saturday Vedic Beej Mantras, Chanting Counts, Mala Selection, Disha & Morning Sankalpa Vidhi',
+        personalizedHighlight: `Primary Beej Mantra: "${bPlanet.beejMantra}" (108x Daily) • Deity: ${bPlanet.deity}`,
+      },
+      {
+        key: 'yogaAndPranayama',
+        title: 'Personalized Yoga Sadhana, Asanas & Pranayama Protocol',
+        chaptersAndScope:
+          'Illustrated Step-by-Step Yogasanas, Therapeutic Pranayama Breathing, Mudras & Daily Holistic Sadhana Routine',
+        personalizedHighlight: `Target Focus: ${
+          activeProfile.healthConcerns && activeProfile.healthConcerns.length > 0
+            ? activeProfile.healthConcerns.join(', ')
+            : 'Complete Pranic Vitality & Stress Relief'
+        }`,
+      },
+      {
+        key: 'partnerMilanChakras',
+        title: 'Partner Milan, 36-Guna Ashtakoot & 9-Chakra Diagnostics',
+        chaptersAndScope:
+          'Groom & Bride Name/DOB Compatibility Gauge, All 8 Ashtakoot Kootas, All 9 Chakras (#1 Earth Star to #9 Soul Star) & Couple Ratna',
+        personalizedHighlight: `${groomProfile.name} & ${brideProfile.name} • Score: ${partnerMilan.totalPoints}/36 Gunas (${partnerMilan.overallPercentage}% — ${partnerMilan.verdict})`,
+      },
+      {
+        key: 'parivarMilan',
+        title: 'Parivar Milan (Family Harmony Graph, Vedic & 9-Chakra Diagnostics)',
+        chaptersAndScope:
+          'Final Conclusive Family Harmony Graph, Vedic Astrology Match, Gemstone & Rudraksha Remedies + Chakras Needing Harmony',
+        personalizedHighlight:
+          parivarReport && parivarReport.memberResults.length > 0
+            ? `Family Members Analyzed: ${parivarReport.memberResults.length} • Collective Harmony: ${parivarReport.averageFamilyHarmony}% (${parivarReport.familyCollectiveVerdict})`
+            : `Household Parivar Vedic Astrology, 9-Chakra & Gemstone/Rudraksha Harmony Charter`,
+      },
+      {
+        key: 'festivals12Months',
+        title: 'All-India Major Festivals Muhurat & Home/Office Vastu Blueprint',
+        chaptersAndScope:
+          '16 Major Festivals Personalized Siddha Puja Muhurats, Diya & Offerings + Complete Home & Office Vastu Shastra Charter',
+        personalizedHighlight: `Personalized Puja Timings, Disha & Vastu Remedies for Mulank ${m} & Bhagyank ${b}`,
+      },
+      {
+        key: 'islamicVedicRemedies',
+        title: 'Ilm-ul-Adad (Abjad), Asma-ul-Husna, Quranic Duas & 7-Day Dhikr',
+        chaptersAndScope:
+          '3 Personalized Asma-ul-Husna Wazifa Cards, 5 Quranic Surah/Dua Remedies, 7-Day Dhikr/Sadaqah & 1–9 Adad Matrix',
+        personalizedHighlight: `Abjad Root #${islamicReport.abjadRootNumber} • Primary Tasbih: ${islamicReport.primaryAsmaRemedy.transliteration} (${islamicReport.primaryAsmaRemedy.recommendedDailyCount})`,
+      },
+    ];
+
+    const selectedModuleEntries = activeModuleDefinitions.filter((mDef) =>
+      selectedCount === 0 ? mDef.key === 'nameAndCareer' : Boolean(selectedSections[mDef.key])
+    );
+
+    const modRanges = pdfPageCountInfo.modulePageRanges;
+    const totalCalculatedPages =
+      pdfPageCountInfo.totalPdfPages > 0 ? pdfPageCountInfo.totalPdfPages : 28;
+
+    pages.push({
+      title: `Page 1: Index of Modules & Master Spiritual Dossier Guide (${selectedModuleEntries.length} Active Modules • ${totalCalculatedPages} Pages)`,
+      headImg: spiritualReportBanner,
+      headLabel: 'Index of Modules',
+      isCover: true,
+      content: (
+        <div className="space-y-2 text-xs a4-section-no-break">
+          <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-950/80 via-slate-950 to-indigo-950/80 border-2 border-amber-400/60 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span className="text-[8px] font-mono uppercase tracking-widest text-amber-300 font-bold block">
+                MASTER DOSSIER TABLE OF CONTENTS • ACTIVE MODULE DIRECTORY
+              </span>
+              <h3 className="font-serif text-sm font-black text-amber-100">
+                INDEX OF MODULES INCLUDED IN THIS PERSONALIZED REPORT ({selectedModuleEntries.length} ACTIVE MODULES)
+              </h3>
+              <p className="text-[8.5px] text-slate-200 mt-0.5">
+                Prepared exclusively for <strong className="text-amber-200">{activeProfile.name}</strong> (DOB: {activeProfile.dob} • Place: {activeProfile.pob || 'New Delhi'}) — Locate every selected diagnostic module, prediction, and remedy by page number below.
+              </p>
+            </div>
+            <div className="px-2.5 py-1.5 rounded-xl bg-slate-950/90 border border-emerald-400/50 text-right shrink-0">
+              <div className="text-[7.5px] font-mono uppercase text-emerald-300 font-bold">
+                Total Dossier Length
+              </div>
+              <div className="font-mono text-xs font-black text-amber-200">
+                {totalCalculatedPages} A4 Pages
+              </div>
+              <div className="text-[7px] font-mono text-sky-300">
+                {selectedModuleEntries.length} Selected Module(s)
+              </div>
+            </div>
+          </div>
+
+          {/* Active Modules Table of Contents */}
+          <div className="overflow-hidden rounded-xl border border-amber-500/45 bg-slate-950/95">
+            <div className="grid grid-cols-12 bg-amber-950/70 border-b border-amber-500/40 px-2.5 py-1.5 text-[7.8px] font-bold text-amber-200 uppercase">
+              <div className="col-span-3 pr-1.5">Module # &amp; Active Module Name</div>
+              <div className="col-span-4 px-1.5 border-l border-amber-500/25">
+                Chapters, Diagnostics &amp; Remedies Included
+              </div>
+              <div className="col-span-3 px-1.5 border-l border-amber-500/25">
+                Key Personalized Result ({activeProfile.name})
+              </div>
+              <div className="col-span-2 pl-1.5 border-l border-amber-500/25 text-right">
+                Page No.
+              </div>
+            </div>
+            <div className="divide-y divide-amber-500/20">
+              <div className="grid grid-cols-12 px-2.5 py-1 text-[7.6px] items-center bg-slate-900/70">
+                <div className="col-span-3 pr-1.5 font-bold text-amber-200">
+                  00. Index of Modules &amp; Executive Charter
+                </div>
+                <div className="col-span-4 px-1.5 border-l border-amber-500/20 text-slate-300">
+                  Master Table of Contents, Active Module Directory &amp; Core Natal/Remedy Quick Reference
+                </div>
+                <div className="col-span-3 px-1.5 border-l border-amber-500/20 text-emerald-300 font-mono">
+                  Mulank {m} ({mPlanet.planet}) | Bhagyank {b} ({bPlanet.planet}) • {astro.rashi}
+                </div>
+                <div className="col-span-2 pl-1.5 border-l border-amber-500/20 text-right font-mono font-bold text-amber-300">
+                  Page 1 (1p)
+                </div>
+              </div>
+              {selectedModuleEntries.map((entry, idx) => {
+                const rng = modRanges?.[entry.key];
+                const pgText =
+                  rng && rng.startPage > 0
+                    ? rng.startPage === rng.endPage
+                      ? `Page ${rng.startPage} (1p)`
+                      : `Pages ${rng.startPage}–${rng.endPage} (${rng.pageCount}p)`
+                    : `${modulePageCounts[entry.key] || 1}p`;
+                return (
+                  <div
+                    key={entry.key}
+                    className="grid grid-cols-12 px-2.5 py-1 text-[7.6px] items-center leading-tight"
+                  >
+                    <div className="col-span-3 pr-1.5 font-bold text-amber-100">
+                      {String(idx + 1).padStart(2, '0')}. {entry.title}
+                    </div>
+                    <div className="col-span-4 px-1.5 border-l border-amber-500/20 text-slate-300">
+                      {entry.chaptersAndScope}
+                    </div>
+                    <div className="col-span-3 px-1.5 border-l border-amber-500/20 text-emerald-200">
+                      {entry.personalizedHighlight}
+                    </div>
+                    <div className="col-span-2 pl-1.5 border-l border-amber-500/20 text-right font-mono font-bold text-amber-300">
+                      {pgText}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Executive Personalized Snapshot & Core Remedies Charter */}
+          <div className="p-2.5 rounded-xl bg-slate-950/95 border border-amber-500/40 space-y-1.5">
+            <div className="flex items-center justify-between border-b border-amber-500/25 pb-1">
+              <span className="font-serif text-[9px] font-bold text-amber-200 uppercase">
+                EXECUTIVE PERSONALIZED SNAPSHOT &amp; CORE REMEDIES AT A GLANCE ({activeProfile.name.toUpperCase()})
+              </span>
+              <span className="text-[7.5px] font-mono text-emerald-300">
+                12-Month Validity: {reportDateRange.startFormatted} – {reportDateRange.endFormatted}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 text-[7.8px]">
+              <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5">
+                <div className="font-bold text-amber-300 uppercase">
+                  1. Core Numerology &amp; Vedic Natal Pillars
+                </div>
+                <div className="text-slate-200">
+                  <strong>Mulank (Driver):</strong> #{m} ({mPlanet.planet}) • <strong>Bhagyank (Conductor):</strong> #{b} ({bPlanet.planet}) • <strong>Rashi:</strong> {astro.rashi} ({astro.nakshatra}, Pada {astro.pada})
+                </div>
+                <div className="text-emerald-300 font-mono">
+                  Friendly Nos: {mPlanet.friendlyNumbers.join(', ')} • Lucky Days: {mPlanet.luckyDays.join(', ')} • Color: {mPlanet.luckyColor}
+                </div>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5">
+                <div className="font-bold text-amber-300 uppercase">
+                  2. Name &amp; Mobile Frequency Alignment
+                </div>
+                <div className="text-slate-200">
+                  <strong>Current Name:</strong> {activeProfile.name} (#{nameAnalysis.totalChaldeanCompound} → #{nameAnalysis.chaldeanSingle}) • <strong>Best Name:</strong> {topPerfectChoice?.suggestedName || activeProfile.name} (#{topPerfectChoice?.compoundNumber ?? nameAnalysis.totalChaldeanCompound} → #{topPerfectChoice?.singleDigit ?? nameAnalysis.chaldeanSingle})
+                </div>
+                <div className="text-sky-300 font-mono">
+                  Mobile: {activeProfile.mobile || '9876543210'} → #{mobileAnalysis.singleDigit} ({mobileAnalysis.verdict}) • Top Career: {career.perfectBusinesses[0]?.field || career.favorableProfessions[0] || 'Leadership'}
+                </div>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5">
+                <div className="font-bold text-amber-300 uppercase">
+                  3. Primary 5-Pillar Ratna &amp; Rudraksha Shield
+                </div>
+                <div className="text-slate-200">
+                  <strong>Primary Maharatna:</strong> {gemRecommend.lifeStone.primaryGem} ({gemRecommend.lifeStone.sanskritGem}) in {gemRecommend.lifeStone.metal} on {gemRecommend.lifeStone.finger} ({gemRecommend.lifeStone.wearingDay})
+                </div>
+                <div className="text-emerald-300">
+                  <strong>Destiny Stone:</strong> {gemRecommend.destinyStone.primaryGem} • <strong>Growth Stone:</strong> {nameAndGrowthRatna.personalGrowthStone.ratna.primaryGem}
+                </div>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5">
+                <div className="font-bold text-amber-300 uppercase">
+                  4. Daily Beej Mantra, Vastu &amp; Healer Attestation
+                </div>
+                <div className="text-slate-200">
+                  <strong>Daily Mantra:</strong> &ldquo;{bPlanet.beejMantra}&rdquo; (108x Morning) • <strong>Vastu Disha:</strong> East / North-East (Ishan Kon)
+                </div>
+                <div className="text-amber-200">
+                  <strong>Authorized Healer:</strong> {healerDisplayName} ({brandTitle}) • 📞 {healerDisplayMobile}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    });
+
+    // PAGES 2–6: Detailed Name Numerology, Career Harmony, Gemstone Recommendation & Universal Validator
     if (selectedSections.nameAndCareer || selectedCount === 0) {
-      // PAGE 1: Executive Birth Chart, Panchang, Lo-Shu 8 Planes & Name Summary
+      // PAGE 2: Executive Birth Chart, Panchang, Lo-Shu 8 Planes & Name Summary
       pages.push({
         title: 'Page 1: Executive Vedic Birth Chart, Daily Panchang, 8 Lo-Shu Planes & Name Vibration Summary',
         headImg: vedicNameCareerYantra,
         headLabel: 'Sri Yantra & Birth Chart',
-        isCover: true,
+        isCover: false,
         content: (
           <div className="space-y-2 text-xs">
             <div className="relative rounded-xl overflow-hidden border border-amber-500/40 min-h-[76px]">
@@ -1950,6 +2316,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 ))}
               </div>
             </div>
+            {!isHealerReport && (
+              <div className="p-2 rounded-xl bg-amber-950/35 border border-amber-500/45 text-[8.5px] text-amber-100 leading-snug">
+                <strong className="text-amber-300 uppercase">Official Remedies Portal (www.tathastulight.com):</strong> Visit <strong className="text-emerald-300 font-mono">www.tathastulight.com</strong> for 100% genuine &amp; authentic Rudraksha, Crystals, Home Cleansing Material, Precious &amp; Semi-Precious Stones.
+              </div>
+            )}
           </div>
         ),
       });
@@ -2010,10 +2381,10 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                   </div>
                   <div className="grid grid-cols-2 gap-1.5 text-slate-200 a4-print-grid-2">
                     <div>
-                      <strong>Metal & Finger:</strong> {item.stone.metal} • {item.stone.wearingFinger} | <strong>Day/Time:</strong> {item.stone.wearingDayTime}
+                      <strong>Metal &amp; Finger:</strong> {item.stone.metal} • {item.stone.wearingFinger} | <strong>Day/Time:</strong> {item.stone.wearingDayTime}
                     </div>
                     <div>
-                      <strong>Chakra:</strong> {item.stone.chakra} | <strong>Mantra:</strong> <span className="text-amber-300 font-mono">{item.stone.mantra}</span>
+                      <strong>Chakra:</strong> {item.stone.chakra} | <strong>Mantra (108x):</strong> <span className="text-amber-300 font-mono">{item.stone.mantra}</span>
                     </div>
                   </div>
                   <div className="text-slate-300">
@@ -2025,10 +2396,149 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
 
             <div className="p-2 rounded-xl bg-emerald-950/25 border border-emerald-500/35 text-[8.8px] text-slate-200">
               <strong className="text-emerald-300 uppercase block mb-0.5">
-                5-Step Vedic Ratna Prana-Pratishtha (Consecration) Vidhi:
+                5-Step Vedic Ratna Prana-Pratishtha (Consecration) &amp; Wearing Vidhi:
               </strong>
-              1. Dip the ring/pendant in Panchamrit (raw cow milk, curd, honey, ghee & Gangajal) for 21 minutes on the prescribed morning Hora. 2. Wash with pure Gangajal and place on a red/yellow silk cloth before your Ishta Devata. 3. Offer sandalwood paste, Akshat, incense, and a cow-ghee lamp. 4. Chant the stone's Beej Mantra 108 times facing East. 5. Touch the ring to the deity's feet and wear on the prescribed finger during Shukla Paksha.
+              1. Dip the open-back ring/pendant in Panchamrit (raw cow milk, curd, honey, ghee &amp; Gangajal) for 21–30 minutes on the prescribed morning Hora. 2. Wash with pure Gangajal and place on a red/yellow silk cloth before your Ishta Devata. 3. Offer sandalwood paste, Akshat, incense, and a cow-ghee lamp. 4. Chant the stone&apos;s Beej Mantra 108 times facing East. 5. Wear on the prescribed finger and hand during Shukla Paksha so the stone touches your skin directly.
+              {!isHealerReport && (
+                <div className="mt-1 pt-1 border-t border-emerald-500/30 text-amber-200 font-semibold">
+                  • Visit <strong className="text-emerald-300 font-mono">www.tathastulight.com</strong> for 100% genuine &amp; authentic Rudraksha, Crystals, Home Cleansing Material, Precious &amp; Semi-Precious Stones.
+                </div>
+              )}
             </div>
+          </div>
+        ),
+      });
+
+      // PAGE 4B: Precious Stone Recommendation — If You Do Not Want to Change Name & For Personal Growth (Complete Step-by-Step Guide)
+      pages.push({
+        title: 'Page 4B: Precious Stone Recommendation — If You Do Not Want to Change Name & For Personal Growth (Complete Step-by-Step Guide)',
+        headImg: vedicNameCareerYantra,
+        headLabel: 'No-Name-Change & Growth Ratna',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40 flex items-center justify-between gap-2">
+              <div>
+                <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
+                  Precious Stone Recommendation — If You Do Not Want to Change Name &amp; For Personal Growth
+                </h4>
+                <p className="text-[8.5px] text-slate-300">
+                  For clients who prefer not to alter their existing name spelling (<strong className="text-amber-200">{activeProfile.originalName || activeProfile.name}</strong>) and for accelerated Personal Growth &amp; Career Breakthroughs, with complete wearing instructions.
+                </p>
+              </div>
+              <span className="px-2 py-1 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-mono text-[8.5px] font-bold shrink-0">
+                Weight: {nameAndGrowthRatna.noNameChangeStone.idealRattiRange} ({nameAndGrowthRatna.noNameChangeStone.idealCaratRange})
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 a4-print-grid-2">
+              {[nameAndGrowthRatna.noNameChangeStone, nameAndGrowthRatna.personalGrowthStone].map(
+                (stoneRec, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-2 rounded-xl bg-slate-950/95 border text-[8px] space-y-1.5 ${
+                      idx === 0 ? 'border-amber-500/45' : 'border-emerald-500/45'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span
+                        className={`px-1.5 py-0.5 rounded font-bold uppercase text-[7.5px] border ${
+                          idx === 0
+                            ? 'bg-amber-500/20 text-amber-200 border-amber-500/40'
+                            : 'bg-emerald-500/20 text-emerald-200 border-emerald-500/40'
+                        }`}
+                      >
+                        {stoneRec.priorityBadge}
+                      </span>
+                      <span className="font-mono text-amber-300 font-bold text-[7.5px]">
+                        Planet: {stoneRec.ratna.planet} ({stoneRec.ratna.sanskritPlanet})
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="font-serif text-[9.5px] font-bold text-amber-100 leading-tight">
+                        {stoneRec.purposeTitle}
+                      </div>
+                      <div className="text-[7.5px] text-amber-300/80">{stoneRec.purposeSubtitle}</div>
+                    </div>
+
+                    <div className="p-1.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <strong className="text-emerald-300 text-[9px]">
+                          Primary Stone: {stoneRec.ratna.primaryGem} ({stoneRec.ratna.sanskritGem})
+                        </strong>
+                        <span className="font-mono text-amber-200 text-[7.5px] font-bold">
+                          {stoneRec.idealRattiRange}
+                        </span>
+                      </div>
+                      <div className="text-sky-200 text-[7.8px]">
+                        <strong>Substitute Stone (Upratna):</strong> {stoneRec.ratna.upratna}
+                      </div>
+                    </div>
+
+                    <div className="p-1.5 rounded-lg bg-slate-900/90 border border-amber-500/20 text-slate-200 leading-snug">
+                      <strong className="text-amber-300 uppercase block text-[7.5px]">
+                        Why Recommended According to Vedic Astrology &amp; Chaldean Numerology:
+                      </strong>
+                      {stoneRec.astrologicalReason}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1 a4-print-grid-2">
+                      <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
+                        <strong className="text-amber-400 uppercase block text-[7px]">
+                          1. Which Finger &amp; Hand to Wear
+                        </strong>
+                        <span className="text-amber-100 font-bold block">{stoneRec.wearingHandAndFinger}</span>
+                        <span className="text-slate-400 text-[7px]">Chakra: {stoneRec.ratna.chakra}</span>
+                      </div>
+                      <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
+                        <strong className="text-amber-400 uppercase block text-[7px]">
+                          2. In Which Metal &amp; Setting
+                        </strong>
+                        <span className="text-amber-100 font-bold block">{stoneRec.ratna.metal}</span>
+                        <span className="text-slate-400 text-[7px]">Open-back touching skin</span>
+                      </div>
+                      <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
+                        <strong className="text-emerald-400 uppercase block text-[7px]">
+                          3. Auspicious Day, Time &amp; Nakshatra
+                        </strong>
+                        <span className="text-emerald-200 font-bold block">{stoneRec.dayAndMuhurat}</span>
+                        <span className="text-slate-400 text-[7px]">{stoneRec.pakshaAndNakshatra}</span>
+                      </div>
+                      <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
+                        <strong className="text-sky-400 uppercase block text-[7px]">
+                          4. Panchamrit Purification Liquid
+                        </strong>
+                        <span className="text-sky-200 font-bold block">{stoneRec.purificationIngredients}</span>
+                        <span className="text-slate-400 text-[7px]">Soak 21–30 mins before sunrise</span>
+                      </div>
+                    </div>
+
+                    <div className="p-1.5 rounded bg-amber-950/35 border border-amber-500/35">
+                      <strong className="text-amber-400 uppercase block text-[7px]">
+                        5. Prana-Pratishtha Beej Mantra (Chant 108 Times Before Wearing)
+                      </strong>
+                      <span className="font-serif font-bold text-amber-100">{stoneRec.beejMantra}</span>
+                    </div>
+
+                    <div className="p-1.5 rounded bg-emerald-950/25 border border-emerald-500/30 space-y-0.5">
+                      <strong className="text-emerald-300 uppercase block text-[7.5px]">
+                        Complete Step-by-Step Wearing Ritual (Ratna Dharan Vidhi):
+                      </strong>
+                      {stoneRec.howToWearStepByStep.map((st, sIdx) => (
+                        <div key={sIdx} className="text-slate-200 leading-tight text-[7.5px]">
+                          • {st}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+            {!isHealerReport && (
+              <div className="p-2 rounded-xl bg-amber-950/35 border border-amber-500/45 text-[8.5px] text-amber-100 leading-snug">
+                <strong className="text-amber-300 uppercase">Official Remedies Portal (www.tathastulight.com):</strong> Visit <strong className="text-emerald-300 font-mono">www.tathastulight.com</strong> for 100% genuine &amp; authentic Rudraksha, Crystals, Home Cleansing Material, Precious &amp; Semi-Precious Stones.
+              </div>
+            )}
           </div>
         ),
       });
@@ -2521,6 +3031,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 );
               })}
             </div>
+            {!isHealerReport && (
+              <div className="p-2 rounded-xl bg-amber-950/35 border border-amber-500/45 text-[8.5px] text-amber-100 leading-snug">
+                <strong className="text-amber-300 uppercase">Official Remedies Portal (www.tathastulight.com):</strong> Visit <strong className="text-emerald-300 font-mono">www.tathastulight.com</strong> for 100% genuine &amp; authentic Rudraksha, Crystals, Home Cleansing Material, Precious &amp; Semi-Precious Stones.
+              </div>
+            )}
           </div>
         ),
       });
@@ -3109,7 +3624,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                   mantra: `${panchang.todayBeejMantra} • Om Namo Bhagavate Vasudevaya`,
                   soundHz: `432 Hz Cosmic Tuning & 528 Hz Pranic Shield`,
                   malaMudra: `27x • Rudraksha Mala • Apana Mudra • Before Sleep`,
-                  meaning: `Clears subconscious psychic fatigue, shields all 7 Chakras from Rahu Kaal (${panchang.rahuKaalWindow.start}–${panchang.rahuKaalWindow.end}) & Gochar friction.`,
+                  meaning: `Clears subconscious psychic fatigue, shields all 9 Chakras from Rahu Kaal (${panchang.rahuKaalWindow.start}–${panchang.rahuKaalWindow.end}) & Gochar friction.`,
                 },
               ].map((mCard, idx) => (
                 <div key={idx} className="p-2 rounded-xl bg-slate-950 border border-amber-500/35 text-[8.5px] space-y-0.5">
@@ -3173,7 +3688,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 <strong>Selected Health Focus:</strong>{' '}
                 {yogaPlan.selectedHealthConcerns.length > 0
                   ? yogaPlan.selectedHealthConcerns.map((hc) => hc.label).join(' • ')
-                  : 'General Pranic Vitality & 7-Chakra Harmony'}
+                  : 'General Pranic Vitality & 9-Chakra Harmony'}
               </div>
             </div>
 
@@ -3320,7 +3835,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       });
     }
 
-    // PAGES 19–21: Complete Partner Milan (Groom & Bride Natal Table + Visual Ashtakoot Guna Milan Chart Box + All 8 Koota Details 1-8 + All 7 Chakras Full Diagnostics & Remedies)
+    // PAGES 19–21: Complete Partner Milan (Groom & Bride Natal Table + Visual Ashtakoot Guna Milan Chart Box + All 8 Koota Details 1-8 + All 9 Chakras Full Diagnostics & Remedies)
     if (selectedSections.partnerMilanChakras) {
       // PAGE 19: Groom & Bride Complete Natal Details + Visual Ashtakoot Guna Milan Chart Box + Marital Name Harmonizer
       pages.push({
@@ -3549,15 +4064,15 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         ),
       });
 
-      // PAGE 20: 7-Chakra Marital Diagnostics & Remedies (Part 1: Chakras 1 to 4 in Width-Wise 2-Column Layout)
+      // PAGE 20: 9-Chakra Marital Diagnostics & Remedies (Part 1: Chakras 1 to 5 in Width-Wise 2-Column Layout)
       pages.push({
-        title: `Page 20: Partner Milan — 7-Chakra Marital Diagnostics, Aura Scan & Remedies (Part 1: Chakras 1 to 4)`,
+        title: `Page 20: Partner Milan — 9-Chakra Marital Diagnostics, Aura Scan & Remedies (Part 1: Chakras 1 to 5)`,
         headImg: chakraHealingArt,
-        headLabel: 'Chakras 1–4 Diagnostics',
+        headLabel: 'Chakras 1–5 Diagnostics',
         content: (
           <div className="space-y-1.5 text-xs">
             <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
-              {partnerMilan.chakraChallenges.slice(0, 4).map((ch, idx) => (
+              {partnerMilan.chakraChallenges.slice(0, 5).map((ch, idx) => (
                 <div key={idx} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.1px] space-y-0.5">
                   <div className="flex items-center justify-between font-bold text-amber-200 gap-1">
                     <span>
@@ -3587,19 +4102,19 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         ),
       });
 
-      // PAGE 21: 7-Chakra Marital Diagnostics & Remedies (Part 2: Chakras 5 to 7 + Couple Vastu Shield in Width-Wise 2-Column Layout)
+      // PAGE 21: 9-Chakra Marital Diagnostics & Remedies (Part 2: Chakras 6 to 9 + Couple Vastu Shield in Width-Wise 2-Column Layout)
       pages.push({
-        title: `Page 21: Partner Milan — 7-Chakra Marital Diagnostics, Aura Scan & Remedies (Part 2: Chakras 5 to 7)`,
+        title: `Page 21: Partner Milan — 9-Chakra Marital Diagnostics, Aura Scan & Remedies (Part 2: Chakras 6 to 9)`,
         headImg: chakraHealingArt,
-        headLabel: 'Chakras 5–7 Diagnostics',
+        headLabel: 'Chakras 6–9 Diagnostics',
         content: (
           <div className="space-y-1.5 text-xs">
             <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
-              {partnerMilan.chakraChallenges.slice(4, 7).map((ch, idx) => (
+              {partnerMilan.chakraChallenges.slice(5, 9).map((ch, idx) => (
                 <div key={idx} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.1px] space-y-0.5">
                   <div className="flex items-center justify-between font-bold text-amber-200 gap-1">
                     <span>
-                      {idx + 5}. {ch.chakraName} ({ch.sanskritName} • {ch.element})
+                      {idx + 6}. {ch.chakraName} ({ch.sanskritName} • {ch.element})
                     </span>
                     <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 font-mono text-[7.5px] shrink-0">
                       {ch.alignmentScore}% [{ch.status}] • {ch.affectedPartner}
@@ -3622,7 +4137,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               ))}
               <div className="p-2 rounded-xl bg-amber-950/25 border border-amber-500/35 text-[8.3px] text-amber-100 space-y-1">
                 <strong className="text-amber-300 uppercase block">
-                  8. Master Marital Compatibility Summary &amp; Bedroom Vastu Shield ({groomProfile.name} &amp; {brideProfile.name}):
+                  10. Master Marital Compatibility Summary &amp; Bedroom Vastu Shield ({groomProfile.name} &amp; {brideProfile.name}):
                 </strong>
                 <p>{partnerMilan.summary}</p>
                 <p className="text-emerald-300">
@@ -3630,6 +4145,373 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 </p>
               </div>
             </div>
+          </div>
+        ),
+      });
+
+      // PAGE 21B: Precious Stone Recommendation for Relationship Harmony (Bride & Groom) with Complete Step-by-Step Guide & Joint Couple Relationship Harmony & Bedroom Crystal Synergy
+      pages.push({
+        title: `Page 21B: Partner Milan — Precious Stone Recommendation for Relationship Harmony (Bride & Groom) & Complete Step-by-Step Guide`,
+        headImg: chakraHealingArt,
+        headLabel: 'Relationship Harmony Ratna',
+        content: (
+          <div className="space-y-1.5 text-xs">
+            {/* Header & Who Needs To Wear For Harmony */}
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40 flex items-center justify-between gap-2">
+              <div>
+                <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
+                  Precious Stone Recommendation for Relationship Harmony (Bride &amp; Groom)
+                </h4>
+                <p className="text-[8px] text-slate-300">
+                  Prescribed according to Vedic Sidereal Astrology (Janma Rashi, 7th House Kalatra/Mangalya Karaka, 36-Guna Ashtakoot Milan &amp; 9-Chakra Bio-Field Diagnostics).
+                </p>
+              </div>
+              <span className="px-2 py-1 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-serif text-[8.5px] font-bold shrink-0">
+                Who Needs To Wear: {partnerRatnaRec.whoNeedsItBadge}
+              </span>
+            </div>
+
+            {/* Vedic Astrological Harmony Verdict Banner */}
+            <div className="p-1.5 rounded-xl bg-slate-950/90 border border-amber-500/35 text-[8px] text-slate-200 leading-snug">
+              <strong className="text-amber-300 uppercase block text-[7.8px]">
+                Vedic Astrological Harmony Verdict (Bride vs Groom Requirement):
+              </strong>
+              {partnerRatnaRec.whoNeedsItSummary}
+            </div>
+
+            {/* Groom & Bride Precious Stone Cards */}
+            <div className="grid grid-cols-2 gap-2 a4-print-grid-2">
+              {[
+                { rec: partnerRatnaRec.groomStone, isBride: false },
+                { rec: partnerRatnaRec.brideStone, isBride: true },
+              ].map(({ rec, isBride }, idx) => (
+                <div
+                  key={idx}
+                  className={`p-2 rounded-xl bg-slate-950/95 border text-[7.8px] space-y-1 ${
+                    isBride ? 'border-rose-500/45' : 'border-amber-500/45'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span
+                      className={`px-1.5 py-0.5 rounded font-bold uppercase text-[7.2px] border ${
+                        isBride
+                          ? 'bg-rose-500/20 text-rose-200 border-rose-500/40'
+                          : 'bg-amber-500/20 text-amber-200 border-amber-500/40'
+                      }`}
+                    >
+                      {rec.priorityBadge}
+                    </span>
+                    <span className="font-mono text-amber-300 font-bold text-[7.2px]">
+                      Planet: {rec.ratna.planet} ({rec.ratna.sanskritPlanet})
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="font-serif text-[9.2px] font-bold text-amber-100 leading-tight">
+                      {rec.purposeTitle}
+                    </div>
+                    <div className="text-[7.2px] text-amber-300/80">{rec.purposeSubtitle}</div>
+                  </div>
+
+                  <div className="p-1.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5">
+                    <div className="flex items-center justify-between">
+                      <strong className="text-emerald-300 text-[8.8px]">
+                        Primary Stone: {rec.ratna.primaryGem} ({rec.ratna.sanskritGem})
+                      </strong>
+                      <span className="font-mono text-amber-200 text-[7.2px] font-bold">
+                        {rec.idealRattiRange} ({rec.idealCaratRange})
+                      </span>
+                    </div>
+                    <div className="text-sky-200 text-[7.5px]">
+                      <strong>Substitute Stone (Upratna):</strong> {rec.ratna.upratna}
+                    </div>
+                  </div>
+
+                  <div className="p-1.5 rounded-lg bg-slate-900/90 border border-amber-500/20 text-slate-200 leading-tight">
+                    <strong className="text-amber-300 uppercase block text-[7.2px]">
+                      How It Creates Relationship &amp; Marital Harmony:
+                    </strong>
+                    {rec.astrologicalReason}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1 a4-print-grid-2">
+                    <div className="p-1 rounded bg-slate-900 border border-amber-500/25">
+                      <strong className="text-amber-400 uppercase block text-[6.8px]">
+                        1. Which Finger &amp; Hand to Wear
+                      </strong>
+                      <span className="text-amber-100 font-bold block">{rec.wearingHandAndFinger}</span>
+                      <span className="text-slate-400 text-[6.8px]">Chakra: {rec.ratna.chakra}</span>
+                    </div>
+                    <div className="p-1 rounded bg-slate-900 border border-amber-500/25">
+                      <strong className="text-amber-400 uppercase block text-[6.8px]">
+                        2. In Which Metal &amp; Setting
+                      </strong>
+                      <span className="text-amber-100 font-bold block">{rec.ratna.metal}</span>
+                      <span className="text-slate-400 text-[6.8px]">Open-back touching skin</span>
+                    </div>
+                    <div className="p-1 rounded bg-slate-900 border border-amber-500/25">
+                      <strong className="text-emerald-400 uppercase block text-[6.8px]">
+                        3. Auspicious Day, Time &amp; Nakshatra
+                      </strong>
+                      <span className="text-emerald-200 font-bold block">{rec.dayAndMuhurat}</span>
+                      <span className="text-slate-400 text-[6.8px]">{rec.pakshaAndNakshatra}</span>
+                    </div>
+                    <div className="p-1 rounded bg-slate-900 border border-amber-500/25">
+                      <strong className="text-sky-400 uppercase block text-[6.8px]">
+                        4. Panchamrit Purification Liquid
+                      </strong>
+                      <span className="text-sky-200 font-bold block">{rec.purificationIngredients}</span>
+                      <span className="text-slate-400 text-[6.8px]">Soak 21–30 mins before sunrise</span>
+                    </div>
+                  </div>
+
+                  <div className="p-1 rounded bg-amber-950/35 border border-amber-500/35">
+                    <strong className="text-amber-400 uppercase block text-[6.8px]">
+                      5. Prana-Pratishtha Beej Mantra (Chant 108 Times Before Wearing)
+                    </strong>
+                    <span className="font-serif font-bold text-amber-100">{rec.beejMantra}</span>
+                  </div>
+
+                  <div className="p-1.5 rounded bg-emerald-950/25 border border-emerald-500/30 space-y-0.5">
+                    <strong className="text-emerald-300 uppercase block text-[7.2px]">
+                      Complete Step-by-Step Wearing Ritual (Ratna Dharan Vidhi):
+                    </strong>
+                    {rec.howToWearStepByStep.map((st, sIdx) => (
+                      <div key={sIdx} className="text-slate-200 leading-tight text-[7.2px]">
+                        • {st}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Joint Couple Relationship Harmony & Bedroom Crystal Synergy */}
+            <div className="p-2 rounded-xl bg-emerald-950/30 border border-emerald-500/45 text-[8px] text-emerald-100 leading-snug space-y-1">
+              <div>
+                <strong className="text-emerald-300 uppercase tracking-wider block mb-0.5">
+                  Joint Couple Relationship Harmony &amp; Bedroom Crystal Synergy:
+                </strong>
+                {partnerRatnaRec.jointHarmonyStoneSummary}
+              </div>
+              {!isHealerReport && (
+                <div className="pt-1 border-t border-emerald-500/30 text-amber-200 font-semibold">
+                  • Visit <strong className="text-emerald-300 font-mono">www.tathastulight.com</strong> for 100% genuine &amp; authentic Rudraksha, Crystals, Home Cleansing Material, Precious &amp; Semi-Precious Stones.
+                </div>
+              )}
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    // PAGE 21C: PARIVAR MILAN 9-CHAKRA DIAGNOSTICS, VEDIC ASTROLOGY & GEMSTONE/RUDRAKSHA (INDEPENDENT OPT-IN MODULE)
+    if (selectedSections.parivarMilan && parivarReport) {
+      pages.push({
+        title: `Page 21C: Parivar Milan — 9-Chakra Family Harmony Graph, Vedic Astrology & Remedies (${parivarReport.memberResults.length} Saved Family Members)`,
+        headImg: chakraHealingArt,
+        headLabel: 'Parivar Milan 9-Chakra',
+        content: (
+          <div className="space-y-2 text-xs">
+            {/* 1. FINAL CONCLUSIVE RESULT • PARIVAR HARMONY GRAPH */}
+            <div className="p-2.5 rounded-xl bg-slate-950/95 border border-amber-500/45 space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/30 pb-1">
+                <div>
+                  <span className="text-[7.5px] font-mono uppercase tracking-widest text-amber-400 font-bold block">
+                    FINAL CONCLUSIVE RESULT • PARIVAR HARMONY GRAPH
+                  </span>
+                  <h4 className="font-serif text-[10px] font-bold text-amber-100">
+                    Comparative 9-Chakra &amp; Vedic Harmony of {activeProfile.name} with {parivarReport.memberResults.length} Family Member(s)
+                  </h4>
+                </div>
+                <div className="flex items-center gap-2 text-[7.8px] font-mono">
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold">
+                    Overall Harmony: {parivarReport.averageFamilyHarmony}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                {parivarReport.memberResults.map((res, rIdx) => (
+                  <div key={res.member.id} className="space-y-0.5">
+                    <div className="flex items-center justify-between text-[7.8px]">
+                      <span className="font-bold text-amber-100">
+                        #{rIdx + 1} {res.member.name} ({res.member.relation}) • M:{res.memberMulank}/B:{res.memberBhagyank}/N:{res.memberNamank} • {res.memberAstrology.rashi.split(' ')[0]}
+                      </span>
+                      <span className="font-mono font-bold text-emerald-300">
+                        {res.overallHarmonyScore}% ({res.harmonyVerdict})
+                      </span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-slate-900 border border-slate-700 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${
+                          res.overallHarmonyScore >= 78
+                            ? 'bg-emerald-500'
+                            : res.overallHarmonyScore >= 64
+                            ? 'bg-amber-400'
+                            : 'bg-rose-500'
+                        }`}
+                        style={{ width: `${Math.max(8, Math.min(100, res.overallHarmonyScore))}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-1.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-[7.6px] text-amber-100 leading-snug space-y-1">
+                <div>
+                  <strong className="text-amber-300 uppercase">Collective Family Synthesis &amp; Home Vastu Remedy:</strong>{' '}
+                  {parivarReport.collectiveHomeVastuAndParivarRemedy}
+                </div>
+                <div className="text-emerald-200 border-t border-amber-500/20 pt-1">
+                  <strong className="text-emerald-300 uppercase">Collective Parivar Gemstone &amp; Rudraksha Harmony Plan:</strong>{' '}
+                  {parivarReport.collectiveGemstoneAndRudrakshaRemedy}
+                </div>
+              </div>
+
+              <div className="p-1.5 rounded-lg bg-amber-500/15 border border-amber-400/50 text-[7.2px] font-bold text-amber-200 uppercase tracking-wide leading-snug">
+                ⚠️ {parivarReport.importantDisclaimer}
+              </div>
+            </div>
+
+            {/* 2. PER-MEMBER COMPLETE 9-CHAKRA, VEDIC ASTROLOGY & GEMSTONE/RUDRAKSHA DIAGNOSTICS (ONLY CHAKRAS NEEDING HARMONY IN BREAKDOWN) */}
+            {parivarReport.memberResults.map((res, idx) => {
+              const chakrasNeedingHarmony = res.nineChakraDiagnostics.filter((ch) => ch.status !== 'Harmonious');
+              const allNineChakraPercentLine = res.nineChakraDiagnostics
+                .map((ch) => `#${ch.chakraNumber} ${ch.chakraName.replace(' Chakra', '')}: ${ch.alignmentScore}%`)
+                .join(' • ');
+
+              return (
+                <div
+                  key={res.member.id}
+                  className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/35 space-y-1.5 text-[7.8px]"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-1 border-b border-amber-500/25 pb-1">
+                    <span className="font-serif font-bold text-amber-200 text-[9px] uppercase">
+                      COMPLETE 9-CHAKRA PARIVAR DIAGNOSTICS — MEMBER #{idx + 1}: {res.member.name} ({res.member.relation})
+                    </span>
+                    <span className="font-mono text-emerald-300 font-bold">
+                      Harmony: {res.overallHarmonyScore}% ({res.harmonyVerdict})
+                    </span>
+                  </div>
+
+                  {/* 1st Paragraph: Executive Summary + All 9 Chakras % */}
+                  <p className="text-slate-200 leading-snug">
+                    {res.executiveSummary}{' '}
+                    <strong className="text-amber-300">All 9 Chakras Alignment % (#1 Earth Star to #9 Soul Star):</strong>{' '}
+                    <span className="text-emerald-200 font-mono">{allNineChakraPercentLine}</span>
+                  </p>
+
+                  {/* Key Parivar Strengths & Key Karmic Frictions Box */}
+                  <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+                    <div className="p-1.5 rounded-lg bg-emerald-950/25 border border-emerald-500/35 space-y-0.5">
+                      <strong className="text-emerald-300 uppercase block text-[7.2px]">
+                        Key Parivar Strengths ({res.member.name}):
+                      </strong>
+                      {res.keyStrengths.map((st, sIdx) => (
+                        <div key={sIdx} className="text-slate-200 leading-tight">
+                          • {st}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="p-1.5 rounded-lg bg-rose-950/25 border border-rose-500/35 space-y-0.5">
+                      <strong className="text-rose-300 uppercase block text-[7.2px]">
+                        Key Karmic Frictions &amp; Focus Areas ({res.member.name}):
+                      </strong>
+                      {res.keyFrictions.map((fr, fIdx) => (
+                        <div key={fIdx} className="text-slate-200 leading-tight">
+                          • {fr}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Vedic Astrology Family Harmony & Gemstone / Rudraksha Remedies */}
+                  <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+                    <div className="p-1.5 rounded-lg bg-indigo-950/35 border border-indigo-400/35 space-y-0.5 leading-tight">
+                      <strong className="text-indigo-200 uppercase block text-[7.2px]">
+                        Vedic Astrology Family Harmony ({res.vedicAstrologyHarmony.rashiHarmonyScore}%):
+                      </strong>
+                      <div className="text-amber-200">
+                        <strong>Bhakoot Axis:</strong> {res.vedicAstrologyHarmony.bhakootAxisLabel}
+                      </div>
+                      <div className="text-sky-200">
+                        <strong>Tara Bala:</strong> {res.vedicAstrologyHarmony.taraBalaName} ({res.vedicAstrologyHarmony.taraBalaFavorability})
+                      </div>
+                      <div className="text-slate-200">
+                        <strong>Rashi Lord Maitri:</strong> {res.vedicAstrologyHarmony.rashiLordMaitri} • {res.vedicAstrologyHarmony.sunSignSynergy}
+                      </div>
+                      <div className="text-emerald-200">
+                        <strong>Vedic Remedy:</strong> {res.vedicAstrologyHarmony.vedicRemedy}
+                      </div>
+                    </div>
+                    <div className="p-1.5 rounded-lg bg-amber-950/25 border border-amber-500/35 space-y-0.5 leading-tight">
+                      <strong className="text-amber-300 uppercase block text-[7.2px]">
+                        Gemstone (Ratna) &amp; Rudraksha Remedies:
+                      </strong>
+                      <div className="text-amber-100">
+                        <strong>Gemstone:</strong> Client: {res.gemstoneAndRudrakshaRemedy.clientGemstone} | {res.member.name}: {res.gemstoneAndRudrakshaRemedy.memberGemstone}
+                      </div>
+                      <div className="text-slate-200">
+                        <strong>Substitute &amp; Method:</strong> {res.gemstoneAndRudrakshaRemedy.gemstoneSubstitute} • {res.gemstoneAndRudrakshaRemedy.weightAndCarat} • {res.gemstoneAndRudrakshaRemedy.metalAndFinger} ({res.gemstoneAndRudrakshaRemedy.wearingDayAndTime})
+                      </div>
+                      <div className="text-emerald-200">
+                        <strong>Family Unity Rudraksha:</strong> {res.gemstoneAndRudrakshaRemedy.familyUnityRudraksha} • {res.gemstoneAndRudrakshaRemedy.clientRudraksha} &amp; {res.gemstoneAndRudrakshaRemedy.memberRudraksha}
+                      </div>
+                      <div className="text-sky-200">
+                        <strong>Mantra:</strong> {res.gemstoneAndRudrakshaRemedy.rudrakshaMantra}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Detailed Breakdown: ONLY Chakras that need Harmony */}
+                  {chakrasNeedingHarmony.length > 0 ? (
+                    <div className="space-y-1">
+                      <div className="text-[7.2px] font-mono uppercase tracking-wider text-amber-300 font-bold">
+                        Chakras Needing Harmony &amp; Remedies ({chakrasNeedingHarmony.length} of 9 — Harmonious Chakras Omitted to Save Space):
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+                        {chakrasNeedingHarmony.map((ch) => (
+                          <div
+                            key={ch.chakraNumber}
+                            className="p-1.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5 leading-tight"
+                          >
+                            <div className="flex items-center justify-between font-bold text-amber-100">
+                              <span>
+                                #{ch.chakraNumber} {ch.sanskritName} ({ch.chakraName})
+                              </span>
+                              <span
+                                className={`font-mono ${
+                                  ch.status === 'Moderate Blockage' ? 'text-amber-300' : 'text-rose-300'
+                                }`}
+                              >
+                                {ch.alignmentScore}% ({ch.status})
+                              </span>
+                            </div>
+                            <div className="text-rose-200/95">
+                              <strong>Issue:</strong> {ch.mutualFamilyIssue}
+                            </div>
+                            <div className="text-amber-200">
+                              <strong>1. Aura &amp; Crystal ({ch.beejMantra}):</strong> {ch.auraScanRemedy}
+                            </div>
+                            <div className="text-sky-200">
+                              <strong>2. Client &amp; Member Action:</strong> {ch.clientRemedy} | {ch.memberRemedy}
+                            </div>
+                            <div className="text-emerald-200">
+                              <strong>3. Joint Family Remedy:</strong> {ch.jointFamilyRemedy}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-1.5 rounded-lg bg-emerald-950/30 border border-emerald-500/40 text-emerald-200 font-semibold">
+                      All 9 Chakras (#1 Earth Star to #9 Soul Star) with {res.member.name} ({res.member.relation}) are in natural harmony (78%+). Continue weekly family prayer &amp; gratitude sadhana.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ),
       });
@@ -3819,6 +4701,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                   </strong>
                   <span className="text-slate-200 block leading-snug" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
                     Wear natural {gemRecommend.lifeStone.primaryGem} ({mPlanet.planet}) + {gemRecommend.destinyStone.primaryGem} ({bPlanet.planet}) and authentic Rudraksha after chanting "{bPlanet.beejMantra}" 108x.
+                    {!isHealerReport && (
+                      <span className="block mt-1 text-amber-200 font-semibold">
+                        Visit <strong className="text-emerald-300 font-mono">www.tathastulight.com</strong> for 100% genuine &amp; authentic Rudraksha, Crystals, Home Cleansing Material, Precious &amp; Semi-Precious Stones.
+                      </span>
+                    )}
                   </span>
                 </div>
               </div>
@@ -4293,6 +5180,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 </div>
                 <div className="text-[8px] text-slate-200 leading-snug">
                   Sacred Shree Yantra Direction: North-East (Ishan Kon) • Healer <strong className="text-amber-200">{healerDisplayName}</strong>
+                  {!isHealerReport && (
+                    <span className="block text-[7.5px] text-amber-200 mt-0.5">
+                      Visit <strong className="text-emerald-300 font-mono">www.tathastulight.com</strong> for 100% genuine &amp; authentic Rudraksha, Crystals, Home Cleansing Material, Precious &amp; Semi-Precious Stones.
+                    </span>
+                  )}
                 </div>
               </>
             )}
@@ -4319,6 +5211,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           <div className="inline-block px-3 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/60 text-[9px] font-serif font-black tracking-wider text-emerald-300 uppercase">
             ✨ Thank You for Being a Cherished Part of the TATHASTU Family — One Place, Every Divine Solution! ✨
           </div>
+          {!isHealerReport && (
+            <div className="text-[8.5px] text-amber-200 font-semibold pt-0.5">
+              Visit <strong className="text-emerald-300 font-mono">www.tathastulight.com</strong> for 100% Genuine &amp; Authentic Rudraksha, Crystals, Home Cleansing Material, Precious &amp; Semi-Precious Stones.
+            </div>
+          )}
         </div>
       </div>
     );

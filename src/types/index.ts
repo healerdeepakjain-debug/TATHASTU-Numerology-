@@ -1,3 +1,5 @@
+import { ParivarMemberRecord } from '../utils/parivarMilan';
+
 export interface CityLocation {
   city: string;
   state?: string;
@@ -22,6 +24,7 @@ export interface BirthProfile {
   nakshatra?: string; // Lunar mansion (Auto-calculated)
   nakshatraPada?: number;
   includePartnerMilan?: boolean; // Opt-in checkbox for Partner Milan
+  includeParivarMilan?: boolean; // Opt-in checkbox for Parivar Milan in PDF/Print/Share/WhatsApp
   healthConcerns?: string[]; // Identified health concerns for Yoga & Pranayama
   partnerName?: string;
   partnerDob?: string;
@@ -35,6 +38,7 @@ export interface BirthProfile {
   originalMobile?: string;
   selectedMobileA?: string;
   selectedMobileB?: string;
+  parivarMembers?: ParivarMemberRecord[];
 }
 
 export interface PlanetaryInfo {
@@ -211,6 +215,8 @@ export interface CalendarEvent {
 }
 
 export interface ChakraMaritalChallenge {
+  chakraNumber?: number;
+  locationLabel?: string;
   chakraName: string;
   sanskritName: string;
   element: string;
@@ -269,6 +275,15 @@ export interface CompatibilityAnalysis {
   }[];
   totalPoints: number; // out of 36
   overallPercentage: number;
+  nameDobCompatibility?: {
+    overallScore: number; // 0 - 100 automatic score based on Name + DOB vibrations
+    mulankHarmony: number;
+    bhagyankHarmony: number;
+    namankHarmony: number;
+    crossNumberHarmony: number;
+    verdict: string;
+    summary: string;
+  };
   verdict: string;
   summary: string;
   strengths: string[];

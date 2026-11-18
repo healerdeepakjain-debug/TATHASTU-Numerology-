@@ -45,10 +45,15 @@ import { generateAdvanceMobileReport } from './advanceMobileReport';
 import { calculateIslamicVedicReport } from './islamicVedicRemedies';
 import { getBestUpcomingEventsNext12Months } from '../components/CosmicCalendar';
 import { formatTime12HourAmPm } from '../components/BirthTimeAmPmInput';
-import { calculateGemstoneRecommendationsForProfile } from '../components/GemstoneRecommendation';
+import {
+  calculateGemstoneRecommendationsForProfile,
+  calculateNameAndPersonalGrowthRatnaRecommendation,
+  calculatePartnerMilanRatnaRecommendations,
+} from '../components/GemstoneRecommendation';
 import { LO_SHU_VEDIC_REMEDIES_DB } from '../components/InteractiveLoShuGrid';
 import { SANSKRit_BEEJ_DEVANAGARI } from '../components/DailyMantras';
 import { calculateYogaPranayamaPlan, YogaPosturePrescription } from './yogaPranayamaData';
+import { calculateParivarMilanReport, ParivarMemberRecord } from './parivarMilan';
 
 import a4DivineEnergyBg from '../assets/images/a4_divine_energy_watermark_1794229222633.jpg';
 import chakraHealingArt from '../assets/images/chakra_healing_meditation_art_1794229223170.jpg';
@@ -96,6 +101,7 @@ export interface PdfExportContext {
     dailyMantras: boolean;
     yogaAndPranayama?: boolean;
     partnerMilanChakras: boolean;
+    parivarMilan?: boolean;
     festivals12Months: boolean;
     islamicVedicRemedies: boolean;
   };
@@ -261,6 +267,26 @@ interface AshtakootGunaMilanChartData {
   }>;
 }
 
+interface ParivarHarmonyGraphBoxData {
+  clientName: string;
+  averageFamilyHarmony: number;
+  familyCollectiveVerdict: string;
+  strongestBondLabel: string;
+  priorityRemedyBondLabel: string;
+  collectiveSynthesis: string;
+  members: Array<{
+    index: number;
+    name: string;
+    relation: string;
+    dobAndPlace: string;
+    mulankBhagyankRashi: string;
+    harmonyScore: number;
+    harmoniousCount: number;
+    needsHarmonyCount: number;
+    verdict: string;
+  }>;
+}
+
 interface PdfSectionBlock {
   heading: string;
   subheading?: string;
@@ -280,6 +306,7 @@ interface PdfSectionBlock {
   loShuSquareMatrix?: LoShuSquareMatrixData;
   yogaAsanaGallery?: YogaPosturePrescription[];
   ashtakootChartBox?: AshtakootGunaMilanChartData;
+  parivarHarmonyGraphBox?: ParivarHarmonyGraphBoxData;
 }
 
 interface PdfPageSpec {
@@ -1011,7 +1038,10 @@ async function createCircularLogoDataUrl(logoUrl?: string): Promise<string | nul
   return circUrl;
 }
 
-function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
+function build18PageMasterDossier(
+  ctx: PdfExportContext,
+  options?: { skipIndexPage?: boolean }
+): PdfPageSpec[] {
   const { activeProfile, startFormatted, endFormatted, twelveMonths } = ctx;
   const m = calculateMulank(activeProfile.dob);
   const b = calculateBhagyank(activeProfile.dob);
@@ -1021,7 +1051,20 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
   const nameAnalysis = analyzeName(activeProfile.name, m, b);
   const nPlanet = PLANETARY_PROFILES[nameAnalysis.chaldeanSingle] || PLANETARY_PROFILES[1];
   const nameSuggestions = generateNameCorrections(activeProfile.name, m, b);
-  const topPerfectChoice = nameSuggestions.find((s) => s.isTopPerfectChoice) || nameSuggestions[0];
+  const topPerfectChoice =
+    nameSuggestions.find((s) => s.isTopPerfectChoice) ||
+    nameSuggestions[0] || {
+      originalName: activeProfile.name,
+      suggestedName: activeProfile.name,
+      compoundNumber: nameAnalysis.totalChaldeanCompound,
+      singleDigit: nameAnalysis.chaldeanSingle,
+      compoundTitle: nameAnalysis.compoundInfo.title,
+      changeExplanation: 'Current name spelling is already in auspicious cosmic harmony.',
+      harmonyScore: nameAnalysis.harmonyScore,
+      targetPlanet: nPlanet.planet,
+      planetaryBlessing: `Naturally aligned with ${nPlanet.planet}.`,
+      isTopPerfectChoice: true,
+    };
   const mobileAnalysis = analyzeMobileNumber(activeProfile.mobile || '9876543210', m, b);
   const advMobile = generateAdvanceMobileReport(
     activeProfile.dob,
@@ -1142,8 +1185,29 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
       lat: activeProfile.lat ?? 28.6139,
       lng: activeProfile.lng ?? 77.209,
       mobile: activeProfile.mobile,
+      gender: activeProfile.gender,
     },
     68
+  );
+  const nameAndGrowthRatna = calculateNameAndPersonalGrowthRatnaRecommendation(
+    {
+      id: activeProfile.id,
+      name: activeProfile.name,
+      dob: activeProfile.dob,
+      tob: activeProfile.tob || '09:30',
+      pob: activeProfile.pob || 'New Delhi, India',
+      lat: activeProfile.lat ?? 28.6139,
+      lng: activeProfile.lng ?? 77.209,
+      mobile: activeProfile.mobile,
+      gender: activeProfile.gender,
+    },
+    activeProfile.originalName || activeProfile.name,
+    68
+  );
+  const partnerRatnaRec = calculatePartnerMilanRatnaRecommendations(
+    groomProfile,
+    brideProfile,
+    partnerMilan
   );
   const activeDasha =
     advMobile.dashaTimeline.find((d) => d.isCurrent) || advMobile.dashaTimeline[0];
@@ -1173,6 +1237,39 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
     mobile: activeProfile.mobile || '9876543210',
     healthConcerns: activeProfile.healthConcerns || [],
   });
+
+  const isClientOrAdminReport = !ctx.isHealerReport;
+  const authenticRemediesPortalBullet =
+    'Official Remedies Portal (www.tathastulight.com): Visit www.tathastulight.com for 100% genuine & authentic Rudraksha, Crystals, Home Cleansing Material, Precious & Semi-Precious Stones.';
+  const clientOrAdminRemedyBullets = isClientOrAdminReport ? [authenticRemediesPortalBullet] : [];
+
+  let savedParivarMembers: ParivarMemberRecord[] = Array.isArray(activeProfile.parivarMembers)
+    ? activeProfile.parivarMembers
+    : [];
+  if (savedParivarMembers.length === 0 && typeof window !== 'undefined') {
+    try {
+      const rawLocal = localStorage.getItem(`tathastu_parivar_members_v1_${activeProfile.id}`);
+      if (rawLocal) {
+        const parsedLocal = JSON.parse(rawLocal) as ParivarMemberRecord[];
+        if (Array.isArray(parsedLocal)) {
+          savedParivarMembers = parsedLocal;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  const parivarReport = calculateParivarMilanReport(
+    {
+      name: activeProfile.name,
+      dob: activeProfile.dob,
+      tob: activeProfile.tob || '09:30',
+      pob: activeProfile.pob || 'New Delhi, India',
+      lat: activeProfile.lat ?? 28.6139,
+      lng: activeProfile.lng ?? 77.209,
+    },
+    savedParivarMembers
+  );
 
   const rawPages: PdfPageSpec[] = [
     // =========================================================================
@@ -1393,6 +1490,7 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
             body: rem.prescription,
             highlight: `Sound Therapy (${rem.frequencyHz}) + 43-day disciplined practice stabilizes ${career.primaryChakra} (${career.auraColor}).`,
           })),
+          bullets: clientOrAdminRemedyBullets,
         },
       ],
     },
@@ -1463,10 +1561,69 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
             {
               title: '5-Step Vedic Ratna Prana-Pratishtha (Energization Ritual)',
               subtitle: `Ideal Carat / Ratti Weight: ${gemRecommend.idealRattiRange} (${gemRecommend.idealCaratRange})`,
-              body: '1. Ensure open-back setting so stone touches skin. 2. Dip ring in Panchamrit (Raw Cow Milk, Gangajal, Honey, Ghee, Tulsi) for 30 mins. 3. Wash with Gangajal & offer धूप/दीपक. 4. Chant planet Beej Mantra 108 times. 5. Wear during morning Shukla Paksha Hora.',
+              body: '1. Ensure open-back setting so stone touches skin. 2. Dip ring in Panchamrit (Raw Cow Milk, Gangajal, Honey, Ghee, Tulsi) for 30 mins. 3. Wash with Gangajal & offer dhoop/diya. 4. Chant planet Beej Mantra 108 times. 5. Wear during morning Shukla Paksha Hora.',
               highlight: 'Replace Upratna (semi-precious crystals) every 2.5 years; natural primary Ratnas remain active lifelong.',
             },
           ],
+          bullets: clientOrAdminRemedyBullets,
+        },
+      ],
+    },
+
+    // PAGE 4B: Precious Stone Recommendation — If You Do Not Want to Change Name & For Personal Growth (Complete Step-by-Step Guide)
+    {
+      pageNumber: 4,
+      moduleKey: 'nameAndCareer',
+      chapterTag: 'CHAPTER 04B • PRECIOUS STONE RECOMMENDATION — IF YOU DO NOT WANT TO CHANGE NAME & FOR PERSONAL GROWTH',
+      title: 'PRECIOUS STONE — NO-NAME-CHANGE & PERSONAL GROWTH',
+      subtitle: `Precious Stone Recommendation — If You Do Not Want to Change Name & For Personal Growth (Complete Step-by-Step Guide)`,
+      bannerKey: 'name',
+      sections: [
+        {
+          heading: `1. PRECIOUS STONE RECOMMENDATION — IF YOU DO NOT WANT TO CHANGE NAME & FOR PERSONAL GROWTH (${activeProfile.name.toUpperCase()})`,
+          subheading: `Prescribed Stone Weight: ${nameAndGrowthRatna.noNameChangeStone.idealRattiRange} (${nameAndGrowthRatna.noNameChangeStone.idealCaratRange}) • Complete Metal, Finger, Hand, Day/Time & Purification Matrix`,
+          table: {
+            headers: [
+              'Prescription Category & Planet',
+              'Primary Precious Stone (Maharatna) & Upratna',
+              '1. Finger & Hand | 2. Metal & Setting | 3. Day, Time & Nakshatra',
+              '4. Panchamrit Purification & 5. Prana-Pratishtha Beej Mantra (108x)',
+            ],
+            colWidths: [40, 44, 54, 56],
+            rows: [
+              [
+                `1. If You Do Not Want to Change Name\n(No-Name-Change Harmony Ratna)\nPlanet: ${nameAndGrowthRatna.noNameChangeStone.ratna.planet} (${nameAndGrowthRatna.noNameChangeStone.ratna.sanskritPlanet})\n[${nameAndGrowthRatna.noNameChangeStone.priorityBadge}]`,
+                `Primary: ${nameAndGrowthRatna.noNameChangeStone.ratna.primaryGem} (${nameAndGrowthRatna.noNameChangeStone.ratna.sanskritGem})\nSubstitute (Upratna): ${nameAndGrowthRatna.noNameChangeStone.ratna.upratna}\nWeight: ${nameAndGrowthRatna.noNameChangeStone.idealRattiRange} (${nameAndGrowthRatna.noNameChangeStone.idealCaratRange})`,
+                `1. Finger & Hand: ${nameAndGrowthRatna.noNameChangeStone.wearingHandAndFinger}\n2. Metal & Setting: ${nameAndGrowthRatna.noNameChangeStone.metalAndSetting}\n3. Day & Time: ${nameAndGrowthRatna.noNameChangeStone.dayAndMuhurat}\nNakshatra: ${nameAndGrowthRatna.noNameChangeStone.pakshaAndNakshatra}`,
+                `4. Purification Liquid: ${nameAndGrowthRatna.noNameChangeStone.purificationIngredients} (Soak 21-30 mins before sunrise)\n5. Beej Mantra (108x): ${nameAndGrowthRatna.noNameChangeStone.beejMantra}\nChakra: ${nameAndGrowthRatna.noNameChangeStone.ratna.chakra}`,
+              ],
+              [
+                `2. For Personal Growth & Career\n(Atma-Unnati Ratna)\nPlanet: ${nameAndGrowthRatna.personalGrowthStone.ratna.planet} (${nameAndGrowthRatna.personalGrowthStone.ratna.sanskritPlanet})\n[${nameAndGrowthRatna.personalGrowthStone.priorityBadge}]`,
+                `Primary: ${nameAndGrowthRatna.personalGrowthStone.ratna.primaryGem} (${nameAndGrowthRatna.personalGrowthStone.ratna.sanskritGem})\nSubstitute (Upratna): ${nameAndGrowthRatna.personalGrowthStone.ratna.upratna}\nWeight: ${nameAndGrowthRatna.personalGrowthStone.idealRattiRange} (${nameAndGrowthRatna.personalGrowthStone.idealCaratRange})`,
+                `1. Finger & Hand: ${nameAndGrowthRatna.personalGrowthStone.wearingHandAndFinger}\n2. Metal & Setting: ${nameAndGrowthRatna.personalGrowthStone.metalAndSetting}\n3. Day & Time: ${nameAndGrowthRatna.personalGrowthStone.dayAndMuhurat}\nNakshatra: ${nameAndGrowthRatna.personalGrowthStone.pakshaAndNakshatra}`,
+                `4. Purification Liquid: ${nameAndGrowthRatna.personalGrowthStone.purificationIngredients} (Soak 21-30 mins before sunrise)\n5. Beej Mantra (108x): ${nameAndGrowthRatna.personalGrowthStone.beejMantra}\nChakra: ${nameAndGrowthRatna.personalGrowthStone.ratna.chakra}`,
+              ],
+            ],
+          },
+        },
+        {
+          heading: '2. COMPLETE STEP-BY-STEP WEARING RITUAL (RATNA DHARAN VIDHI) — NO-NAME-CHANGE & PERSONAL GROWTH STONES',
+          subheading: 'Step 1 (Metal & Ring Crafting) through Step 5 (Wearing Finger & Time) + Astrological & Chaldean Justification',
+          gridItems: [
+            {
+              title: `${nameAndGrowthRatna.noNameChangeStone.purposeTitle} — ${nameAndGrowthRatna.noNameChangeStone.ratna.primaryGem} (${nameAndGrowthRatna.noNameChangeStone.ratna.sanskritGem})`,
+              subtitle: `${nameAndGrowthRatna.noNameChangeStone.purposeSubtitle} • Finger: ${nameAndGrowthRatna.noNameChangeStone.wearingHandAndFinger} • Metal: ${nameAndGrowthRatna.noNameChangeStone.ratna.metal}`,
+              body: `Why Recommended: ${nameAndGrowthRatna.noNameChangeStone.astrologicalReason} Complete Step-by-Step Wearing Ritual: ${nameAndGrowthRatna.noNameChangeStone.howToWearStepByStep.join(' | ')}`,
+              highlight: `Day & Time: ${nameAndGrowthRatna.noNameChangeStone.dayAndMuhurat} | Beej Mantra (108x): ${nameAndGrowthRatna.noNameChangeStone.beejMantra}`,
+            },
+            {
+              title: `${nameAndGrowthRatna.personalGrowthStone.purposeTitle} — ${nameAndGrowthRatna.personalGrowthStone.ratna.primaryGem} (${nameAndGrowthRatna.personalGrowthStone.ratna.sanskritGem})`,
+              subtitle: `${nameAndGrowthRatna.personalGrowthStone.purposeSubtitle} • Finger: ${nameAndGrowthRatna.personalGrowthStone.wearingHandAndFinger} • Metal: ${nameAndGrowthRatna.personalGrowthStone.ratna.metal}`,
+              body: `Why Recommended: ${nameAndGrowthRatna.personalGrowthStone.astrologicalReason} Complete Step-by-Step Wearing Ritual: ${nameAndGrowthRatna.personalGrowthStone.howToWearStepByStep.join(' | ')}`,
+              highlight: `Day & Time: ${nameAndGrowthRatna.personalGrowthStone.dayAndMuhurat} | Beej Mantra (108x): ${nameAndGrowthRatna.personalGrowthStone.beejMantra}`,
+            },
+          ],
+          bullets: clientOrAdminRemedyBullets,
         },
       ],
     },
@@ -1854,6 +2011,7 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
               highlight: `Daily Karma & Daan: ${loShuDetail?.dailyKarmaAndDaan || mr.rituals[0] || ''}`,
             };
           }),
+          bullets: clientOrAdminRemedyBullets,
         },
       ],
     },
@@ -2291,6 +2449,7 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
               ];
             }),
           },
+          bullets: clientOrAdminRemedyBullets,
         },
       ],
     },
@@ -2308,12 +2467,12 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
       sections: [
         {
           heading: `1. VISUAL YOGA POSTURE CARD GALLERY (BIRTH CHART & HEALTH PRESCRIPTIONS — ALL ${yogaPlan.dailyAsanas.length} ASANAS)`,
-          subheading: `Constitutional Dosha Tendency: ${yogaPlan.dominantDoshaConstitution} • Selected Health Focus: ${yogaPlan.selectedHealthConcerns.length > 0 ? yogaPlan.selectedHealthConcerns.map((hc) => hc.label).join(' • ') : 'Holistic Pranic Vitality & 7-Chakra Balance'}`,
+          subheading: `Constitutional Dosha Tendency: ${yogaPlan.dominantDoshaConstitution} • Selected Health Focus: ${yogaPlan.selectedHealthConcerns.length > 0 ? yogaPlan.selectedHealthConcerns.map((hc) => hc.label).join(' • ') : 'Holistic Pranic Vitality & 9-Chakra Balance'}`,
           yogaAsanaGallery: yogaPlan.dailyAsanas,
         },
         {
           heading: '2. DAILY VEDIC PRANAYAMA (BREATHWORK) & HASTA MUDRA PROTOCOLS',
-          subheading: `Selected Health Focus: ${yogaPlan.selectedHealthConcerns.length > 0 ? yogaPlan.selectedHealthConcerns.map((hc) => hc.label).join(' • ') : 'Holistic Pranic Vitality & 7-Chakra Balance'}`,
+          subheading: `Selected Health Focus: ${yogaPlan.selectedHealthConcerns.length > 0 ? yogaPlan.selectedHealthConcerns.map((hc) => hc.label).join(' • ') : 'Holistic Pranic Vitality & 9-Chakra Balance'}`,
           gridItems: yogaPlan.dailyPranayamas.map((prana, idx) => ({
             title: `${idx + 1}. ${prana.sanskritName} (${prana.englishName}) — ${prana.roundsAndDuration}`,
             subtitle: `Ratio: ${prana.breathingRatio} • Mudra: ${prana.mudraAndBandha} • Nadi/Chakra: ${prana.targetNadiAndChakra}`,
@@ -2358,7 +2517,7 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
     },
 
     // =========================================================================
-    // MODULE 7: PARTNER MILAN & 7-CHAKRA DIAGNOSTICS (4 DEDICATED PAGES — 100% APP DATA)
+    // MODULE 7: PARTNER MILAN & 9-CHAKRA DIAGNOSTICS (4 DEDICATED PAGES — 100% APP DATA)
     // =========================================================================
     // PAGE 19: Groom & Bride Complete Natal Comparison + Visual 8-Koota Ashtakoot Guna Milan Chart Box + Marital Name Harmonizer
     {
@@ -2472,19 +2631,19 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
       ],
     },
 
-    // PAGE 20: Partner Milan Part 3 — Complete 7-Chakra Marital Diagnostics (Chakras 1 to 4: Muladhara to Anahata in Width-Wise 2-Column Grid)
+    // PAGE 20: Partner Milan Part 3 — Complete 9-Chakra Marital Diagnostics (Chakras 1 to 5: Earth Star to Anahata in Width-Wise 2-Column Grid)
     {
       pageNumber: 20,
       moduleKey: 'partnerMilanChakras',
-      chapterTag: 'CHAPTER 20 • PARTNER MILAN: 7-CHAKRA DIAGNOSTICS & REMEDIES (CHAKRAS 1 TO 4)',
-      title: 'COUPLE 7-CHAKRA DIAGNOSTICS & REMEDIES (CHAKRAS 1 TO 4)',
-      subtitle: `Complete Groom & Bride Karmic Patterns, Aura Scan, Sound Frequency (Hz), Crystal, Mantra & Remedies for Chakras 1 to 4`,
+      chapterTag: 'CHAPTER 20 • PARTNER MILAN: 9-CHAKRA DIAGNOSTICS & REMEDIES (CHAKRAS 1 TO 5)',
+      title: 'COUPLE 9-CHAKRA DIAGNOSTICS & REMEDIES (CHAKRAS 1 TO 5)',
+      subtitle: `Complete Groom & Bride Karmic Patterns, Aura Scan, Sound Frequency (Hz), Crystal, Mantra & Remedies for Chakras 1 to 5`,
       bannerKey: 'chakra',
       sections: [
         {
-          heading: `1. COMPLETE 7-CHAKRA MARITAL DIAGNOSTICS — CHAKRAS 1 TO 4 (MULADHARA TO ANAHATA)`,
+          heading: `1. COMPLETE 9-CHAKRA MARITAL DIAGNOSTICS — CHAKRAS 1 TO 5 (EARTH STAR TO ANAHATA)`,
           subheading: `Width-Wise 2-Column Layout: Groom (${groomProfile.name}) & Bride (${brideProfile.name}) Patterns, Sound Frequency (Hz), Crystal, Mantra & Remedies`,
-          gridItems: partnerMilan.chakraChallenges.slice(0, 4).map((ch, idx) => ({
+          gridItems: partnerMilan.chakraChallenges.slice(0, 5).map((ch, idx) => ({
             title: `${idx + 1}. ${ch.chakraName} (${ch.sanskritName} • ${ch.element}) — ${ch.alignmentScore}% [${ch.status}]`,
             subtitle: `Carrier: ${ch.affectedPartner} (${ch.primaryCarrierName}) • Sound: ${ch.soundFrequencyHz || '528 Hz'} • Crystal: ${ch.healingCrystal} • Mantra: ${ch.beejMantra}`,
             body: `Groom (${groomProfile.name}): ${ch.groomChallengeDetail} | Bride (${brideProfile.name}): ${ch.brideChallengeDetail} | Joint Issue: ${ch.postMarriageIssue} | Diagnosis: ${ch.fortuneReadingDiagnosis} | Aura Scan: ${ch.auraScanRemedy}`,
@@ -2494,34 +2653,245 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
       ],
     },
 
-    // PAGE 21: Partner Milan Part 4 — Complete 7-Chakra Marital Diagnostics (Chakras 5 to 7: Vishuddha to Sahasrara + Couple Vastu in Width-Wise 2-Column Grid)
+    // PAGE 21: Partner Milan Part 4 — Complete 9-Chakra Marital Diagnostics (Chakras 6 to 9: Vishuddha to Soul Star + Couple Vastu in Width-Wise 2-Column Grid)
     {
       pageNumber: 21,
       moduleKey: 'partnerMilanChakras',
-      chapterTag: 'CHAPTER 21 • PARTNER MILAN: 7-CHAKRA DIAGNOSTICS & REMEDIES (CHAKRAS 5 TO 7)',
-      title: 'COUPLE 7-CHAKRA DIAGNOSTICS & REMEDIES (CHAKRAS 5 TO 7)',
-      subtitle: `Complete Groom & Bride Karmic Patterns, Aura Scan, Sound Frequency (Hz), Crystal, Mantra & Remedies for Chakras 5 to 7 + Couple Vastu`,
+      chapterTag: 'CHAPTER 21 • PARTNER MILAN: 9-CHAKRA DIAGNOSTICS & REMEDIES (CHAKRAS 6 TO 9)',
+      title: 'COUPLE 9-CHAKRA DIAGNOSTICS & REMEDIES (CHAKRAS 6 TO 9)',
+      subtitle: `Complete Groom & Bride Karmic Patterns, Aura Scan, Sound Frequency (Hz), Crystal, Mantra & Remedies for Chakras 6 to 9 + Couple Vastu`,
       bannerKey: 'chakra',
       sections: [
         {
-          heading: `1. COMPLETE 7-CHAKRA MARITAL DIAGNOSTICS — CHAKRAS 5 TO 7 (VISHUDDHA TO SAHASRARA) & MASTER SUMMARY`,
+          heading: `1. COMPLETE 9-CHAKRA MARITAL DIAGNOSTICS — CHAKRAS 6 TO 9 (VISHUDDHA TO SOUL STAR) & MASTER SUMMARY`,
           subheading: `Width-Wise 2-Column Layout: Groom (${groomProfile.name}) & Bride (${brideProfile.name}) Patterns, Sound Frequency (Hz), Crystal, Mantra & Remedies`,
           gridItems: [
-            ...partnerMilan.chakraChallenges.slice(4, 7).map((ch, idx) => ({
-              title: `${idx + 5}. ${ch.chakraName} (${ch.sanskritName} • ${ch.element}) — ${ch.alignmentScore}% [${ch.status}]`,
+            ...partnerMilan.chakraChallenges.slice(5, 9).map((ch, idx) => ({
+              title: `${idx + 6}. ${ch.chakraName} (${ch.sanskritName} • ${ch.element}) — ${ch.alignmentScore}% [${ch.status}]`,
               subtitle: `Carrier: ${ch.affectedPartner} (${ch.primaryCarrierName}) • Sound: ${ch.soundFrequencyHz || '852 Hz'} • Crystal: ${ch.healingCrystal} • Mantra: ${ch.beejMantra}`,
               body: `Groom (${groomProfile.name}): ${ch.groomChallengeDetail} | Bride (${brideProfile.name}): ${ch.brideChallengeDetail} | Joint Issue: ${ch.postMarriageIssue} | Diagnosis: ${ch.fortuneReadingDiagnosis} | Aura Scan: ${ch.auraScanRemedy}`,
               highlight: `Groom Remedy: ${ch.groomRemedy} | Bride Remedy: ${ch.brideRemedy} | Joint Remedy: ${ch.bothRemedy}`,
             })),
             {
-              title: `8. Master Marital Compatibility Verdict & Bedroom Vastu Shield (${partnerMilan.totalPoints}/36 Gunas)`,
+              title: `10. Master Marital Compatibility Verdict & Bedroom Vastu Shield (${partnerMilan.totalPoints}/36 Gunas)`,
               subtitle: `Groom: ${groomProfile.name} & Bride: ${brideProfile.name} • ${partnerMilan.overallPercentage}% Resonance • Couple Sound: 639 Hz & 528 Hz`,
               body: `${partnerMilan.summary} Keep a pair of energized Rose Quartz swans and a natural Pyrite cluster in the South-West corner of the master bedroom, sleep with heads towards South, and play 639 Hz + 528 Hz Solfeggio harmony tones for 15 mins every Friday evening.`,
               highlight: `Monthly Couple Purnima Sankalpa: Offer joint Arghya to the Full Moon on Shukla Purnima and chant "Om Kleem Krishnaya Namah" 108x together.`,
             },
           ],
+          bullets: clientOrAdminRemedyBullets,
         },
       ],
+    },
+
+    // PAGE 21B: Precious Stone Recommendation for Relationship Harmony (Bride & Groom) — Complete Step-by-Step Guide & Joint Couple Bedroom Crystal Synergy
+    {
+      pageNumber: 21,
+      moduleKey: 'partnerMilanChakras',
+      chapterTag: 'CHAPTER 21B • PRECIOUS STONE RECOMMENDATION FOR RELATIONSHIP HARMONY (BRIDE & GROOM)',
+      title: 'PRECIOUS STONE FOR RELATIONSHIP HARMONY (BRIDE & GROOM)',
+      subtitle: `Who Needs To Wear For Harmony: ${partnerRatnaRec.whoNeedsItBadge} • Complete Step-by-Step Guide & Joint Couple Bedroom Crystal Synergy`,
+      bannerKey: 'chakra',
+      sections: [
+        {
+          heading: `1. PRECIOUS STONE RECOMMENDATION FOR RELATIONSHIP HARMONY (BRIDE & GROOM) — WHO NEEDS TO WEAR: ${partnerRatnaRec.whoNeedsItBadge.toUpperCase()}`,
+          subheading: `Vedic Astrological Harmony Verdict (Bride vs Groom Requirement): ${partnerRatnaRec.whoNeedsItSummary}`,
+          table: {
+            headers: [
+              'Partner, Priority & Planet',
+              'Primary Precious Stone (Maharatna) & Upratna',
+              '1. Finger & Hand | 2. Metal & Setting | 3. Day, Time & Nakshatra',
+              '4. Panchamrit Purification & 5. Prana-Pratishtha Beej Mantra (108x)',
+            ],
+            colWidths: [40, 44, 54, 56],
+            rows: [
+              [
+                `Groom (${groomProfile.name})\n[${partnerRatnaRec.groomStone.priorityBadge}]\nPlanet: ${partnerRatnaRec.groomStone.ratna.planet} (${partnerRatnaRec.groomStone.ratna.sanskritPlanet})\nRashi: ${partnerMilan.p1Astrology.rashi}`,
+                `Primary: ${partnerRatnaRec.groomStone.ratna.primaryGem} (${partnerRatnaRec.groomStone.ratna.sanskritGem})\nSubstitute (Upratna): ${partnerRatnaRec.groomStone.ratna.upratna}\nWeight: ${partnerRatnaRec.groomStone.idealRattiRange} (${partnerRatnaRec.groomStone.idealCaratRange})`,
+                `1. Finger & Hand: ${partnerRatnaRec.groomStone.wearingHandAndFinger}\n2. Metal & Setting: ${partnerRatnaRec.groomStone.metalAndSetting}\n3. Day & Time: ${partnerRatnaRec.groomStone.dayAndMuhurat}\nNakshatra: ${partnerRatnaRec.groomStone.pakshaAndNakshatra}`,
+                `4. Purification Liquid: ${partnerRatnaRec.groomStone.purificationIngredients} (Soak 21-30 mins before sunrise)\n5. Beej Mantra (108x): ${partnerRatnaRec.groomStone.beejMantra}\nChakra: ${partnerRatnaRec.groomStone.ratna.chakra}`,
+              ],
+              [
+                `Bride (${brideProfile.name})\n[${partnerRatnaRec.brideStone.priorityBadge}]\nPlanet: ${partnerRatnaRec.brideStone.ratna.planet} (${partnerRatnaRec.brideStone.ratna.sanskritPlanet})\nRashi: ${partnerMilan.p2Astrology.rashi}`,
+                `Primary: ${partnerRatnaRec.brideStone.ratna.primaryGem} (${partnerRatnaRec.brideStone.ratna.sanskritGem})\nSubstitute (Upratna): ${partnerRatnaRec.brideStone.ratna.upratna}\nWeight: ${partnerRatnaRec.brideStone.idealRattiRange} (${partnerRatnaRec.brideStone.idealCaratRange})`,
+                `1. Finger & Hand: ${partnerRatnaRec.brideStone.wearingHandAndFinger}\n2. Metal & Setting: ${partnerRatnaRec.brideStone.metalAndSetting}\n3. Day & Time: ${partnerRatnaRec.brideStone.dayAndMuhurat}\nNakshatra: ${partnerRatnaRec.brideStone.pakshaAndNakshatra}`,
+                `4. Purification Liquid: ${partnerRatnaRec.brideStone.purificationIngredients} (Soak 21-30 mins before sunrise)\n5. Beej Mantra (108x): ${partnerRatnaRec.brideStone.beejMantra}\nChakra: ${partnerRatnaRec.brideStone.ratna.chakra}`,
+              ],
+            ],
+          },
+        },
+        {
+          heading: '2. COMPLETE STEP-BY-STEP WEARING RITUAL (RATNA DHARAN VIDHI) & JOINT COUPLE RELATIONSHIP HARMONY & BEDROOM CRYSTAL SYNERGY',
+          subheading: 'Step 1 (Metal & Finger) through Step 5 (Wearing Time) for Groom & Bride + Joint Couple Relationship Harmony & Bedroom Crystal Synergy',
+          gridItems: [
+            {
+              title: `${partnerRatnaRec.groomStone.purposeTitle} — ${partnerRatnaRec.groomStone.ratna.primaryGem} (${partnerRatnaRec.groomStone.ratna.sanskritGem})`,
+              subtitle: `${partnerRatnaRec.groomStone.priorityBadge} • Finger: ${partnerRatnaRec.groomStone.wearingHandAndFinger} • Metal: ${partnerRatnaRec.groomStone.ratna.metal}`,
+              body: `How It Creates Relationship & Marital Harmony: ${partnerRatnaRec.groomStone.astrologicalReason} Complete Step-by-Step Wearing Ritual (Ratna Dharan Vidhi): ${partnerRatnaRec.groomStone.howToWearStepByStep.join(' | ')}`,
+              highlight: `Day & Muhurat: ${partnerRatnaRec.groomStone.dayAndMuhurat} | Beej Mantra (108x): ${partnerRatnaRec.groomStone.beejMantra}`,
+            },
+            {
+              title: `${partnerRatnaRec.brideStone.purposeTitle} — ${partnerRatnaRec.brideStone.ratna.primaryGem} (${partnerRatnaRec.brideStone.ratna.sanskritGem})`,
+              subtitle: `${partnerRatnaRec.brideStone.priorityBadge} • Finger: ${partnerRatnaRec.brideStone.wearingHandAndFinger} • Metal: ${partnerRatnaRec.brideStone.ratna.metal}`,
+              body: `How It Creates Relationship & Marital Harmony: ${partnerRatnaRec.brideStone.astrologicalReason} Complete Step-by-Step Wearing Ritual (Ratna Dharan Vidhi): ${partnerRatnaRec.brideStone.howToWearStepByStep.join(' | ')}`,
+              highlight: `Day & Muhurat: ${partnerRatnaRec.brideStone.dayAndMuhurat} | Beej Mantra (108x): ${partnerRatnaRec.brideStone.beejMantra}`,
+            },
+          ],
+          bullets: [
+            `Joint Couple Relationship Harmony & Bedroom Crystal Synergy: ${partnerRatnaRec.jointHarmonyStoneSummary}`,
+            ...clientOrAdminRemedyBullets,
+          ],
+        },
+      ],
+    },
+
+    // PARIVAR MILAN & 9-CHAKRA FAMILY DIAGNOSTICS (Independent Opt-In Module, tightly packed on A4)
+    {
+      pageNumber: 21,
+      moduleKey: 'parivarMilan' as const,
+      chapterTag:
+        'CHAPTER 21C • PARIVAR MILAN: FINAL CONCLUSIVE HARMONY GRAPH & 9-CHAKRA DIAGNOSTICS',
+      title: 'PARIVAR MILAN: HARMONY GRAPH & 9-CHAKRA DIAGNOSTICS',
+      subtitle:
+        parivarReport.memberResults.length > 0
+          ? `Client: ${activeProfile.name} • Overall Parivar Harmony: ${parivarReport.averageFamilyHarmony}% (${parivarReport.familyCollectiveVerdict}) across ${parivarReport.memberResults.length} Family Member(s)`
+          : `Client: ${activeProfile.name} • Mulank ${m} (${mPlanet.planet}) & Bhagyank ${b} (${bPlanet.planet}) • Collective Family Vedic Astrology, 9-Chakra & Gemstone/Rudraksha Charter`,
+      bannerKey: 'chakra' as const,
+      sections:
+        parivarReport.memberResults.length > 0
+          ? [
+              {
+                heading: `1. FINAL CONCLUSIVE RESULT • PARIVAR HARMONY GRAPH (${activeProfile.name.toUpperCase()} WITH EACH FAMILY MEMBER)`,
+                subheading: `Comparative 9-Chakra & Vedic Alignment % (Earth Star #1 to Soul Star #9) • Overall Parivar Harmony: ${parivarReport.averageFamilyHarmony}%`,
+                parivarHarmonyGraphBox: {
+                  clientName: activeProfile.name,
+                  averageFamilyHarmony: parivarReport.averageFamilyHarmony,
+                  familyCollectiveVerdict: parivarReport.familyCollectiveVerdict,
+                  strongestBondLabel: parivarReport.mostHarmoniousMember
+                    ? `${parivarReport.mostHarmoniousMember.name} (${parivarReport.mostHarmoniousMember.relation} • ${parivarReport.mostHarmoniousMember.score}%)`
+                    : 'N/A',
+                  priorityRemedyBondLabel: parivarReport.mostChallengingMember
+                    ? `${parivarReport.mostChallengingMember.name} (${parivarReport.mostChallengingMember.relation} • ${parivarReport.mostChallengingMember.score}%)`
+                    : 'N/A',
+                  collectiveSynthesis: parivarReport.collectiveHomeVastuAndParivarRemedy,
+                  members: parivarReport.memberResults.map((res, idx) => {
+                    const harmCount = res.nineChakraDiagnostics.filter(
+                      (c) => c.status === 'Harmonious'
+                    ).length;
+                    return {
+                      index: idx + 1,
+                      name: res.member.name,
+                      relation: res.member.relation,
+                      dobAndPlace: `${res.member.dob} (${res.member.tob || '09:30'}) • ${res.member.pob || 'New Delhi'}`,
+                      mulankBhagyankRashi: `M:${res.memberMulank} | B:${res.memberBhagyank} • ${res.memberAstrology.rashi.split(' ')[0]}`,
+                      harmonyScore: res.overallHarmonyScore,
+                      harmoniousCount: harmCount,
+                      needsHarmonyCount: 9 - harmCount,
+                      verdict: res.harmonyVerdict,
+                    };
+                  }),
+                },
+              },
+              ...parivarReport.memberResults.map((res, mIdx) => {
+                const harmCount = res.nineChakraDiagnostics.filter(
+                  (c) => c.status === 'Harmonious'
+                ).length;
+                const chakrasNeedingHarmony = res.nineChakraDiagnostics.filter(
+                  (ch) => ch.status !== 'Harmonious'
+                );
+                const allNineChakraPercentLine = res.nineChakraDiagnostics
+                  .map(
+                    (c) =>
+                      `#${c.chakraNumber} ${c.chakraName.replace(' Chakra', '')}: ${c.alignmentScore}% (${
+                        c.status === 'Harmonious' ? 'Perfect' : 'Needs Harmony'
+                      })`
+                  )
+                  .join(' • ');
+
+                return {
+                  heading: `${mIdx + 2}. COMPLETE 9-CHAKRA PARIVAR DIAGNOSTICS: ${activeProfile.name.toUpperCase()} & ${res.member.name.toUpperCase()} (${res.member.relation.toUpperCase()} — ${res.overallHarmonyScore}%)`,
+                  subheading: `DOB: ${res.member.dob} (${res.member.tob || '09:30'}) • Place: ${res.member.pob || 'New Delhi'} • Mulank ${res.memberMulank} | Bhagyank ${res.memberBhagyank} • ${res.memberAstrology.rashi} (${res.memberAstrology.nakshatra}) • Verdict: ${res.harmonyVerdict}`,
+                  paragraphs: [
+                    `${res.executiveSummary} All 9 Chakras Alignment % (#1 Earth Star to #9 Soul Star): ${allNineChakraPercentLine}.`,
+                  ],
+                  gridItems: [
+                    {
+                      title: `Key Parivar Strengths (${activeProfile.name} & ${res.member.name} — ${res.member.relation})`,
+                      subtitle: `9-Chakra Harmony Score: ${res.overallHarmonyScore}% (${res.harmonyVerdict}) • Perfect/Harmonious Chakras: ${harmCount}/9`,
+                      body: res.keyStrengths.map((s, si) => `${si + 1}. ${s}`).join(' | '),
+                      highlight: `Harmonious Chakras (${harmCount}/9): ${
+                        res.nineChakraDiagnostics
+                          .filter((c) => c.status === 'Harmonious')
+                          .map((c) => `#${c.chakraNumber} ${c.chakraName.replace(' Chakra', '')} (${c.alignmentScore}%)`)
+                          .join(', ') || 'None'
+                      }`,
+                    },
+                    {
+                      title: `Key Karmic Frictions & Focus Areas (${activeProfile.name} & ${res.member.name})`,
+                      subtitle: `Chakras Needing Harmony Remedies: ${chakrasNeedingHarmony.length}/9 (Only Chakras Needing Harmony Detailed Below)`,
+                      body: res.keyFrictions.map((f, fi) => `${fi + 1}. ${f}`).join(' | '),
+                      highlight:
+                        chakrasNeedingHarmony.length > 0
+                          ? `Chakras Needing Attention (${chakrasNeedingHarmony.length}/9): ${chakrasNeedingHarmony
+                              .map((c) => `#${c.chakraNumber} ${c.chakraName.replace(' Chakra', '')} (${c.alignmentScore}%)`)
+                              .join(', ')}`
+                          : 'All 9 Chakras are naturally aligned in harmony (>=75%).',
+                    },
+                    {
+                      title: `Vedic Astrology Family Harmony (${activeProfile.name} & ${res.member.name})`,
+                      subtitle: `Bhakoot Axis: ${res.vedicAstrologyHarmony.bhakootAxisLabel} • Rashi Match: ${res.vedicAstrologyHarmony.rashiHarmonyScore}% • ${res.vedicAstrologyHarmony.taraBalaName} [${res.vedicAstrologyHarmony.taraBalaFavorability}]`,
+                      body: `Rashi Lord Maitri: ${res.vedicAstrologyHarmony.rashiLordMaitri} | Solar Synergy: ${res.vedicAstrologyHarmony.sunSignSynergy} | ${res.vedicAstrologyHarmony.vedicSummary}`,
+                      highlight: `Vedic Harmony Remedy: ${res.vedicAstrologyHarmony.vedicRemedy}`,
+                    },
+                    {
+                      title: `Gemstone (Ratna) & Rudraksha Remedies (${activeProfile.name} & ${res.member.name})`,
+                      subtitle: `Client Ratna: ${res.gemstoneAndRudrakshaRemedy.clientGemstone} | Member Ratna: ${res.gemstoneAndRudrakshaRemedy.memberGemstone} • Family Unity Rudraksha: ${res.gemstoneAndRudrakshaRemedy.familyUnityRudraksha}`,
+                      body: `Substitute: ${res.gemstoneAndRudrakshaRemedy.gemstoneSubstitute} | Weight: ${res.gemstoneAndRudrakshaRemedy.weightAndCarat} | Metal & Finger: ${res.gemstoneAndRudrakshaRemedy.metalAndFinger} | Day & Time: ${res.gemstoneAndRudrakshaRemedy.wearingDayAndTime} | Gem Mantra: ${res.gemstoneAndRudrakshaRemedy.gemMantra}`,
+                      highlight: `Client Rudraksha: ${res.gemstoneAndRudrakshaRemedy.clientRudraksha} | Member Rudraksha: ${res.gemstoneAndRudrakshaRemedy.memberRudraksha} | Method: ${res.gemstoneAndRudrakshaRemedy.rudrakshaWearingMethod} | Mantra: ${res.gemstoneAndRudrakshaRemedy.rudrakshaMantra}`,
+                    },
+                    ...chakrasNeedingHarmony.map((ch) => ({
+                      title: `All 9 Chakras Breakdown (Needs Harmony): #${ch.chakraNumber} ${ch.chakraName} (${ch.sanskritName}) — ${ch.alignmentScore}% [${ch.status}]`,
+                      subtitle: `Carrier: ${ch.affectedPerson} • Sound: ${ch.soundFrequencyHz} • Bija Mantra: ${ch.beejMantra} • Crystal: ${ch.healingCrystal} • Rudraksha: ${ch.rudrakshaMukhi}`,
+                      body: `Client (${activeProfile.name}): ${ch.clientPatternDetail} | ${res.member.name} (${res.member.relation}): ${ch.memberPatternDetail} | Mutual Issue: ${ch.mutualFamilyIssue}`,
+                      highlight: `1. Client Remedy: ${ch.clientRemedy} | 2. ${res.member.name} Remedy: ${ch.memberRemedy} | 3. Joint Parivar Remedy: ${ch.jointFamilyRemedy}`,
+                    })),
+                  ],
+                  bullets:
+                    mIdx === parivarReport.memberResults.length - 1
+                      ? [
+                          `Collective Parivar Gemstone & Rudraksha Harmony Plan: ${parivarReport.collectiveGemstoneAndRudrakshaRemedy}`,
+                          parivarReport.importantDisclaimer,
+                          ...clientOrAdminRemedyBullets,
+                        ]
+                      : undefined,
+                };
+              }),
+            ]
+          : [
+              {
+                heading: `1. PARIVAR MILAN: COLLECTIVE FAMILY VEDIC ASTROLOGY, 9-CHAKRA & RATNA/RUDRAKSHA HARMONY CHARTER (${activeProfile.name.toUpperCase()})`,
+                subheading: `Client Natal Anchor: Mulank ${m} (${mPlanet.planet}) • Bhagyank ${b} (${bPlanet.planet}) • Rashi: ${astro.rashi} (${astro.nakshatra})`,
+                paragraphs: [
+                  parivarReport.collectiveHomeVastuAndParivarRemedy,
+                  parivarReport.collectiveGemstoneAndRudrakshaRemedy,
+                ],
+                gridItems: [
+                  {
+                    title: `1. Earth Star (#1) to Heart Chakra (#5) Domestic Grounding & Emotional Peace`,
+                    subtitle: `Vasundhara (396 Hz) • Muladhara • Svadhisthana • Manipura • Anahata (639 Hz)`,
+                    body: `Keep Black Tourmaline & Himalayan Rock Salt in the South-West corner for ancestral grounding, and a natural Rose Quartz sphere in the North-East or living room to nurture unconditional family warmth, forgiveness, and mutual empathy.`,
+                    highlight: `Joint Family Sankalpa: Chant "Om Sarve Bhavantu Sukhinah" (11x) together on Friday evenings.`,
+                  },
+                  {
+                    title: `2. Throat (#6) to Soul Star Chakra (#9) Communication & Collective Grace`,
+                    subtitle: `Vishuddha (741 Hz) • Ajna (852 Hz) • Sahasrara (963 Hz) • Vyapini Soul Star (1074 Hz)`,
+                    body: `Place a natural White Selenite Tower and an energized Gauri Shankar + 5-Mukhi Rudraksha in the North-East (Ishan Kon) prayer altar so family dialogues remain respectful, clear, and guided by higher dharmic wisdom.`,
+                    highlight: `Client Primary Family Harmony Stone: ${gemRecommend.lifeStone.primaryGem} (${gemRecommend.lifeStone.sanskritGem}) & Gauri Shankar + 5-Mukhi Rudraksha.`,
+                  },
+                ],
+                bullets: [parivarReport.importantDisclaimer, ...clientOrAdminRemedyBullets],
+              },
+            ],
     },
 
     // =========================================================================
@@ -2612,6 +2982,7 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
               ],
             ],
           },
+          bullets: clientOrAdminRemedyBullets,
         },
       ],
     },
@@ -2671,6 +3042,7 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
               `Sadaqah: ${qr.sadaqahCharityItem}\nStone/Attar: ${qr.halalStoneAndAttar}`,
             ]),
           },
+          bullets: clientOrAdminRemedyBullets,
         },
       ],
     },
@@ -2730,6 +3102,186 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
     filteredPages = matching.length > 0 ? matching : rawPages.filter((p) => p.moduleKey === 'nameAndCareer');
   }
 
+  // Dynamically generate and prepend 'Index of Modules' page at Page 1 unless skipped for raw per-module measurement
+  if (!options?.skipIndexPage) {
+    const pageCountSummary = calculateExactPdfPageCounts(ctx);
+    const modRanges = pageCountSummary.modulePageRanges;
+
+    type ModKey = keyof NonNullable<PdfExportContext['selectedSections']>;
+    const moduleCatalog: {
+      key: ModKey;
+      title: string;
+      chaptersAndScope: string;
+      personalizedHighlight: string;
+    }[] = [
+      {
+        key: 'nameAndCareer',
+        title: 'Name, Career, 5-Pillar Ratna & Universal Validator',
+        chaptersAndScope:
+          'Birth Chart, 3x3 Lo-Shu Matrix, 8 Planes, Name Spellings, All Career Sectors, 5-Pillar Ratna & Vehicle/Flat/Business Validator',
+        personalizedHighlight: `Mulank ${m} (${mPlanet.planet}) | Bhagyank ${b} (${bPlanet.planet}) • Best Name: ${topPerfectChoice?.suggestedName || activeProfile.name} • Primary Gem: ${gemRecommend.lifeStone.primaryGem}`,
+      },
+      {
+        key: 'advanceMobileAudit',
+        title: 'Advance Mobile Numerology, Dasha & Lo-Shu Matrix',
+        chaptersAndScope:
+          '10-Digit Mobile Pair Scanner, Missing/Repeated Digits, Planetary Dasha Timeline, Remedies & Ideal Number Synthesis',
+        personalizedHighlight: `Mobile: ${activeProfile.mobile || '9876543210'} -> Compound ${mobileAnalysis.compoundNumber} / Root #${mobileAnalysis.singleDigit} (${mobileAnalysis.verdict})`,
+      },
+      {
+        key: 'forecast12Months',
+        title: `12-Month Vedic & Numerology Monthly Forecast (${startFormatted} – ${endFormatted})`,
+        chaptersAndScope:
+          'Month-by-Month Personal Month Vibrations, Career, Finance, Health, Relationships & Monthly Remedies across 12 Months',
+        personalizedHighlight: `12-Month Cycle for Mulank ${m} & Bhagyank ${b} • Peak Growth & Precaution Windows Mapped`,
+      },
+      {
+        key: 'auditedCalendar12Months',
+        title: '12-Month Audited Good / Bad / Best Dates Calendar',
+        chaptersAndScope:
+          'Complete 365-Day Date-by-Date Classification (Siddha Best Dates, Good Dates, Neutral & Precaution/Avoid Dates)',
+        personalizedHighlight: `Lucky Days: ${mPlanet.luckyDays.join(', ')} • Event-Specific Muhurat Dates for Business, Property & Travel`,
+      },
+      {
+        key: 'transitsAndMoon12Months',
+        title: 'Planetary Transits (Gochar), Hora, Purnima & Amavasya',
+        chaptersAndScope:
+          'Guru, Shani, Rahu-Ketu & Surya Gochar Impact on Moon Rashi + 24-Hour Planetary Hora Table + 12-Month Purnima/Amavasya',
+        personalizedHighlight: `Vedic Moon Rashi: ${astro.rashi} (${astro.nakshatra}) • Lord: ${astro.rashiLord}`,
+      },
+      {
+        key: 'dailyMantras',
+        title: '7-Day Planetary Mantras & Sacred Sankalpa Schedule',
+        chaptersAndScope:
+          'Complete Sunday-to-Saturday Vedic Beej Mantras, Chanting Counts, Mala Selection, Disha & Morning Sankalpa Vidhi',
+        personalizedHighlight: `Primary Beej Mantra: "${bPlanet.beejMantra}" (108x Daily) • Deity: ${bPlanet.deity}`,
+      },
+      {
+        key: 'yogaAndPranayama',
+        title: 'Personalized Yoga Sadhana, Asanas & Pranayama Protocol',
+        chaptersAndScope:
+          'Illustrated Step-by-Step Yogasanas, Therapeutic Pranayama Breathing, Mudras & Daily Holistic Sadhana Routine',
+        personalizedHighlight: `Target Focus: ${(activeProfile.healthConcerns && activeProfile.healthConcerns.length > 0 ? activeProfile.healthConcerns.join(', ') : 'Complete Pranic Vitality & Stress Relief')}`,
+      },
+      {
+        key: 'partnerMilanChakras',
+        title: 'Partner Milan, 36-Guna Ashtakoot & 9-Chakra Diagnostics',
+        chaptersAndScope:
+          'Groom & Bride Name/DOB Compatibility Gauge, All 8 Ashtakoot Kootas, All 9 Chakras (#1 Earth Star to #9 Soul Star) & Couple Ratna',
+        personalizedHighlight: `${groomProfile.name} & ${brideProfile.name} • Score: ${partnerMilan.totalPoints}/36 Gunas (${partnerMilan.overallPercentage}% — ${partnerMilan.verdict})`,
+      },
+      {
+        key: 'parivarMilan',
+        title: 'Parivar Milan (Family Harmony Graph, Vedic & 9-Chakra Diagnostics)',
+        chaptersAndScope:
+          'Final Conclusive Family Harmony Graph, Vedic Astrology Match, Gemstone & Rudraksha Remedies + Chakras Needing Harmony',
+        personalizedHighlight:
+          parivarReport.memberResults.length > 0
+            ? `Family Members Analyzed: ${parivarReport.memberResults.length} • Collective Harmony: ${parivarReport.averageFamilyHarmony}% (${parivarReport.familyCollectiveVerdict})`
+            : `Household Parivar Vedic Astrology, 9-Chakra & Gemstone/Rudraksha Harmony Charter`,
+      },
+      {
+        key: 'festivals12Months',
+        title: 'All-India Major Festivals Muhurat & Home/Office Vastu Blueprint',
+        chaptersAndScope:
+          '16 Major Festivals Personalized Siddha Puja Muhurats, Diya & Offerings + Complete Home & Office Vastu Shastra Charter',
+        personalizedHighlight: `Personalized Puja Timings, Disha & Vastu Remedies for Mulank ${m} & Bhagyank ${b}`,
+      },
+      {
+        key: 'islamicVedicRemedies',
+        title: 'Ilm-ul-Adad (Abjad), Asma-ul-Husna, Quranic Duas & 7-Day Dhikr',
+        chaptersAndScope:
+          '3 Personalized Asma-ul-Husna Wazifa Cards, 5 Quranic Surah/Dua Remedies, 7-Day Dhikr/Sadaqah & 1–9 Adad Matrix',
+        personalizedHighlight: `Abjad Root #${islamicReport.abjadRootNumber} • Primary Tasbih: ${islamicReport.primaryAsmaRemedy.transliteration} (${islamicReport.primaryAsmaRemedy.recommendedDailyCount})`,
+      },
+    ];
+
+    const activeModuleEntries = moduleCatalog.filter((mItem) =>
+      filteredPages.some((p) => p.moduleKey === mItem.key)
+    );
+
+    const indexPageSpec: PdfPageSpec = {
+      pageNumber: 1,
+      chapterTag: 'MASTER DOSSIER INDEX • TABLE OF CONTENTS & ACTIVE MODULE PAGE GUIDE',
+      title: 'INDEX OF MODULES & MASTER REPORT PAGE GUIDE',
+      subtitle: `Prepared for ${activeProfile.name} (DOB: ${activeProfile.dob} • Place: ${activeProfile.pob || 'New Delhi'}) • ${activeModuleEntries.length} Active Module(s) • Total ${pageCountSummary.totalPdfPages} Pages`,
+      bannerKey: 'banner',
+      sections: [
+        {
+          heading: `1. INDEX OF MODULES INCLUDED IN THIS PERSONALIZED DOSSIER (${activeModuleEntries.length} ACTIVE MODULES • PAGES 1 TO ${pageCountSummary.totalPdfPages})`,
+          subheading: `Master Table of Contents Mapping Every Selected Module, Diagnostic Scope, Key Personalized Result & Exact Page Number(s)`,
+          paragraphs: [
+            `Welcome to the personalized ${TATHASTU_BRAND_NAME} ("${TATHASTU_TAGLINE}") Spiritual Dossier for ${activeProfile.name}. Page 1 serves as your Master Index of Modules so you can immediately locate every selected diagnostic module, prediction, and remedy across all ${pageCountSummary.totalPdfPages} pages of this report.`,
+          ],
+          table: {
+            headers: [
+              'Module # & Active Module Name',
+              'Chapters, Diagnostics & Remedies Included',
+              `Key Personalized Result for ${activeProfile.name}`,
+              'Report Page No.',
+            ],
+            colWidths: [44, 62, 56, 32],
+            rows: [
+              [
+                `00. Index of Modules & Executive Charter`,
+                `Master Table of Contents, Active Module Page Directory & Core Natal/Remedy Quick Reference`,
+                `Client: ${activeProfile.name} • Mulank ${m} (${mPlanet.planet}) | Bhagyank ${b} (${bPlanet.planet}) • ${astro.rashi}`,
+                `Page 1\n(1 Page)`,
+              ],
+              ...activeModuleEntries.map((entry, idx) => {
+                const rng = modRanges[entry.key];
+                const pgLabel =
+                  rng && rng.startPage > 0
+                    ? rng.startPage === rng.endPage
+                      ? `Page ${rng.startPage}\n(1 Page)`
+                      : `Pages ${rng.startPage} – ${rng.endPage}\n(${rng.pageCount} Pages)`
+                    : `Included`;
+                return [
+                  `${String(idx + 1).padStart(2, '0')}. ${entry.title}`,
+                  entry.chaptersAndScope,
+                  entry.personalizedHighlight,
+                  pgLabel,
+                ];
+              }),
+            ],
+          },
+        },
+        {
+          heading: `2. EXECUTIVE PERSONALIZED SNAPSHOT & CORE REMEDIES AT A GLANCE (${activeProfile.name.toUpperCase()})`,
+          subheading: `Quick-Reference Summary of Core Numerology, Vedic Astrology, Name/Mobile Vibrations & Primary Remedies`,
+          gridItems: [
+            {
+              title: `1. Core Numerology & Vedic Natal Pillars`,
+              subtitle: `DOB: ${activeProfile.dob} (${activeProfile.tob || '09:30'}) • ${activeProfile.pob || 'New Delhi'}`,
+              body: `Mulank (Driver): #${m} (${mPlanet.planet} / ${mPlanet.sanskritName}) | Bhagyank (Conductor): #${b} (${bPlanet.planet} / ${bPlanet.sanskritName}) | Vedic Moon Rashi: ${astro.rashi} (${astro.nakshatra}, Pada ${astro.pada}) | Sun Sign: ${astro.sunSign}.`,
+              highlight: `Friendly Numbers: ${mPlanet.friendlyNumbers.join(', ')} | Lucky Days: ${mPlanet.luckyDays.join(', ')} | Lucky Color: ${mPlanet.luckyColor}`,
+            },
+            {
+              title: `2. Name & Mobile Frequency Alignment Verdict`,
+              subtitle: `Current Name: ${activeProfile.name} (#${nameAnalysis.totalChaldeanCompound} -> #${nameAnalysis.chaldeanSingle}) • Mobile: ${activeProfile.mobile || '9876543210'}`,
+              body: `Recommended Top Harmonious Name Spelling: "${topPerfectChoice?.suggestedName || activeProfile.name}" (Compound #${topPerfectChoice?.compoundNumber ?? nameAnalysis.totalChaldeanCompound} -> Root #${topPerfectChoice?.singleDigit ?? nameAnalysis.chaldeanSingle} ${topPerfectChoice?.targetPlanet || nPlanet.planet}). Mobile Root #${mobileAnalysis.singleDigit} (${mobileAnalysis.verdict}).`,
+              highlight: `Career & Business Domains: ${career.favorableProfessions.slice(0, 4).join(' • ')}`,
+            },
+            {
+              title: `3. Primary 5-Pillar Ratna (Gemstone) & Rudraksha Shield`,
+              subtitle: `Life-Force Stone: ${gemRecommend.lifeStone.primaryGem} (${gemRecommend.lifeStone.sanskritGem}) • Destiny Stone: ${gemRecommend.destinyStone.primaryGem}`,
+              body: `Wear ${gemRecommend.lifeStone.primaryGem} (${gemRecommend.idealRattiRange}) in ${gemRecommend.lifeStone.metal} on ${gemRecommend.lifeStone.finger} on ${gemRecommend.lifeStone.wearingDay} (${gemRecommend.lifeStone.auspiciousTimeWindow}).`,
+              highlight: `Personal Growth Ratna: ${nameAndGrowthRatna.personalGrowthStone.ratna.primaryGem} • Beej Mantra: "${bPlanet.beejMantra}" (108x)`,
+            },
+            {
+              title: `4. Sacred Vastu, Daily Sadhana & Healer Attestation`,
+              subtitle: `Authorized By: Healer ${ctx.healerDisplayName} (${ctx.brandTitle}) • ${ctx.healerDisplayMobile}`,
+              body: `Face East or North-East (Ishan Kon) during key work and daily mantra japa. Place an energized Shree Yantra in the North-East altar and follow the date-by-date calendar & remedies on the pages mapped above.`,
+              highlight: `Validity Period: ${startFormatted} – ${endFormatted} • Total Report Length: ${pageCountSummary.totalPdfPages} A4 Pages`,
+            },
+          ],
+        },
+      ],
+    };
+
+    filteredPages = [indexPageSpec, ...filteredPages];
+  }
+
   // Re-number pages 1..N dynamically and ensure the final page ALWAYS includes the Sacred Closing Blessing,
   // Universal Gratitude, TATHASTU Family Slogan & QR Verification Seal
   const renumberedPages = filteredPages.map((pg, idx) => {
@@ -2738,7 +3290,10 @@ function build18PageMasterDossier(ctx: PdfExportContext): PdfPageSpec[] {
     return {
       ...pg,
       pageNumber: idx + 1,
-      chapterTag: `CHAPTER ${String(idx + 1).padStart(2, '0')} • ${cleanChapterSuffix}`,
+      chapterTag:
+        idx === 0 && !options?.skipIndexPage
+          ? pg.chapterTag
+          : `CHAPTER ${String(idx + 1).padStart(2, '0')} • ${cleanChapterSuffix}`,
       includeQrVerification: isLastPage ? true : false,
       includeClosingBlessing: isLastPage ? true : false,
     };
@@ -3666,6 +4221,269 @@ function drawAshtakootGunaMilanChartBox(
   return curY + totalRowH;
 }
 
+/**
+ * Draws the Visual Parivar Harmony Graph Box (FINAL CONCLUSIVE RESULT • PARIVAR HARMONY GRAPH)
+ * with graphical 0%-100% progress bars, KPI badges, and collective synthesis.
+ */
+function drawParivarHarmonyGraphBox(
+  doc: jsPDF,
+  x: number,
+  startY: number,
+  width: number,
+  data: ParivarHarmonyGraphBoxData,
+  pageMaxY: number,
+  onNewPage: (currentY: number) => number
+): number {
+  const rawColW = [7, 46, 38, 44, 29, 30];
+  const sumW = rawColW.reduce((a, b) => a + b, 0);
+  const colW = rawColW.map((w) => (w / sumW) * width);
+  const headers = [
+    '#',
+    'Family Member & Relation',
+    'Birth & Astro Numbers',
+    'Visual Parivar Harmony Graph',
+    '9-Chakra Status',
+    'Verdict',
+  ];
+
+  const kpiBarH = 7.4;
+  const headerH = 6.8;
+  const rowH = 6.8;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.6);
+  const synthLines = wrapPdfTextStrict(
+    doc,
+    `Final Conclusive Parivar Synthesis: ${data.collectiveSynthesis}`,
+    width - 5.0
+  );
+  const synthBarH = Math.max(6.2, synthLines.length * 2.85 + 2.2);
+
+  let curY = startY;
+  if (curY + kpiBarH + headerH + rowH > pageMaxY) {
+    curY = onNewPage(curY);
+  }
+
+  // 1. Top KPI Summary Banner
+  doc.setFillColor(20, 27, 45);
+  doc.setDrawColor(245, 158, 11);
+  doc.setLineWidth(0.32);
+  doc.rect(x, curY, width, kpiBarH, 'FD');
+
+  const kpiW = width / 3;
+  doc.setDrawColor(180, 83, 9);
+  doc.setLineWidth(0.2);
+  doc.line(x + kpiW, curY, x + kpiW, curY + kpiBarH);
+  doc.line(x + kpiW * 2, curY, x + kpiW * 2, curY + kpiBarH);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.3);
+  doc.setTextColor(110, 231, 183);
+  doc.text(
+    cleanPdfText(`OVERALL PARIVAR HARMONY: ${data.averageFamilyHarmony}%`),
+    x + kpiW / 2,
+    curY + 4.7,
+    { align: 'center' }
+  );
+
+  doc.setTextColor(253, 230, 138);
+  const strongTxt = cleanPdfText(`STRONGEST BOND: ${data.strongestBondLabel}`);
+  let stFont = 6.0;
+  doc.setFontSize(stFont);
+  while (stFont > 4.5 && doc.getTextWidth(strongTxt) > kpiW - 2.4) {
+    stFont -= 0.2;
+    doc.setFontSize(stFont);
+  }
+  doc.text(strongTxt, x + kpiW + kpiW / 2, curY + 4.7, { align: 'center' });
+
+  doc.setTextColor(253, 164, 175);
+  const prioTxt = cleanPdfText(`PRIORITY REMEDIES: ${data.priorityRemedyBondLabel}`);
+  let prFont = 6.0;
+  doc.setFontSize(prFont);
+  while (prFont > 4.5 && doc.getTextWidth(prioTxt) > kpiW - 2.4) {
+    prFont -= 0.2;
+    doc.setFontSize(prFont);
+  }
+  doc.setFontSize(prFont);
+  doc.text(prioTxt, x + kpiW * 2 + kpiW / 2, curY + 4.7, { align: 'center' });
+
+  curY += kpiBarH;
+
+  // 2. Table Header for Conclusive Graph
+  const drawGraphHeader = (yPos: number): number => {
+    doc.setFillColor(30, 17, 54);
+    doc.setDrawColor(217, 119, 6);
+    doc.setLineWidth(0.28);
+    doc.rect(x, yPos, width, headerH, 'FD');
+
+    let cx = x;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.1);
+    doc.setTextColor(253, 230, 138);
+    for (let c = 0; c < headers.length; c++) {
+      if (c > 0) {
+        doc.setDrawColor(180, 83, 9);
+        doc.setLineWidth(0.16);
+        doc.line(cx, yPos, cx, yPos + headerH);
+      }
+      doc.text(cleanPdfText(headers[c]), cx + colW[c] / 2, yPos + 4.4, { align: 'center' });
+      cx += colW[c];
+    }
+    return yPos + headerH;
+  };
+
+  curY = drawGraphHeader(curY);
+
+  // 3. Each Family Member Row with Graphical Progress Bar
+  for (let r = 0; r < data.members.length; r++) {
+    const m = data.members[r];
+    if (curY + rowH > pageMaxY) {
+      curY = onNewPage(curY);
+      curY = drawGraphHeader(curY);
+    }
+
+    setPdfFillOpacity(doc, 0.9);
+    if (r % 2 === 0) {
+      doc.setFillColor(255, 253, 247);
+    } else {
+      doc.setFillColor(254, 246, 224);
+    }
+    doc.setDrawColor(217, 119, 6);
+    doc.setLineWidth(0.2);
+    doc.rect(x, curY, width, rowH, 'FD');
+    setPdfFillOpacity(doc, 1.0);
+
+    let cx = x;
+    for (let c = 0; c < colW.length; c++) {
+      if (c > 0) {
+        doc.setDrawColor(234, 179, 8);
+        doc.setLineWidth(0.15);
+        doc.line(cx, curY, cx, curY + rowH);
+      }
+      cx += colW[c];
+    }
+
+    const midY = curY + rowH / 2 + 1.0;
+
+    // Col 0: #
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.6);
+    doc.setTextColor(180, 83, 9);
+    doc.text(String(m.index), x + colW[0] / 2, midY, { align: 'center' });
+
+    // Col 1: Family Member & Relation
+    const c1X = x + colW[0];
+    doc.setFont('times', 'bold');
+    doc.setFontSize(6.7);
+    doc.setTextColor(120, 53, 15);
+    const nameRelStr = cleanPdfText(`${m.name} (${m.relation})`);
+    doc.text(nameRelStr, c1X + 1.5, curY + 2.9);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5.7);
+    doc.setTextColor(71, 85, 105);
+    const dobLines = wrapPdfTextStrict(doc, m.dobAndPlace, colW[1] - 2.6);
+    doc.text(dobLines[0] || '', c1X + 1.5, curY + 5.6);
+
+    // Col 2: Mulank, Bhagyank & Rashi
+    const c2X = c1X + colW[1];
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.1);
+    doc.setTextColor(30, 41, 59);
+    const mbrLines = wrapPdfTextStrict(doc, m.mulankBhagyankRashi, colW[2] - 2.4);
+    doc.text(mbrLines[0] || '', c2X + colW[2] / 2, midY, { align: 'center' });
+
+    // Col 3: Visual Parivar Harmony Graph Bar + %
+    const c3X = c2X + colW[2];
+    const barW = colW[3] - 12.5;
+    const barH = 2.8;
+    const barX = c3X + 1.8;
+    const barY = curY + (rowH - barH) / 2;
+
+    doc.setFillColor(226, 232, 240);
+    doc.setDrawColor(148, 163, 184);
+    doc.setLineWidth(0.15);
+    doc.roundedRect(barX, barY, barW, barH, 1.0, 1.0, 'FD');
+
+    const fillW = Math.max(1.8, (Math.min(100, Math.max(8, m.harmonyScore)) / 100) * barW);
+    if (m.harmonyScore >= 76) {
+      doc.setFillColor(16, 185, 129);
+    } else if (m.harmonyScore >= 64) {
+      doc.setFillColor(245, 158, 11);
+    } else {
+      doc.setFillColor(225, 29, 72);
+    }
+    doc.roundedRect(barX, barY, fillW, barH, 1.0, 1.0, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`${m.harmonyScore}%`, c3X + colW[3] - 1.5, midY, { align: 'right' });
+
+    // Col 4: 9-Chakra Status
+    const c4X = c3X + colW[3];
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.9);
+    doc.setTextColor(6, 95, 70);
+    doc.text(
+      cleanPdfText(`${m.harmoniousCount}/9 OK | ${m.needsHarmonyCount} Fix`),
+      c4X + colW[4] / 2,
+      midY,
+      { align: 'center' }
+    );
+
+    // Col 5: Verdict Pill
+    const c5X = c4X + colW[4];
+    const pillW = colW[5] - 2.2;
+    const pillH = 4.2;
+    const pillX = c5X + 1.1;
+    const pillY = curY + (rowH - pillH) / 2;
+
+    if (m.harmonyScore >= 76) {
+      doc.setFillColor(209, 250, 229);
+      doc.setDrawColor(16, 185, 129);
+      doc.setTextColor(6, 95, 70);
+    } else if (m.harmonyScore >= 64) {
+      doc.setFillColor(254, 243, 199);
+      doc.setDrawColor(217, 119, 6);
+      doc.setTextColor(146, 64, 14);
+    } else {
+      doc.setFillColor(255, 228, 230);
+      doc.setDrawColor(225, 29, 72);
+      doc.setTextColor(159, 18, 57);
+    }
+    doc.setLineWidth(0.18);
+    doc.roundedRect(pillX, pillY, pillW, pillH, 0.8, 0.8, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    const vStr = cleanPdfText(m.verdict.toUpperCase());
+    let vf = 5.3;
+    doc.setFontSize(vf);
+    while (vf > 4.0 && doc.getTextWidth(vStr) > pillW - 1.2) {
+      vf -= 0.2;
+      doc.setFontSize(vf);
+    }
+    doc.text(vStr, pillX + pillW / 2, pillY + 2.85, { align: 'center' });
+
+    curY += rowH;
+  }
+
+  // 4. Bottom Collective Parivar Synthesis Bar
+  if (curY + synthBarH > pageMaxY) {
+    curY = onNewPage(curY);
+  }
+  doc.setFillColor(254, 249, 235);
+  doc.setDrawColor(180, 83, 9);
+  doc.setLineWidth(0.28);
+  doc.rect(x, curY, width, synthBarH, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.4);
+  doc.setTextColor(120, 53, 15);
+  drawPdfLinesStrict(doc, synthLines, x + 2.2, curY + 3.2, 2.85);
+
+  return curY + synthBarH;
+}
+
 const SHREE_YANTRA_PLATE_ASSET_PATH = '/assets/aistudio/wp8754154_d55216c3.jpg';
 
 /**
@@ -3908,9 +4726,9 @@ function drawContextualChapterArtFiller(
         'Planetary placements indicate past-life prarabdha karma, while conscious spiritual remedies, disciplined ethics, and seva empower you to elevate your present destiny.',
     },
     chakra: {
-      bannerTitle: '7-CHAKRA KUNDALINI PRANIC HEALING, VEDIC YOGA & SHREE YANTRA',
+      bannerTitle: '9-CHAKRA KUNDALINI PRANIC HEALING, VEDIC YOGA & SHREE YANTRA',
       mantraNote:
-        'Daily Surya Namaskar, Nadi Shodhana Pranayama & Beej Mantra meditation awaken dormant pranic energy across all 7 subtle psychic centers.',
+        'Daily Surya Namaskar, Nadi Shodhana Pranayama & Beej Mantra meditation awaken dormant pranic energy across all 9 subtle psychic centers.',
       leftBoxTitle: 'PRANIC CHAKRA & YOGA ASANA HIGHLIGHT',
       leftBoxText:
         'Practicing your birth-chart-aligned Yoga postures for 15 minutes at Brahma Muhurta clears nadis, balances endocrine vitality, and sharpens intuition.',
@@ -4215,7 +5033,11 @@ function drawContextualChapterArtFiller(
   doc.setTextColor(30, 41, 59);
   const rightBodyLines = wrapPdfTextStrict(
     doc,
-    `${theme.rightBoxText} Practice consistently for 43 days with devotion and positive sankalpa.`,
+    `${theme.rightBoxText} Practice consistently for 43 days with devotion and positive sankalpa.${
+      !ctx.isHealerReport
+        ? ' Visit www.tathastulight.com for 100% genuine & authentic Rudraksha, Crystals, Home Cleansing Material, Precious & Semi-Precious Stones.'
+        : ''
+    }`,
     sideBoxW - 4.4
   );
   const rightBodyStartY = innerY + 8.8 + Math.min(2, rightLeadLines.length) * bodyLineH;
@@ -4611,30 +5433,31 @@ function drawYogaAsanaVisualCardGallery(
   return curY;
 }
 
+export interface PdfModulePageRange {
+  startPage: number;
+  endPage: number;
+  pageCount: number;
+}
+
+const PER_MODULE_PAGE_COUNT_CACHE = new Map<
+  string,
+  Record<keyof NonNullable<PdfExportContext['selectedSections']>, number>
+>();
+
 /**
  * Computes the exact physical A4 PDF page count (`doc.getNumberOfPages()`) for the currently
- * selected modules as well as the exact PDF page count for each individual module.
- * Uses the identical jsPDF font metrics and pagination rules as `generateAndExport18PagePdf`.
+ * selected modules (including Page 1: Index of Modules) as well as the exact PDF page count
+ * and starting/ending page numbers for each individual module.
+ * Caches per-module measurements per profile + language so UI checkbox toggles are instantaneous.
  */
 export function calculateExactPdfPageCounts(ctx: PdfExportContext): {
   totalPdfPages: number;
   modulePageCounts: Record<keyof NonNullable<PdfExportContext['selectedSections']>, number>;
+  modulePageRanges: Record<
+    keyof NonNullable<PdfExportContext['selectedSections']>,
+    PdfModulePageRange
+  >;
 } {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-    compress: true,
-  });
-  installUnicodeCanvasTextRenderer(doc, true, ctx.language);
-
-  const pageW = 210;
-  const marginX = 8;
-  const contentW = pageW - marginX * 2; // 194mm
-  const bodyStartY = 30.8;
-  const footerStartY = 275.5;
-  const pageMaxY = footerStartY - 1.4; // 274.1mm
-
   type ModuleKey = keyof NonNullable<PdfExportContext['selectedSections']>;
   const allModuleKeys: ModuleKey[] = [
     'nameAndCareer',
@@ -4645,420 +5468,485 @@ export function calculateExactPdfPageCounts(ctx: PdfExportContext): {
     'dailyMantras',
     'yogaAndPranayama',
     'partnerMilanChakras',
+    'parivarMilan',
     'festivals12Months',
     'islamicVedicRemedies',
   ];
 
-  const measurePagesList = (
-    pages: PdfPageSpec[]
-  ): { total: number; perModule: Record<ModuleKey, number> } => {
-    const perModule: Record<ModuleKey, number> = {
-      nameAndCareer: 0,
-      advanceMobileAudit: 0,
-      forecast12Months: 0,
-      auditedCalendar12Months: 0,
-      transitsAndMoon12Months: 0,
-      dailyMantras: 0,
-      yogaAndPranayama: 0,
-      partnerMilanChakras: 0,
-      festivals12Months: 0,
-      islamicVedicRemedies: 0,
-    };
-    let total = 0;
+  const famSig = (ctx.activeProfile.parivarMembers || [])
+    .map((fm) => `${fm.name}:${fm.dob}:${fm.tob || ''}:${fm.relation}`)
+    .join('|');
+  const cacheKey = [
+    ctx.activeProfile.id,
+    ctx.activeProfile.name,
+    ctx.activeProfile.dob,
+    ctx.activeProfile.tob || '',
+    ctx.activeProfile.pob || '',
+    ctx.activeProfile.mobile || '',
+    ctx.activeProfile.partnerName || '',
+    ctx.activeProfile.partnerDob || '',
+    (ctx.activeProfile.healthConcerns || []).join(','),
+    famSig,
+    ctx.language || 'en',
+    ctx.isHealerReport ? 'H' : 'C',
+  ].join('||');
 
-    for (let pIdx = 0; pIdx < pages.length; pIdx++) {
-      const page = pages[pIdx];
-      const mKey: ModuleKey = page.moduleKey || 'nameAndCareer';
-      const addPageForCurrentChapter = (): number => {
-        total += 1;
-        perModule[mKey] = (perModule[mKey] || 0) + 1;
-        return bodyStartY;
+  let cachedPerModule = PER_MODULE_PAGE_COUNT_CACHE.get(cacheKey);
+
+  if (!cachedPerModule) {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+      compress: true,
+    });
+    installUnicodeCanvasTextRenderer(doc, true, ctx.language);
+
+    const pageW = 210;
+    const marginX = 8;
+    const contentW = pageW - marginX * 2; // 194mm
+    const bodyStartY = 30.8;
+    const footerStartY = 275.5;
+    const pageMaxY = footerStartY - 1.4; // 274.1mm
+
+    const measurePagesList = (
+      pages: PdfPageSpec[]
+    ): { total: number; perModule: Record<ModuleKey, number> } => {
+      const perModule: Record<ModuleKey, number> = {
+        nameAndCareer: 0,
+        advanceMobileAudit: 0,
+        forecast12Months: 0,
+        auditedCalendar12Months: 0,
+        transitsAndMoon12Months: 0,
+        dailyMantras: 0,
+        yogaAndPranayama: 0,
+        partnerMilanChakras: 0,
+        parivarMilan: 0,
+        festivals12Months: 0,
+        islamicVedicRemedies: 0,
       };
+      let total = 0;
 
-      let curY = addPageForCurrentChapter();
+      for (let pIdx = 0; pIdx < pages.length; pIdx++) {
+        const page = pages[pIdx];
+        const mKey: ModuleKey = page.moduleKey || 'nameAndCareer';
+        const addPageForCurrentChapter = (): number => {
+          total += 1;
+          perModule[mKey] = (perModule[mKey] || 0) + 1;
+          return bodyStartY;
+        };
 
-      for (let sIdx = 0; sIdx < page.sections.length; sIdx++) {
-        const sec = page.sections[sIdx];
+        let curY = addPageForCurrentChapter();
 
-        doc.setFont('times', 'bold');
-        doc.setFontSize(8.5);
-        const secHeadingLines = wrapPdfTextStrict(doc, sec.heading, contentW - 8.5);
+        for (let sIdx = 0; sIdx < page.sections.length; sIdx++) {
+          const sec = page.sections[sIdx];
 
-        let secSubLines: string[] = [];
-        if (sec.subheading) {
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(6.8);
-          secSubLines = wrapPdfTextStrict(doc, sec.subheading, contentW - 8.5);
-        }
-
-        const secHeaderH =
-          2.1 +
-          secHeadingLines.length * 3.45 +
-          (secSubLines.length > 0 ? secSubLines.length * 2.95 + 0.8 : 0.6);
-
-        if (curY + secHeaderH + 22 > pageMaxY && curY > bodyStartY + 2) {
-          curY = addPageForCurrentChapter();
-        }
-        curY += secHeaderH + 1.2;
-
-        if (sec.paragraphs && sec.paragraphs.length > 0) {
-          let totalParaLines = 0;
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(7.4);
-          for (const p of sec.paragraphs) {
-            totalParaLines += wrapPdfTextStrict(doc, p, contentW - 7.0).length;
-          }
-          const paraBoxH = totalParaLines * 3.3 + sec.paragraphs.length * 1.0 + 2.4;
-          if (curY + paraBoxH > pageMaxY && curY > bodyStartY + 2) {
-            curY = addPageForCurrentChapter();
-          }
-          curY += paraBoxH + 1.2;
-        }
-
-        if (sec.letterGridCells && sec.letterGridCells.length > 0) {
-          const cleanLetters = sec.letterGridCells.filter(
-            (l) => l.char && l.char.trim().length > 0
-          );
-          const cols = Math.min(8, Math.max(5, cleanLetters.length));
-          const rows = Math.ceil(cleanLetters.length / cols);
-          const estLetterGridH = rows * 10.8 + 8.6;
-          if (curY + estLetterGridH > pageMaxY && curY > bodyStartY + 2) {
-            curY = addPageForCurrentChapter();
-          }
-          curY += estLetterGridH + 1.3;
-        }
-
-        if (sec.loShuSquareMatrix) {
-          if (curY + 52 > pageMaxY && curY > bodyStartY + 2) {
-            curY = addPageForCurrentChapter();
-          }
-          const sqW = 56;
-          const infoW = contentW - sqW - 11.5;
           doc.setFont('times', 'bold');
-          doc.setFontSize(8.8);
-          const titleLines = wrapPdfTextStrict(
-            doc,
-            'SACRED 3x3 VEDIC LO-SHU SQUARE MATRIX THEORY',
-            infoW
-          );
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(7.4);
-          const subLines = wrapPdfTextStrict(
-            doc,
-            `DOB: ${sec.loShuSquareMatrix.dob} - Mulank (${sec.loShuSquareMatrix.mulank}) - Bhagyank (${sec.loShuSquareMatrix.bhagyank}) Integrated`,
-            infoW
-          );
-          const theoryLines = [
-            '1. Mental Plane (Top Row 4-9-2): Governs memory, intellectual genius, vision & authority.',
-            '2. Emotional / Soul Plane (Middle Row 3-5-7): Governs family harmony, heart intuition & faith.',
-            '3. Practical / Material Plane (Bottom Row 8-1-6): Governs real-estate, execution, career & luxury.',
-            '4. Golden Raj Yoga (Diagonal 4-5-6) & Silver Raj Yoga (Diagonal 2-5-8): Master keys to wealth.',
-            '5. Active Chart Yogas & Maha Dasha are detailed directly below this Sacred 3x3 Square Box.',
-          ];
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(7.3);
-          let totalTheoryLines = 0;
-          for (const line of theoryLines) {
-            totalTheoryLines += wrapPdfTextStrict(doc, line, infoW).length;
-          }
-          const rightContentH =
-            4.2 +
-            titleLines.length * 3.6 +
-            subLines.length * 3.2 +
-            1.2 +
-            totalTheoryLines * 3.25 +
-            theoryLines.length * 0.8 +
-            2.6;
-          const usedH = Math.max(46.5, rightContentH);
-          curY += usedH + 1.3;
-        }
+          doc.setFontSize(8.5);
+          const secHeadingLines = wrapPdfTextStrict(doc, sec.heading, contentW - 8.5);
 
-        if (sec.yogaAsanaGallery && sec.yogaAsanaGallery.length > 0) {
-          const asanas = sec.yogaAsanaGallery;
-          const cols = 2;
-          const gapX = 2.4;
-          const gapY = 1.6;
-          const cardW = (contentW - gapX) / 2;
-          const imgSize = 21.0;
-          const textOffsetX = imgSize + 4.2;
-          const textMaxW = cardW - textOffsetX - 2.4;
-          const numRows = Math.ceil(asanas.length / cols);
-          for (let r = 0; r < numRows; r++) {
-            const rowItems = [asanas[r * 2], asanas[r * 2 + 1]].filter(Boolean);
-            const cardHeights = rowItems.map((asana, cIdx) => {
-              const idxNum = r * 2 + cIdx + 1;
+          let secSubLines: string[] = [];
+          if (sec.subheading) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(6.8);
+            secSubLines = wrapPdfTextStrict(doc, sec.subheading, contentW - 8.5);
+          }
+
+          const secHeaderH =
+            2.1 +
+            secHeadingLines.length * 3.45 +
+            (secSubLines.length > 0 ? secSubLines.length * 2.95 + 0.8 : 0.6);
+
+          if (curY + secHeaderH + 22 > pageMaxY && curY > bodyStartY + 2) {
+            curY = addPageForCurrentChapter();
+          }
+          curY += secHeaderH + 1.2;
+
+          if (sec.paragraphs && sec.paragraphs.length > 0) {
+            let totalParaLines = 0;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.4);
+            for (const p of sec.paragraphs) {
+              totalParaLines += wrapPdfTextStrict(doc, p, contentW - 7.0).length;
+            }
+            const paraBoxH = totalParaLines * 3.3 + sec.paragraphs.length * 1.0 + 2.4;
+            if (curY + paraBoxH > pageMaxY && curY > bodyStartY + 2) {
+              curY = addPageForCurrentChapter();
+            }
+            curY += paraBoxH + 1.2;
+          }
+
+          if (sec.letterGridCells && sec.letterGridCells.length > 0) {
+            const cleanLetters = sec.letterGridCells.filter(
+              (l) => l.char && l.char.trim().length > 0
+            );
+            const cols = Math.min(8, Math.max(5, cleanLetters.length));
+            const rows = Math.ceil(cleanLetters.length / cols);
+            const estLetterGridH = rows * 10.8 + 8.6;
+            if (curY + estLetterGridH > pageMaxY && curY > bodyStartY + 2) {
+              curY = addPageForCurrentChapter();
+            }
+            curY += estLetterGridH + 1.3;
+          }
+
+          if (sec.loShuSquareMatrix) {
+            if (curY + 52 > pageMaxY && curY > bodyStartY + 2) {
+              curY = addPageForCurrentChapter();
+            }
+            const sqW = 56;
+            const infoW = contentW - sqW - 11.5;
+            doc.setFont('times', 'bold');
+            doc.setFontSize(8.8);
+            const titleLines = wrapPdfTextStrict(
+              doc,
+              'SACRED 3x3 VEDIC LO-SHU SQUARE MATRIX THEORY',
+              infoW
+            );
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.4);
+            const subLines = wrapPdfTextStrict(
+              doc,
+              `DOB: ${sec.loShuSquareMatrix.dob} - Mulank (${sec.loShuSquareMatrix.mulank}) - Bhagyank (${sec.loShuSquareMatrix.bhagyank}) Integrated`,
+              infoW
+            );
+            const theoryLines = [
+              '1. Mental Plane (Top Row 4-9-2): Governs memory, intellectual genius, vision & authority.',
+              '2. Emotional / Soul Plane (Middle Row 3-5-7): Governs family harmony, heart intuition & faith.',
+              '3. Practical / Material Plane (Bottom Row 8-1-6): Governs real-estate, execution, career & luxury.',
+              '4. Golden Raj Yoga (Diagonal 4-5-6) & Silver Raj Yoga (Diagonal 2-5-8): Master keys to wealth.',
+              '5. Active Chart Yogas & Maha Dasha are detailed directly below this Sacred 3x3 Square Box.',
+            ];
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.3);
+            let totalTheoryLines = 0;
+            for (const line of theoryLines) {
+              totalTheoryLines += wrapPdfTextStrict(doc, line, infoW).length;
+            }
+            const rightContentH =
+              4.2 +
+              titleLines.length * 3.6 +
+              subLines.length * 3.2 +
+              1.2 +
+              totalTheoryLines * 3.25 +
+              theoryLines.length * 0.8 +
+              2.6;
+            const usedH = Math.max(46.5, rightContentH);
+            curY += usedH + 1.3;
+          }
+
+          if (sec.parivarHarmonyGraphBox) {
+            const gBox = sec.parivarHarmonyGraphBox;
+            const summaryLines = wrapPdfTextStrict(
+              doc,
+              `Collective Parivar Synthesis & Home Vastu Remedy: ${gBox.collectiveSynthesis}`,
+              contentW - 7.6
+            );
+            const memberRowH = 11.2;
+            const totalGraphBoxH =
+              15.5 +
+              gBox.members.length * (memberRowH + 1.6) +
+              summaryLines.length * 3.0 +
+              4.2;
+            if (curY + totalGraphBoxH > pageMaxY && curY > bodyStartY + 2) {
+              curY = addPageForCurrentChapter();
+            }
+            curY += totalGraphBoxH + 1.5;
+          }
+
+          if (sec.yogaAsanaGallery && sec.yogaAsanaGallery.length > 0) {
+            const asanas = sec.yogaAsanaGallery;
+            const cols = 2;
+            const gapX = 2.4;
+            const gapY = 1.6;
+            const cardW = (contentW - gapX) / 2;
+            const imgSize = 21.0;
+            const textOffsetX = imgSize + 4.2;
+            const textMaxW = cardW - textOffsetX - 2.4;
+            const numRows = Math.ceil(asanas.length / cols);
+            for (let r = 0; r < numRows; r++) {
+              const rowItems = [asanas[r * 2], asanas[r * 2 + 1]].filter(Boolean);
+              const cardHeights = rowItems.map((asana, cIdx) => {
+                const idxNum = r * 2 + cIdx + 1;
+                doc.setFont('times', 'bold');
+                doc.setFontSize(7.6);
+                const titleLines = wrapPdfTextStrict(
+                  doc,
+                  `${idxNum}. ${asana.sanskritName} (${asana.englishName})`,
+                  textMaxW
+                );
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(6.5);
+                const subLines = wrapPdfTextStrict(
+                  doc,
+                  `${asana.durationOrReps} | ${asana.targetChakra}`,
+                  textMaxW
+                );
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(6.6);
+                const basisLines = wrapPdfTextStrict(
+                  doc,
+                  `Basis: ${asana.astrologicalReason}`,
+                  textMaxW
+                );
+                const stepLines = wrapPdfTextStrict(
+                  doc,
+                  `Steps: ${asana.stepByStepAlignment.join(' ')}`,
+                  cardW - 5.2
+                );
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(6.5);
+                const benLines = wrapPdfTextStrict(
+                  doc,
+                  `Benefits: ${asana.therapeuticBenefits.join(' - ')}`,
+                  cardW - 5.2
+                );
+                const topTextH =
+                  titleLines.length * 3.0 +
+                  subLines.length * 2.75 +
+                  basisLines.length * 2.8 +
+                  1.5;
+                const topBlockH = Math.max(imgSize + 1.5, topTextH);
+                const bottomBlockH = stepLines.length * 2.8 + benLines.length * 2.8 + 3.2;
+                return topBlockH + bottomBlockH + 2.4;
+              });
+              const rowH = Math.max(...cardHeights, 28.0);
+              if (curY + rowH > pageMaxY) {
+                curY = addPageForCurrentChapter();
+              }
+              curY += rowH + gapY;
+            }
+            curY += 1.0;
+          }
+
+          if (sec.ashtakootChartBox) {
+            const rawColW = [8, 52, 46, 16, 18, 32, 22];
+            const sumW = rawColW.reduce((a, b) => a + b, 0);
+            const colW = rawColW.map((w) => (w / sumW) * contentW);
+            const headerH = 8.4;
+            const lineH = 2.85;
+            const padX = 1.5;
+            const measuredRows = sec.ashtakootChartBox.dimensions.map((dim) => {
               doc.setFont('times', 'bold');
-              doc.setFontSize(7.6);
-              const titleLines = wrapPdfTextStrict(
-                doc,
-                `${idxNum}. ${asana.sanskritName} (${asana.englishName})`,
-                textMaxW
-              );
-              doc.setFont('helvetica', 'bold');
-              doc.setFontSize(6.5);
-              const subLines = wrapPdfTextStrict(
-                doc,
-                `${asana.durationOrReps} | ${asana.targetChakra}`,
-                textMaxW
-              );
+              doc.setFontSize(6.8);
+              const dimLines = wrapPdfTextStrict(doc, dim.kootaDimension, colW[1] - padX * 2);
               doc.setFont('helvetica', 'normal');
               doc.setFontSize(6.6);
-              const basisLines = wrapPdfTextStrict(
-                doc,
-                `Basis: ${asana.astrologicalReason}`,
-                textMaxW
-              );
-              const stepLines = wrapPdfTextStrict(
-                doc,
-                `Steps: ${asana.stepByStepAlignment.join(' ')}`,
-                cardW - 5.2
-              );
-              doc.setFont('helvetica', 'bold');
-              doc.setFontSize(6.5);
-              const benLines = wrapPdfTextStrict(
-                doc,
-                `Benefits: ${asana.therapeuticBenefits.join(' - ')}`,
-                cardW - 5.2
-              );
-              const topTextH =
-                titleLines.length * 3.0 +
-                subLines.length * 2.75 +
-                basisLines.length * 2.8 +
-                1.5;
-              const topBlockH = Math.max(imgSize + 1.5, topTextH);
-              const bottomBlockH = stepLines.length * 2.8 + benLines.length * 2.8 + 3.2;
-              return topBlockH + bottomBlockH + 2.4;
+              const domLines = wrapPdfTextStrict(doc, dim.maritalDomain, colW[2] - padX * 2);
+              const maxLines = Math.max(1, dimLines.length, domLines.length);
+              return Math.max(6.4, maxLines * lineH + 2.6);
             });
-            const rowH = Math.max(...cardHeights, 28.0);
-            if (curY + rowH > pageMaxY) {
+            const totalRowH = 7.8;
+            if (curY + headerH + (measuredRows[0] || 7) > pageMaxY) {
               curY = addPageForCurrentChapter();
             }
-            curY += rowH + gapY;
-          }
-          curY += 1.0;
-        }
-
-        if (sec.ashtakootChartBox) {
-          const rawColW = [8, 52, 46, 16, 18, 32, 22];
-          const sumW = rawColW.reduce((a, b) => a + b, 0);
-          const colW = rawColW.map((w) => (w / sumW) * contentW);
-          const headerH = 8.4;
-          const lineH = 2.85;
-          const padX = 1.5;
-          const measuredRows = sec.ashtakootChartBox.dimensions.map((dim) => {
-            doc.setFont('times', 'bold');
-            doc.setFontSize(6.8);
-            const dimLines = wrapPdfTextStrict(doc, dim.kootaDimension, colW[1] - padX * 2);
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(6.6);
-            const domLines = wrapPdfTextStrict(doc, dim.maritalDomain, colW[2] - padX * 2);
-            const maxLines = Math.max(1, dimLines.length, domLines.length);
-            return Math.max(6.4, maxLines * lineH + 2.6);
-          });
-          const totalRowH = 7.8;
-          if (curY + headerH + (measuredRows[0] || 7) > pageMaxY) {
-            curY = addPageForCurrentChapter();
-          }
-          curY += headerH;
-          for (let r = 0; r < measuredRows.length; r++) {
-            const rowH = measuredRows[r];
-            if (curY + rowH > pageMaxY) {
-              curY = addPageForCurrentChapter();
-              curY += headerH;
-            }
-            curY += rowH;
-          }
-          if (curY + totalRowH > pageMaxY) {
-            curY = addPageForCurrentChapter();
-          }
-          curY += totalRowH + 1.3;
-        }
-
-        if (sec.table) {
-          const table = sec.table;
-          const numCols = table.headers.length;
-          const colWidths =
-            table.colWidths && table.colWidths.length === numCols
-              ? table.colWidths.map(
-                  (w) => (w / table.colWidths!.reduce((a, b) => a + b, 0)) * contentW
-                )
-              : Array(numCols).fill(contentW / numCols);
-          const isDenseTable = table.rows.length >= 7;
-          const headerFontSize = isDenseTable ? 6.8 : 7.2;
-          const cellFontSize = isDenseTable ? 6.6 : 7.0;
-          const lineH = isDenseTable ? 2.95 : 3.2;
-          const cellPadX = 1.9;
-          const firstBaselineOffset = 3.55;
-          const bottomPad = isDenseTable ? 2.1 : 2.35;
-
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(headerFontSize);
-          let maxHeaderLines = 1;
-          for (let c = 0; c < numCols; c++) {
-            const hMaxW = Math.max(8, colWidths[c] - cellPadX * 2 - 0.8);
-            const hLines = wrapPdfTextStrict(doc, table.headers[c], hMaxW);
-            if (hLines.length > maxHeaderLines) maxHeaderLines = hLines.length;
-          }
-          const headerH = Math.max(6.0, maxHeaderLines * 2.95 + 2.7);
-
-          const rowHeights: number[] = [];
-          for (let r = 0; r < table.rows.length; r++) {
-            const row = table.rows[r];
-            let maxLines = 1;
-            for (let c = 0; c < numCols; c++) {
-              doc.setFont('helvetica', c === 0 ? 'bold' : 'normal');
-              doc.setFontSize(cellFontSize);
-              const maxCellTextW = Math.max(8, colWidths[c] - cellPadX * 2 - 0.8);
-              const rawCell = String(row[c] ?? '');
-              const subParts = rawCell
-                .split('\n')
-                .map((p) => cleanPdfText(p))
-                .filter(Boolean);
-              const lines: string[] = [];
-              for (const sp of subParts) {
-                lines.push(...wrapPdfTextStrict(doc, sp, maxCellTextW));
+            curY += headerH;
+            for (let r = 0; r < measuredRows.length; r++) {
+              const rowH = measuredRows[r];
+              if (curY + rowH > pageMaxY) {
+                curY = addPageForCurrentChapter();
+                curY += headerH;
               }
-              if (lines.length === 0) lines.push('');
-              if (lines.length > maxLines) maxLines = lines.length;
+              curY += rowH;
             }
-            rowHeights.push(firstBaselineOffset + Math.max(0, maxLines - 1) * lineH + bottomPad);
-          }
-
-          const firstRowH = rowHeights[0] || 8;
-          if (curY + headerH + firstRowH > pageMaxY) {
-            curY = addPageForCurrentChapter();
-          }
-          curY += headerH;
-          for (let r = 0; r < table.rows.length; r++) {
-            const rowH = rowHeights[r];
-            if (curY + rowH > pageMaxY) {
-              curY = addPageForCurrentChapter();
-              curY += headerH;
-            }
-            curY += rowH;
-          }
-          curY += 1.3;
-        }
-
-        if (sec.gridItems && sec.gridItems.length > 0) {
-          const items = sec.gridItems;
-          const cols = 2;
-          const numRows = Math.ceil(items.length / cols);
-          const gapX = 2.4;
-          const gapY = 1.6;
-          const cardW = (contentW - gapX) / 2;
-          for (let r = 0; r < numRows; r++) {
-            const leftItem = items[r * 2];
-            const rightItem = items[r * 2 + 1];
-            const hLeft = leftItem ? measureGridCardHeight(doc, cardW, leftItem) : 14.5;
-            const hRight = rightItem ? measureGridCardHeight(doc, cardW, rightItem) : 14.5;
-            const rowH = Math.max(hLeft, hRight) + 0.5;
-            if (curY + rowH > pageMaxY && curY > bodyStartY + 2) {
+            if (curY + totalRowH > pageMaxY) {
               curY = addPageForCurrentChapter();
             }
-            curY += rowH + gapY;
+            curY += totalRowH + 1.3;
+          }
+
+          if (sec.table) {
+            const table = sec.table;
+            const numCols = table.headers.length;
+            const colWidths =
+              table.colWidths && table.colWidths.length === numCols
+                ? table.colWidths.map(
+                    (w) => (w / table.colWidths!.reduce((a, b) => a + b, 0)) * contentW
+                  )
+                : Array(numCols).fill(contentW / numCols);
+            const isDenseTable = table.rows.length >= 7;
+            const headerFontSize = isDenseTable ? 6.8 : 7.2;
+            const cellFontSize = isDenseTable ? 6.6 : 7.0;
+            const lineH = isDenseTable ? 2.95 : 3.2;
+            const cellPadX = 1.9;
+            const firstBaselineOffset = 3.55;
+            const bottomPad = isDenseTable ? 2.1 : 2.35;
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(headerFontSize);
+            let maxHeaderLines = 1;
+            for (let c = 0; c < numCols; c++) {
+              const hMaxW = Math.max(8, colWidths[c] - cellPadX * 2 - 0.8);
+              const hLines = wrapPdfTextStrict(doc, table.headers[c], hMaxW);
+              if (hLines.length > maxHeaderLines) maxHeaderLines = hLines.length;
+            }
+            const headerH = Math.max(6.0, maxHeaderLines * 2.95 + 2.7);
+
+            const rowHeights: number[] = [];
+            for (let r = 0; r < table.rows.length; r++) {
+              const row = table.rows[r];
+              let maxLines = 1;
+              for (let c = 0; c < numCols; c++) {
+                doc.setFont('helvetica', c === 0 ? 'bold' : 'normal');
+                doc.setFontSize(cellFontSize);
+                const maxCellTextW = Math.max(8, colWidths[c] - cellPadX * 2 - 0.8);
+                const rawCell = String(row[c] ?? '');
+                const subParts = rawCell
+                  .split('\n')
+                  .map((p) => cleanPdfText(p))
+                  .filter(Boolean);
+                const lines: string[] = [];
+                for (const sp of subParts) {
+                  lines.push(...wrapPdfTextStrict(doc, sp, maxCellTextW));
+                }
+                if (lines.length === 0) lines.push('');
+                if (lines.length > maxLines) maxLines = lines.length;
+              }
+              rowHeights.push(firstBaselineOffset + Math.max(0, maxLines - 1) * lineH + bottomPad);
+            }
+
+            const firstRowH = rowHeights[0] || 8;
+            if (curY + headerH + firstRowH > pageMaxY) {
+              curY = addPageForCurrentChapter();
+            }
+            curY += headerH;
+            for (let r = 0; r < table.rows.length; r++) {
+              const rowH = rowHeights[r];
+              if (curY + rowH > pageMaxY) {
+                curY = addPageForCurrentChapter();
+                curY += headerH;
+              }
+              curY += rowH;
+            }
+            curY += 1.3;
+          }
+
+          if (sec.gridItems && sec.gridItems.length > 0) {
+            const items = sec.gridItems;
+            const cols = 2;
+            const numRows = Math.ceil(items.length / cols);
+            const gapX = 2.4;
+            const gapY = 1.6;
+            const cardW = (contentW - gapX) / 2;
+            for (let r = 0; r < numRows; r++) {
+              const leftItem = items[r * 2];
+              const rightItem = items[r * 2 + 1];
+              const hLeft = leftItem ? measureGridCardHeight(doc, cardW, leftItem) : 14.5;
+              const hRight = rightItem ? measureGridCardHeight(doc, cardW, rightItem) : 14.5;
+              const rowH = Math.max(hLeft, hRight) + 0.5;
+              if (curY + rowH > pageMaxY && curY > bodyStartY + 2) {
+                curY = addPageForCurrentChapter();
+              }
+              curY += rowH + gapY;
+            }
+          }
+
+          if (sec.bullets && sec.bullets.length > 0) {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.3);
+            let totalBulletLines = 0;
+            for (const bText of sec.bullets) {
+              totalBulletLines += wrapPdfTextStrict(
+                doc,
+                `* ${cleanPdfText(bText)}`,
+                contentW - 7.0
+              ).length;
+            }
+            const bulBoxH = totalBulletLines * 3.25 + sec.bullets.length * 0.85 + 2.8;
+            if (curY + bulBoxH > pageMaxY && curY > bodyStartY + 2) {
+              curY = addPageForCurrentChapter();
+            }
+            curY += bulBoxH + 1.2;
           }
         }
 
-        if (sec.bullets && sec.bullets.length > 0) {
+        if (page.includeClosingBlessing || page.includeQrVerification) {
+          const qrSpace = 27.5;
+          const textW = contentW - qrSpace - 6.0;
+          const innerTextW = textW - 5.6;
+          const blessingText = cleanPdfText(
+            `"Om Sarve Bhavantu Sukhinah, Sarve Santu Niramayah | Tathastu Divya Jyoti Sada Sahayate ||" With deep gratitude to the Supreme Cosmic Universe, may the Nine Celestial Grahas bless ${ctx.activeProfile.name} and family with radiant health, boundless wealth, inner peace, and divine protection. Practice these sacred remedies with faith for 43 days — may every positive Sankalpa blossom into reality.`
+          );
           doc.setFont('helvetica', 'normal');
-          doc.setFontSize(7.3);
-          let totalBulletLines = 0;
-          for (const bText of sec.bullets) {
-            totalBulletLines += wrapPdfTextStrict(
-              doc,
-              `* ${cleanPdfText(bText)}`,
-              contentW - 7.0
-            ).length;
-          }
-          const bulBoxH = totalBulletLines * 3.25 + sec.bullets.length * 0.85 + 2.8;
-          if (curY + bulBoxH > pageMaxY && curY > bodyStartY + 2) {
+          doc.setFontSize(7.2);
+          const bLines = wrapPdfTextStrict(doc, blessingText, innerTextW);
+          doc.setFont('times', 'bold');
+          doc.setFontSize(7.5);
+          const slogan1Lines = wrapPdfTextStrict(
+            doc,
+            `Thank You for Being a Cherished Part of the TATHASTU Family — Where Ancient Wisdom Meets Divine Cosmic Light!`,
+            innerTextW
+          );
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(6.7);
+          const slogan2Lines = wrapPdfTextStrict(
+            doc,
+            `${TATHASTU_BRAND_NAME} ("${TATHASTU_TAGLINE}") • Authorized By: ${ctx.healerDisplayName} (${ctx.healerDisplayMobile})`,
+            innerTextW
+          );
+          const bTextH = bLines.length * 3.15 + 1.4;
+          const sloganBoxH = slogan1Lines.length * 3.2 + slogan2Lines.length * 2.95 + 3.6;
+          const boxH = Math.max(37.5, 7.6 + bTextH + sloganBoxH + 2.8);
+          if (curY + boxH + 1.5 > pageMaxY) {
             curY = addPageForCurrentChapter();
           }
-          curY += bulBoxH + 1.2;
         }
       }
 
-      if (page.includeClosingBlessing || page.includeQrVerification) {
-        const qrSpace = 27.5;
-        const textW = contentW - qrSpace - 6.0;
-        const innerTextW = textW - 5.6;
-        const blessingText = cleanPdfText(
-          `"Om Sarve Bhavantu Sukhinah, Sarve Santu Niramayah | Tathastu Divya Jyoti Sada Sahayate ||" With deep gratitude to the Supreme Cosmic Universe, may the Nine Celestial Grahas bless ${ctx.activeProfile.name} and family with radiant health, boundless wealth, inner peace, and divine protection. Practice these sacred remedies with faith for 43 days — may every positive Sankalpa blossom into reality.`
-        );
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7.2);
-        const bLines = wrapPdfTextStrict(doc, blessingText, innerTextW);
-        doc.setFont('times', 'bold');
-        doc.setFontSize(7.5);
-        const slogan1Lines = wrapPdfTextStrict(
-          doc,
-          `Thank You for Being a Cherished Part of the TATHASTU Family — Where Ancient Wisdom Meets Divine Cosmic Light!`,
-          innerTextW
-        );
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(6.7);
-        const slogan2Lines = wrapPdfTextStrict(
-          doc,
-          `${TATHASTU_BRAND_NAME} ("${TATHASTU_TAGLINE}") • Authorized By: ${ctx.healerDisplayName} (${ctx.healerDisplayMobile})`,
-          innerTextW
-        );
-        const bTextH = bLines.length * 3.15 + 1.4;
-        const sloganBoxH = slogan1Lines.length * 3.2 + slogan2Lines.length * 2.95 + 3.6;
-        const boxH = Math.max(37.5, 7.6 + bTextH + sloganBoxH + 2.8);
-        if (curY + boxH + 1.5 > pageMaxY) {
-          curY = addPageForCurrentChapter();
-        }
-      }
-    }
+      return { total, perModule };
+    };
 
-    return { total, perModule };
-  };
-
-  // Build all modules once and filter for active selected modules to cut calculation time in half
-  const allSelectedCtx: PdfExportContext = {
-    ...ctx,
-    selectedSections: {
-      nameAndCareer: true,
-      advanceMobileAudit: true,
-      forecast12Months: true,
-      auditedCalendar12Months: true,
-      transitsAndMoon12Months: true,
-      dailyMantras: true,
-      yogaAndPranayama: true,
-      partnerMilanChakras: true,
-      festivals12Months: true,
-      islamicVedicRemedies: true,
-    },
-  };
-  const allPages = build18PageMasterDossier(allSelectedCtx);
-  const allResult = measurePagesList(allPages);
+    const allSelectedCtx: PdfExportContext = {
+      ...ctx,
+      selectedSections: {
+        nameAndCareer: true,
+        advanceMobileAudit: true,
+        forecast12Months: true,
+        auditedCalendar12Months: true,
+        transitsAndMoon12Months: true,
+        dailyMantras: true,
+        yogaAndPranayama: true,
+        partnerMilanChakras: true,
+        parivarMilan: true,
+        festivals12Months: true,
+        islamicVedicRemedies: true,
+      },
+    };
+    const allPages = build18PageMasterDossier(allSelectedCtx, { skipIndexPage: true });
+    const allResult = measurePagesList(allPages);
+    cachedPerModule = allResult.perModule;
+    PER_MODULE_PAGE_COUNT_CACHE.set(cacheKey, cachedPerModule);
+  }
 
   const sel = ctx.selectedSections;
-  let activePages = allPages;
-  if (sel) {
-    const matching = allPages.filter((p) => !p.moduleKey || sel[p.moduleKey]);
-    activePages =
-      matching.length > 0 ? matching : allPages.filter((p) => p.moduleKey === 'nameAndCareer');
-  }
-  activePages = activePages.map((pg, idx) => ({
-    ...pg,
-    pageNumber: idx + 1,
-    includeQrVerification: idx === activePages.length - 1,
-    includeClosingBlessing: idx === activePages.length - 1,
-  }));
-  const activeResult = measurePagesList(activePages);
+  const hasAnySelected = sel ? allModuleKeys.some((k) => sel[k]) : true;
 
-  const finalModuleCounts: Record<ModuleKey, number> = { ...allResult.perModule };
+  // Page 1 is always the dynamic 'Index of Modules' page (1 physical A4 page)
+  let runningPage = 2;
+  const modulePageRanges = {} as Record<ModuleKey, PdfModulePageRange>;
+
   for (const k of allModuleKeys) {
-    if (ctx.selectedSections?.[k]) {
-      finalModuleCounts[k] = activeResult.perModule[k];
+    const count = Math.max(1, cachedPerModule[k] || 1);
+    const isSelected = sel ? (hasAnySelected ? Boolean(sel[k]) : k === 'nameAndCareer') : true;
+    if (isSelected) {
+      modulePageRanges[k] = {
+        startPage: runningPage,
+        endPage: runningPage + count - 1,
+        pageCount: count,
+      };
+      runningPage += count;
+    } else {
+      modulePageRanges[k] = {
+        startPage: 0,
+        endPage: 0,
+        pageCount: count,
+      };
     }
   }
 
   return {
-    totalPdfPages: activeResult.total,
-    modulePageCounts: finalModuleCounts,
+    totalPdfPages: runningPage - 1,
+    modulePageCounts: { ...cachedPerModule },
+    modulePageRanges,
   };
 }
 
@@ -5443,6 +6331,20 @@ export async function generateAndExport18PagePdf(
         curY += 1.3;
       }
 
+      // Optional Dedicated Visual Parivar Harmony Graph Box (FINAL CONCLUSIVE RESULT • PARIVAR HARMONY GRAPH)
+      if (sec.parivarHarmonyGraphBox) {
+        curY = drawParivarHarmonyGraphBox(
+          doc,
+          marginX,
+          curY,
+          contentW,
+          sec.parivarHarmonyGraphBox,
+          pageMaxY,
+          advanceToContinuationPageWithArtFiller
+        );
+        curY += 1.1;
+      }
+
       // Optional Table (Paginated across pages automatically so zero rows are cut off or squished)
       if (sec.table) {
         curY = drawAlignedTablePaginated(
@@ -5552,7 +6454,11 @@ export async function generateAndExport18PagePdf(
       const slogan2Lines = wrapPdfTextStrict(
         doc,
         cleanPdfText(
-          `${TATHASTU_BRAND_NAME} ("${TATHASTU_TAGLINE}") • Authorized By: ${ctx.healerDisplayName} (${ctx.healerDisplayMobile})`
+          `${TATHASTU_BRAND_NAME} ("${TATHASTU_TAGLINE}") • Authorized By: ${ctx.healerDisplayName} (${ctx.healerDisplayMobile})${
+            !ctx.isHealerReport
+              ? ' • Visit www.tathastulight.com for 100% Genuine & Authentic Rudraksha, Crystals, Home Cleansing Material, Precious & Semi-Precious Stones'
+              : ''
+          }`
         ),
         innerTextW
       );

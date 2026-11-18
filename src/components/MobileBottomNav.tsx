@@ -54,6 +54,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     { id: 'mantras', label: t('tab_mantras'), icon: Volume2 },
     { id: 'yoga-pranayama', label: t('tab_yoga', 'Yoga & Pranayama'), icon: HeartPulse },
     { id: 'compatibility', label: t('tab_compatibility'), icon: HeartHandshake },
+    { id: 'parivar-milan', label: t('tab_parivar', 'Parivar Milan'), icon: Users },
     { id: 'festivals', label: t('tab_festivals'), icon: Sun },
     { id: 'notifications-hub', label: t('tab_notifications', '6 Daily Alerts & WhatsApp'), icon: Bell },
     { id: 'weekly', label: t('tab_weekly'), icon: Compass },

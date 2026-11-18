@@ -9,7 +9,6 @@ import {
   Star,
   MessageSquarePlus,
   Send,
-  Users,
   TrendingUp,
   AlertTriangle,
   Flame,
@@ -18,6 +17,8 @@ import {
   Clock,
   Heart,
   PhoneCall,
+  Mail,
+  Users,
 } from 'lucide-react';
 import {
   useTathastu,
@@ -34,27 +35,51 @@ import navagrahaImg from '../assets/images/planetary_transits_navagraha_17943055
 import noorGeometryImg from '../assets/images/islamic_vedic_noor_geometry_1794305507170.jpg';
 
 export const HealerDeepakJainMissionShowcase: React.FC = () => {
-  const { currentAccount, feedbacks, submitFeedbackSuggestion } = useTathastu();
+  const { accounts, currentAccount, submitFeedbackSuggestion } = useTathastu();
   const { language } = useLanguage();
   const isHindi = language === 'hi';
 
+  // Healers & Admin list for guidance session rating
+  const guidanceProviders = React.useMemo(() => {
+    const adminOption = {
+      id: 'admin_tathastu_master',
+      name: 'Healer Ddeepak Jain (Founder & Master Admin)',
+    };
+    const healers = accounts
+      .filter((a) => a.role === 'healer')
+      .map((h) => ({
+        id: h.id,
+        name: `${h.name}${h.healerBrandName ? ` — ${h.healerBrandName}` : ''} (Healer)`,
+      }));
+    return [adminOption, ...healers];
+  }, [accounts]);
+
+  const [selectedHealerId, setSelectedHealerId] = useState<string>('admin_tathastu_master');
   const [fbCategory, setFbCategory] = useState<FeedbackSuggestionRecord['category']>('feedback');
   const [fbRating, setFbRating] = useState<number>(5);
   const [fbMessage, setFbMessage] = useState<string>('');
   const [fbStatus, setFbStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const myFeedbacks = feedbacks.filter(
-    (f) => currentAccount && f.accountId === currentAccount.id
-  );
+  const ratingLabels: Record<number, { hi: string; en: string }> = {
+    1: { hi: '१ स्टार — सुधार आवश्यक', en: '1 Star — Needs Improvement' },
+    2: { hi: '२ स्टार — सामान्य', en: '2 Stars — Fair' },
+    3: { hi: '३ स्टार — अच्छा', en: '3 Stars — Good Experience' },
+    4: { hi: '४ स्टार — बहुत अच्छा', en: '4 Stars — Very Good Guidance' },
+    5: { hi: '५ स्टार — उत्कृष्ट एवं दिव्य मार्गदर्शन', en: '5 Stars — Excellent Divine Guidance' },
+  };
 
   const handleFeedbackSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setFbStatus(null);
+    const chosenProvider =
+      guidanceProviders.find((p) => p.id === selectedHealerId) || guidanceProviders[0];
     const res = await submitFeedbackSuggestion({
       category: fbCategory,
       rating: fbRating,
+      ratedHealerId: chosenProvider.id,
+      ratedHealerName: chosenProvider.name,
       message: fbMessage,
     });
     setIsSubmitting(false);
@@ -63,11 +88,11 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
       setFbStatus({
         type: 'success',
         msg: isHindi
-          ? 'आपका फ़ीडबैक और सुझाव रियल-टाइम में हीलर दीपक जैन के मास्टर एडमिन डैशबोर्ड पर पहुँच गया है! धन्यवाद।'
-          : 'Your feedback & suggestion has been synced in real time to Healer Ddeepak Jain on the Master Admin Dashboard!',
+          ? `धन्यवाद! आपकी ${fbRating}-स्टार रेटिंग और अनुभव सफलतापूर्वक दर्ज कर लिया गया है।`
+          : `Thank you! Your ${fbRating}-Star guidance session rating has been recorded.`,
       });
     } else {
-      setFbStatus({ type: 'error', msg: res.error || 'Could not submit feedback.' });
+      setFbStatus({ type: 'error', msg: res.error || 'Could not submit rating.' });
     }
   };
 
@@ -124,10 +149,23 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
       titleEn:
         'Supporting Healers to Elevate Their Healing & Guidance to Serve Clients Better',
       descHi:
-        'हमारे सभी जुड़े हुए हीलर्स, टैरो रीडर्स, रेकी मास्टर्स और न्यूमरोलॉजिस्ट्स को सटीक गणना, २५-पेज की प्रीमियम कस्टम ब्रांडेड रिपोर्ट्स और आध्यात्मिक टूल्स प्रदान करना—ताकि उनका समय बचे और वे अपने क्लाइंट्स को उच्चतम स्तर की हीलिंग व गाइडेंस दे सकें।',
+        'हमारे सभी जुड़े हुए हीलर्स, टैरो रीडर्स, रेकी मास्टर्स और न्यूमरोलॉजिस्ट्स को सटीक गणना, प्रीमियम कस्टम ब्रांडेड रिपोर्ट्स और आध्यात्मिक टूल्स प्रदान करना—ताकि उनका समय बचे और वे अपने क्लाइंट्स को उच्चतम स्तर की हीलिंग व गाइडेंस दे सकें।',
       descEn:
-        'Equipping fellow Healers, Numerologists, Tarot Readers, and Spiritual Coaches with instant, zero-error calculations and white-labeled 25-page dossiers so they can focus deeply on healing and guiding their clients.',
+        'Equipping fellow Healers, Numerologists, Tarot Readers, and Spiritual Coaches with instant, zero-error calculations and white-labeled dossiers so they can focus deeply on healing and guiding their clients.',
       color: 'from-purple-500/20 to-indigo-600/10 border-purple-500/40 text-purple-300',
+    },
+    {
+      icon: Users,
+      badge: isHindi ? 'संकल्प ६ • पारिवारिक सामंजस्य एवं ९-चक्र मिलान' : 'Pillar 6 • Family Harmony & 9-Chakra Parivar Milan',
+      titleHi:
+        'हर परिवार के सदस्यों के बीच ९-चक्र ऊर्जा संतुलन और अटूट पारिवारिक प्रेम स्थापित करना',
+      titleEn:
+        'Harmonizing Every Family Bond Through 9-Chakra Parivar Milan & Sacred Remedies',
+      descHi:
+        'परिवार की सुख-शांति ही सच्ची समृद्धि की नींव है। अर्थ स्टार और सोल स्टार सहित संपूर्ण ९ चक्रों के निदान एवं शुद्ध वैदिक उपायों द्वारा माता-पिता, जीवनसाथी, संतान और भाई-बहनों के बीच आपसी सामंजस्य, समझ और प्रेम को मजबूत करना।',
+      descEn:
+        'True prosperity begins with peace at home. Diagnosing all 9 Chakras—including Earth Star and Soul Star—between family members to heal generational blocks and nurture lifelong love, unity, and mutual respect.',
+      color: 'from-indigo-500/20 to-violet-600/10 border-indigo-500/40 text-indigo-300',
     },
   ];
 
@@ -152,12 +190,12 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
     },
     {
       img: chakraMeditationImg,
-      titleHi: '७-चक्र ऊर्जा निदान, मंत्र एवं योग-प्राणायाम',
-      titleEn: '7-Chakra Healing, Vedic Mantras & Pranayama',
+      titleHi: '९-चक्र ऊर्जा निदान, मंत्र एवं योग-प्राणायाम',
+      titleEn: '9-Chakra Healing, Vedic Mantras & Pranayama',
       descHi:
-        'शरीर के सातों चक्रों की स्थिति, बीज मंत्र जाप, मुद्राएं और प्राणायाम से मानसिक शांति व शारीरिक स्वास्थ्य।',
+        'शरीर के सभी नौ चक्रों (अर्थ स्टार से सोल स्टार तक) की स्थिति, बीज मंत्र जाप, मुद्राएं और प्राणायाम से मानसिक शांति व शारीरिक स्वास्थ्य।',
       descEn:
-        'Diagnoses your 7 energy centers and prescribes seed mantras, mudras, and pranayama for complete mind-body balance.',
+        'Diagnoses all 9 energy centers (Earth Star to Soul Star) and prescribes seed mantras, mudras, and pranayama for complete mind-body balance.',
     },
     {
       img: navagrahaImg,
@@ -171,20 +209,20 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
     {
       img: noorGeometryImg,
       titleHi: 'पार्टनर मिलान एवं पारिवारिक सामंजस्य',
-      titleEn: 'Partner Milan & Relationship Harmony',
+      titleEn: 'Partner Milan & Parivar Family Harmony',
       descHi:
-        'जीवनसाथी या बिज़नेस पार्टनर के साथ ३६-गुण, मूलांक-भाग्यांक और ७-चक्र कम्पैटिबिलिटी का सटीक मिलान।',
+        'जीवनसाथी एवं परिवार के सदस्यों के साथ ३६-गुण, मूलांक-भाग्यांक और ९-चक्र कम्पैटिबिलिटी का सटीक मिलान।',
       descEn:
-        'Deep compatibility analysis combining Vedic 36-Guna, Chaldean numbers, and 7-Chakra emotional resonance.',
+        'Deep compatibility analysis combining Vedic 36-Guna, Chaldean numbers, and 9-Chakra emotional resonance.',
     },
     {
       img: spiritualBannerImg,
-      titleHi: '२५-पेज A4 प्रीमियम आध्यात्मिक डोज़ियर (PDF)',
-      titleEn: '25-Page A4 Spiritual Master Dossier & WhatsApp Share',
+      titleHi: 'आध्यात्मिक मास्टर डोज़ियर (Spiritual Master Dossier)',
+      titleEn: 'Spiritual Master Dossier',
       descHi:
-        '१० साल की भविष्यवाणी, ईष्ट देव, रुद्राक्ष, क्रिस्टल और दैनिक दिनचर्या के साथ संपूर्ण २५-पेज की प्रिंट-रेडी रिपोर्ट।',
+        'भविष्यवाणी, ईष्ट देव, रुद्राक्ष, क्रिस्टल और दैनिक दिनचर्या के साथ संपूर्ण व्यक्तिगत आध्यात्मिक मास्टर डोज़ियर।',
       descEn:
-        'Complete 25-page print-ready spiritual blueprint with 10-year forecast, remedies, and 1-click WhatsApp sharing.',
+        'Complete personalized spiritual blueprint with multi-year forecast, remedies, and sacred guidance.',
     },
   ];
 
@@ -203,7 +241,7 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
       descHi:
         'आपकी सेव की गई प्रोफाइल हमेशा सुरक्षित रहती है; जब चाहें अपनी रिपोर्ट, शुभ समय और रेमेडीज़ देखें व डाउनलोड करें।',
       descEn:
-        'Your saved profiles stay synced in real time—access your reports, daily timings, and remedies anytime.',
+        'Your saved profiles stay secure—access your reports, daily timings, and remedies anytime.',
     },
     {
       titleHi: 'हीलर्स के लिए कस्टम ब्रांडिंग और क्लाइंट ग्रोथ',
@@ -211,15 +249,15 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
       descHi:
         'हीलर्स अपने खुद के लोगो और नाम के साथ क्लाइंट्स को प्रीमियम रिपोर्ट दे सकते हैं, जिससे उनकी प्रैक्टिस और सम्मान बढ़ता है।',
       descEn:
-        'Healers can generate white-labeled reports with their own brand logo and send instant WhatsApp links to clients.',
+        'Healers can generate white-labeled reports with their own brand logo and share instant links with clients.',
     },
     {
       titleHi: 'सीधा हीलर दीपक जैन से जुड़ाव',
       titleEn: 'Direct Connection with Healer Ddeepak Jain',
       descHi:
-        'नीचे दिए गए फ़ीडबैक और सुझाव बॉक्स के माध्यम से आपकी बात सीधे रियल-टाइम में हीलर दीपक जैन के एडमिन डैशबोर्ड तक पहुँचती है।',
+        'नीचे दिए गए फ़ीडबैक और सुझाव बॉक्स के माध्यम से आप अपने विचार और सुझाव सीधे हीलर दीपक जैन के साथ साझा कर सकते हैं।',
       descEn:
-        'Your feedback and suggestions reach Healer Ddeepak Jain’s Admin Dashboard in real time for continuous support.',
+        'Share your valuable feedback and suggestions directly with Healer Ddeepak Jain for continuous guidance and support.',
     },
   ];
 
@@ -231,7 +269,7 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
         <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          {/* Portrait Column */}
+          {/* Portrait Column — Clean Unobstructed Image with Name Card Below */}
           <div className="lg:col-span-4 flex flex-col items-center text-center">
             <div className="relative group">
               <div className="absolute -inset-1.5 rounded-3xl bg-gradient-to-r from-amber-400 via-yellow-500 to-orange-500 opacity-75 blur-md group-hover:opacity-100 transition duration-500" />
@@ -239,24 +277,27 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
                 <img
                   src={HEALER_DEEPAK_JAIN_IMAGE_PATH}
                   alt="Healer Ddeepak Jain — Founder, Tathastu The Divine Light"
+                  referrerPolicy="no-referrer"
                   className="w-full h-full object-cover object-top"
                 />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4 text-center">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-[11px] font-bold uppercase tracking-widest mb-1">
-                    <Crown className="w-3.5 h-3.5 text-amber-400" />
-                    Founder & Spiritual Master
-                  </span>
-                  <h3 className="text-xl font-serif font-bold text-white tracking-wide">
-                    HEALER DDEEPAK JAIN
-                  </h3>
-                  <p className="text-xs text-amber-300/90 font-medium">
-                    TATHASTU THE DIVINE LIGHT (108)
-                  </p>
-                </div>
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {/* Name & Title Card Placed Cleanly Below the Portrait (Never Over the Face) */}
+            <div className="mt-4 w-64 sm:w-72 rounded-2xl bg-slate-950/95 border border-amber-400/50 px-4 py-3 text-center shadow-xl">
+              <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-[11px] font-bold uppercase tracking-widest mb-1">
+                <Crown className="w-3.5 h-3.5 text-amber-400" />
+                Founder & Spiritual Master
+              </span>
+              <h3 className="text-xl font-serif font-bold text-white tracking-wide">
+                HEALER DDEEPAK JAIN
+              </h3>
+              <p className="text-xs text-amber-300/90 font-medium mt-0.5">
+                TATHASTU THE DIVINE LIGHT
+              </p>
+            </div>
+
+            <div className="mt-3 flex flex-wrap justify-center gap-2">
               <span className="px-3 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-semibold">
                 ✦ Vedic & Chaldean Numerologist
               </span>
@@ -311,19 +352,23 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 text-xs text-emerald-300 bg-emerald-500/10 px-3.5 py-2 rounded-xl border border-emerald-500/30">
                 <PhoneCall className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Helpline / WhatsApp: +91 8383052998</span>
+                <span>Helpline / WhatsApp: 8899444444</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-cyan-300 bg-cyan-500/10 px-3.5 py-2 rounded-xl border border-cyan-500/30">
+                <Mail className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>Email: contact@tathastulight.com</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* 5 SACRED MISSION PILLARS */}
+        {/* 6 SACRED MISSION PILLARS */}
         <div className="relative z-10 mt-8 pt-8 border-t border-amber-500/20">
           <h3 className="text-lg sm:text-xl font-serif font-bold text-amber-400 mb-5 flex items-center gap-2">
             <Flame className="w-5 h-5 text-amber-400" />
             {isHindi
-              ? 'हीलर दीपक जैन के ५ मुख्य संकल्प (Our 5 Core Mission Pillars)'
-              : 'Healer Ddeepak Jain’s 5 Core Mission Pillars'}
+              ? 'हीलर दीपक जैन के ६ मुख्य संकल्प (Our 6 Core Mission Pillars)'
+              : 'Healer Ddeepak Jain’s 6 Core Mission Pillars'}
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -332,9 +377,7 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
               return (
                 <div
                   key={idx}
-                  className={`rounded-2xl border bg-gradient-to-br ${pillar.color} p-5 flex flex-col justify-between shadow-lg ${
-                    idx === 4 ? 'md:col-span-2 lg:col-span-2' : ''
-                  }`}
+                  className={`rounded-2xl border bg-gradient-to-br ${pillar.color} p-5 flex flex-col justify-between shadow-lg`}
                 >
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-3">
@@ -422,8 +465,8 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
             </div>
             <h3 className="text-2xl font-serif font-bold text-white">
               {isHindi
-                ? '“तथास्तु द डिवाइन लाइट” परिवार से जुड़ने के लिए आपका हृदय से धन्यवाद एवं लाभ!'
-                : 'Heartfelt Thanks for Joining the “TATHASTU THE DIVINE LIGHT” Family & Your Benefits!'}
+                ? '“तथास्तु द डिवाइन लाइट” परिवार से जुड़ने के लिए आपका हृदय से धन्यवाद'
+                : 'Heartfelt Thanks for Joining the “TATHASTU THE DIVINE LIGHT” Family'}
             </h3>
           </div>
           <div className="px-4 py-2.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-200 text-xs font-semibold shrink-0">
@@ -434,7 +477,7 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
                 {currentAccount.role.toUpperCase()})
               </span>
             ) : (
-              <span>✦ TATHASTU DIVINE FAMILY (108)</span>
+              <span>✦ TATHASTU THE DIVINE LIGHT FAMILY</span>
             )}
           </div>
         </div>
@@ -465,64 +508,42 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
         </div>
       </div>
 
-      {/* SECTION 4: REAL-TIME FEEDBACK & SUGGESTION BOX (SYNCS LIVE TO ADMIN DASHBOARD) */}
+      {/* SECTION 4: GUIDANCE SESSION STAR-RATING & FEEDBACK BOX */}
       <div className="rounded-3xl border-2 border-amber-500/40 bg-gradient-to-br from-[#191229] via-[#110d1c] to-[#1c130a] p-6 md:p-8 shadow-2xl">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-5 space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold uppercase tracking-wider">
               <MessageSquarePlus className="w-4 h-4 text-amber-400" />
               {isHindi
-                ? 'रियल-टाइम फ़ीडबैक और सुझाव केंद्र'
-                : 'Real-Time Feedback & Suggestion Hub'}
+                ? 'गाइडेंस सेशन स्टार-रेटिंग एवं सुझाव केंद्र'
+                : 'Guidance Session Star-Rating & Feedback'}
             </div>
             <h3 className="text-2xl font-serif font-bold text-white">
               {isHindi
-                ? 'अपना अनुभव, फ़ीडबैक या सुझाव सीधे हीलर दीपक जैन तक पहुँचाएँ'
-                : 'Share Your Feedback or Suggestions Directly with Healer Ddeepak Jain'}
+                ? 'अपने गाइडेंस सेशन को स्टार-रेटिंग दें और अपना अनुभव साझा करें'
+                : 'Rate Your Guidance Session Experience (1 to 5 Stars)'}
             </h3>
             <p className="text-sm text-slate-300 leading-relaxed">
               {isHindi
-                ? 'आपका हर सुझाव और अनुभव हमारे लिए अमूल्य है। यहाँ लिखा गया संदेश रियल-टाइम (Real-Time) में सीधे एडमिन डैशबोर्ड पर हीलर दीपक जैन को दिखाई देता है ताकि हम इस ऐप और आपकी सेवा को निरंतर और बेहतर बना सकें।'
-                : 'Your voice shapes Tathastu The Divine Light. Every feedback or suggestion you submit here is synced in real time directly to Healer Ddeepak Jain on the Master Admin Dashboard.'}
+                ? 'आपका हर अनुभव और स्टार-रेटिंग हमारे लिए अमूल्य है। गाइडेंस सेशन के बाद कृपया अपने हीलर या एडमिन को स्टार-रेटिंग दें ताकि हर क्लाइंट को सर्वोत्तम स्तर की आध्यात्मिक सेवा मिल सके।'
+                : 'After your guidance or healing session, please rate your experience with your Healer or Admin using the 5-star system below so we can continually uphold the highest standard of spiritual service.'}
             </p>
 
-            {/* User's Recent Feedbacks & Admin Replies */}
-            {myFeedbacks.length > 0 && (
-              <div className="space-y-3 pt-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5" />
+            <div className="rounded-2xl bg-slate-950/90 border border-amber-500/25 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-amber-300 text-xs font-bold uppercase tracking-wider">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
                   {isHindi
-                    ? `आपके भेजे गए संदेश (${myFeedbacks.length})`
-                    : `Your Submitted Messages (${myFeedbacks.length})`}
-                </h4>
-                <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-                  {myFeedbacks.map((fb) => (
-                    <div
-                      key={fb.id}
-                      className="rounded-xl bg-slate-950/90 border border-slate-800 p-3 text-xs space-y-1.5"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold uppercase text-[10px]">
-                          {fb.category}
-                        </span>
-                        <span className="text-amber-400 font-bold">
-                          {'★'.repeat(fb.rating)}
-                        </span>
-                      </div>
-                      <p className="text-slate-200">{fb.message}</p>
-                      {fb.adminReply && (
-                        <div className="mt-2 p-2.5 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-200">
-                          <div className="font-bold text-[10px] uppercase tracking-wider text-emerald-400 mb-0.5">
-                            ✦ Reply from Healer Ddeepak Jain:
-                          </div>
-                          <p>{fb.adminReply}</p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                    ? 'गोपनीय सेवा गुणवत्ता ट्रैकिंग'
+                    : 'Confidential Service Quality Tracking'}
+                </span>
               </div>
-            )}
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {isHindi
+                  ? 'आपकी स्टार-रेटिंग और फ़ीडबैक पूर्णतः गोपनीय रहते हैं और केवल मास्टर एडमिन को दिखाई देते हैं ताकि प्रत्येक हीलर और एडमिन की सेवा गुणवत्ता की निगरानी की जा सके।'
+                  : 'Your star rating and feedback are kept strictly confidential and are visible only to the Admin on their portal to track the service quality of every Healer and Admin.'}
+              </p>
+            </div>
           </div>
 
           <div className="lg:col-span-7">
@@ -530,10 +551,68 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
               onSubmit={handleFeedbackSubmit}
               className="rounded-2xl bg-slate-950/85 border border-amber-500/30 p-5 sm:p-6 space-y-4"
             >
+              {/* Select Healer or Admin for Session Rating */}
+              <div>
+                <label className="block text-xs font-bold text-amber-300 uppercase tracking-wider mb-2">
+                  {isHindi
+                    ? '१. किसके मार्गदर्शन सेशन के लिए रेटिंग दे रहे हैं? (Select Healer / Admin)'
+                    : '1. Select Healer or Admin Who Guided Your Session'}
+                </label>
+                <select
+                  value={selectedHealerId}
+                  onChange={(e) => setSelectedHealerId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-amber-500/40 text-white text-sm focus:border-amber-400 outline-none"
+                >
+                  {guidanceProviders.map((prov) => (
+                    <option key={prov.id} value={prov.id}>
+                      {prov.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Interactive 1-5 Star Rating Selector */}
+              <div className="rounded-2xl bg-slate-900/90 border border-amber-500/35 p-4 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="block text-xs font-bold text-amber-300 uppercase tracking-wider">
+                    {isHindi
+                      ? '२. गाइडेंस सेशन स्टार-रेटिंग चुनें (Tap Stars to Rate)'
+                      : '2. Tap Stars to Rate Your Guidance Session'}
+                  </label>
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold">
+                    {isHindi ? ratingLabels[fbRating]?.hi : ratingLabels[fbRating]?.en}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3 pt-1">
+                  {[1, 2, 3, 4, 5].map((star) => {
+                    const active = star <= fbRating;
+                    return (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setFbRating(star)}
+                        className={`flex-1 sm:flex-initial px-3 py-2.5 rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          active
+                            ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-md scale-105'
+                            : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700 hover:text-slate-300'
+                        }`}
+                      >
+                        <Star
+                          className="w-5 h-5"
+                          fill={active ? 'currentColor' : 'none'}
+                        />
+                        <span className="text-xs font-black">{star}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                    {isHindi ? 'संदेश की श्रेणी (Category)' : 'Select Category'}
+                    {isHindi ? '३. संदेश की श्रेणी (Category)' : '3. Feedback Category'}
                   </label>
                   <select
                     value={fbCategory}
@@ -543,13 +622,13 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:border-amber-500 outline-none"
                   >
                     <option value="feedback">
-                      {isHindi ? 'फ़ीडबैक / अनुभव (App Feedback)' : 'App Feedback / Experience'}
-                    </option>
-                    <option value="suggestion">
-                      {isHindi ? 'नया सुझाव (Feature Suggestion)' : 'New Suggestion / Idea'}
+                      {isHindi ? 'गाइडेंस सेशन अनुभव (Session Experience)' : 'Guidance Session Experience'}
                     </option>
                     <option value="appreciation">
                       {isHindi ? 'आभार / प्रशंसा (Appreciation)' : 'Gratitude / Appreciation'}
+                    </option>
+                    <option value="suggestion">
+                      {isHindi ? 'नया सुझाव (Suggestion)' : 'New Suggestion / Idea'}
                     </option>
                     <option value="support">
                       {isHindi ? 'सहायता / मार्गदर्शन (Support)' : 'Guidance / Support Request'}
@@ -559,28 +638,15 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                    {isHindi ? 'आपकी रेटिंग (Your Rating)' : 'Your Experience Rating'}
+                    {isHindi ? 'आपकी चयनित रेटिंग (Selected Rating)' : 'Selected Star Score'}
                   </label>
-                  <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setFbRating(star)}
-                        className={`p-1 rounded-lg transition ${
-                          star <= fbRating
-                            ? 'text-amber-400 scale-110'
-                            : 'text-slate-600 hover:text-slate-400'
-                        }`}
-                      >
-                        <Star
-                          className="w-5 h-5"
-                          fill={star <= fbRating ? 'currentColor' : 'none'}
-                        />
-                      </button>
-                    ))}
-                    <span className="ml-auto text-xs font-bold text-amber-300">
-                      {fbRating}/5
+                  <div className="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5">
+                    <span className="text-amber-400 font-bold text-sm tracking-widest">
+                      {'★'.repeat(fbRating)}
+                      {'☆'.repeat(5 - fbRating)}
+                    </span>
+                    <span className="text-xs font-black text-amber-200">
+                      {fbRating} / 5 Stars
                     </span>
                   </div>
                 </div>
@@ -589,20 +655,19 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
                   {isHindi
-                    ? 'आपका फ़ीडबैक या सुझाव लिखें (Your Feedback or Suggestion)'
-                    : 'Write Your Feedback or Suggestion'}
+                    ? '४. अपना अनुभव या सुझाव लिखें (वैकल्पिक / Optional)'
+                    : '4. Share Your Session Experience or Suggestion (Optional)'}
                 </label>
                 <textarea
-                  rows={4}
+                  rows={3}
                   value={fbMessage}
                   onChange={(e) => setFbMessage(e.target.value)}
                   placeholder={
                     isHindi
-                      ? 'यहाँ अपना अनुभव, सुझाव या संदेश लिखें... यह रियल-टाइम में सीधे एडमिन डैशबोर्ड पर दिखेगा।'
-                      : 'Share your thoughts, how the app helped you, or any suggestion for Healer Ddeepak Jain...'
+                      ? 'यहाँ अपना गाइडेंस सेशन अनुभव या सुझाव लिखें (या सीधे स्टार-रेटिंग सबमिट करें)...'
+                      : 'Write a few words about your guidance session experience, or submit your star rating directly...'
                   }
                   className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:border-amber-500 outline-none resize-none"
-                  required
                 />
               </div>
 
@@ -623,27 +688,20 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                <span className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  {isHindi
-                    ? 'रियल-टाइम सिंक: एडमिन डैशबोर्ड से सीधा कनेक्टेड'
-                    : 'Live Real-Time Sync to Master Admin Dashboard'}
-                </span>
-
+              <div className="flex justify-end pt-1">
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition disabled:opacity-50"
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition disabled:opacity-50 cursor-pointer"
                 >
                   <Send className="w-4 h-4" />
                   {isSubmitting
                     ? isHindi
-                      ? 'भेजा जा रहा है...'
-                      : 'Sending Live...'
+                      ? 'दर्ज किया जा रहा है...'
+                      : 'Submitting Rating...'
                     : isHindi
-                    ? 'फ़ीडबैक / सुझाव भेजें'
-                    : 'Submit Feedback Live'}
+                    ? `${fbRating}★ रेटिंग एवं अनुभव सबमिट करें`
+                    : `Submit ${fbRating}★ Session Rating`}
                 </button>
               </div>
             </form>

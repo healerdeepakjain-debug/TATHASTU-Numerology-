@@ -504,7 +504,10 @@ export const YogaPranayamaModule: React.FC<YogaPranayamaModuleProps> = ({
   // Toggle Health Concern in Profile
   const handleToggleHealthConcern = (concernId: string) => {
     if (!onUpdateProfile) return;
-    const current = profile.healthConcerns || [];
+    const current =
+      profile.healthConcerns !== undefined
+        ? profile.healthConcerns
+        : yogaPlan.selectedHealthConcerns.map((s) => s.id);
     const exists = current.includes(concernId);
     const updatedList = exists
       ? current.filter((c) => c !== concernId)
@@ -639,37 +642,44 @@ export const YogaPranayamaModule: React.FC<YogaPranayamaModuleProps> = ({
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
                 <HeartPulse className="w-3.5 h-3.5 text-amber-400" />
-                <span>Select Current Health Concerns in Profile (Auto-Updates Asanas, Pranayama & PDF Report)</span>
+                <span>2. Current Health Concerns (For Daily Vedic Yoga &amp; Pranayama Module)</span>
               </h3>
               <p className="text-[11px] text-slate-400">
                 Click any health concern below to tailor your daily therapeutic Yoga postures and breathing ratios:
               </p>
             </div>
             <span className="text-[11px] font-mono text-emerald-300 bg-emerald-950/50 border border-emerald-500/30 px-2.5 py-1 rounded-md shrink-0">
-              {yogaPlan.selectedHealthConcerns.length} Active Focus Area(s)
+              {yogaPlan.selectedHealthConcerns.length} Selected
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
             {HEALTH_CONCERN_OPTIONS.map((opt) => {
-              const isSelected = yogaPlan.selectedHealthConcerns.some((s) => s.id === opt.id);
+              const isSelected =
+                profile.healthConcerns !== undefined
+                  ? profile.healthConcerns.includes(opt.id)
+                  : yogaPlan.selectedHealthConcerns.some((s) => s.id === opt.id);
               return (
                 <button
                   key={opt.id}
                   type="button"
+                  role="checkbox"
+                  aria-checked={isSelected}
                   onClick={() => handleToggleHealthConcern(opt.id)}
                   className={`text-left p-2.5 rounded-lg border transition-all cursor-pointer flex items-start gap-2.5 ${
                     isSelected
-                      ? 'bg-amber-500/15 border-amber-400 text-amber-100 shadow-sm'
+                      ? 'bg-emerald-500/15 border-emerald-400 text-amber-100 shadow-sm'
                       : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:border-amber-500/35 hover:text-slate-200'
                   }`}
                 >
-                  <div className="mt-0.5 shrink-0">
-                    {isSelected ? (
-                      <CheckCircle2 className="w-4 h-4 text-amber-400" />
-                    ) : (
-                      <Circle className="w-4 h-4 text-slate-600" />
-                    )}
+                  <div
+                    className={`mt-0.5 w-4 h-4 rounded flex items-center justify-center border shrink-0 transition-all ${
+                      isSelected
+                        ? 'bg-emerald-500 border-emerald-400 text-slate-950'
+                        : 'bg-slate-950 border-slate-600 text-transparent'
+                    }`}
+                  >
+                    {isSelected ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5 opacity-0" />}
                   </div>
                   <div className="min-w-0">
                     <div className="text-xs font-bold leading-snug truncate">{opt.label}</div>

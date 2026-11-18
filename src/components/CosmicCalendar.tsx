@@ -265,7 +265,7 @@ export function getBestUpcomingEventsNext12Months(
       rahuKaalToAvoid: 'Never initiate new Sankalpa during Rahu Kaal or Vishti Bhadra',
       nakshatraYoga: `Pushya / Punarvasu / Shravana Siddha-Amrit Yoga`,
       score: 99,
-      reason: `Supreme pranic alignment for ${profile.name} (Mulank ${m}, Bhagyank ${b}) to energize Rudraksha, Ratna Gemstones, Yantras, and 7-Chakra healing.`,
+      reason: `Supreme pranic alignment for ${profile.name} (Mulank ${m}, Bhagyank ${b}) to energize Rudraksha, Ratna Gemstones, Yantras, and 9-Chakra healing.`,
       mantraDhikr: `Vedic Mantra: "${mPlanet.beejMantra}" (108x) & "${bPlanet.beejMantra}" (108x) with Panchamrit Abhishekam.`,
     },
   ];

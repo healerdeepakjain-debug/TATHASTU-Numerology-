@@ -227,6 +227,9 @@
         "includePartnerMilan": {
           "type": "boolean"
         },
+        "includeParivarMilan": {
+          "type": "boolean"
+        },
         "healthConcerns": {
           "type": "array",
           "description": "Bounded list of up to 10 selected health concern IDs for Yoga & Pranayama prescriptions."
@@ -254,6 +257,10 @@
         "selectedMobileB": {
           "type": "string",
           "maxLength": 24
+        },
+        "parivarMembers": {
+          "type": "array",
+          "description": "Bounded list of up to 5 family members for Parivar Milan 9-Chakra Diagnostics."
         },
         "createdAtIso": {
           "type": "string",
@@ -367,6 +374,9 @@
         "includePartnerMilan": {
           "type": "boolean"
         },
+        "includeParivarMilan": {
+          "type": "boolean"
+        },
         "healthConcerns": {
           "type": "array",
           "description": "Bounded list of up to 25 selected health concern IDs."
@@ -394,6 +404,10 @@
         "selectedMobileB": {
           "type": "string",
           "maxLength": 30
+        },
+        "parivarMembers": {
+          "type": "array",
+          "description": "Bounded list of up to 5 family members for Parivar Milan 9-Chakra Diagnostics."
         },
         "healerName": {
           "type": "string",
@@ -488,6 +502,14 @@
         },
         "rating": {
           "type": "number"
+        },
+        "ratedHealerId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "ratedHealerName": {
+          "type": "string",
+          "maxLength": 120
         },
         "message": {
           "type": "string",

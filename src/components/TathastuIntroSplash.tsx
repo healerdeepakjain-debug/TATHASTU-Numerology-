@@ -418,7 +418,7 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
         </p>
 
         <p className="mt-3 text-[11px] sm:text-xs text-amber-200/80 max-w-md leading-relaxed tathastu-intro-fade-up">
-          Vedic &amp; Chaldean Numerology • 7-Chakra Aura Alignment • Live Shubh Muhurat
+          Vedic &amp; Chaldean Numerology • 9-Chakra Aura Alignment • Live Shubh Muhurat
         </p>
       </div>
 

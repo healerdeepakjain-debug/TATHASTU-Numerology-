@@ -31,6 +31,9 @@ import {
   FileText,
   Download,
   Share2,
+  Star,
+  Check,
+  HeartPulse,
 } from 'lucide-react';
 import {
   useTathastu,
@@ -56,6 +59,7 @@ import { PayUPaymentModal } from './PayUPaymentModal';
 import { CityAutocompleteInput } from './CityAutocompleteInput';
 import { BirthTimeAmPmInput, formatTime12HourAmPm } from './BirthTimeAmPmInput';
 import { HealerDeepakJainMissionShowcase } from './HealerDeepakJainMissionShowcase';
+import { HEALTH_CONCERN_OPTIONS } from '../utils/yogaPranayamaData';
 
 interface AdminAndProfilesPortalProps {
   onOpenProfileWorkspace: () => void;
@@ -94,19 +98,18 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   } = useTathastu();
 
   // Top-level Post-Login Portal View:
-  // 'saved-profiles' | 'new-profile' | 'plan-upgrade' | 'client-portal' | 'healer-portal' | 'master-admin-portal'
+  // Defaults to 'welcome' (shows Welcome Box + Healer Ddeepak Jain Showcase).
+  // Clicking any option opens its dedicated page.
   const [activeView, setActiveView] = useState<
-    'saved-profiles' | 'new-profile' | 'plan-upgrade' | 'client-portal' | 'healer-portal' | 'master-admin-portal'
-  >('saved-profiles');
+    'welcome' | 'saved-profiles' | 'new-profile' | 'plan-upgrade' | 'client-portal' | 'healer-portal' | 'master-admin-portal'
+  >('welcome');
 
   // Selected Client or Healer in Admin's Client Portal / Healer Portal for full drill-down
   const [selectedClientAccId, setSelectedClientAccId] = useState<string | null>(null);
   const [selectedHealerAccId, setSelectedHealerAccId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [adminSavedProfileFilter, setAdminSavedProfileFilter] = useState<
-    'all' | 'admin-self' | 'client' | 'healer'
-  >('all');
   const [feedbackReplyDrafts, setFeedbackReplyDrafts] = useState<Record<string, string>>({});
+  const [ratingFilterProviderId, setRatingFilterProviderId] = useState<string>('all');
 
   // Blank-by-default New Profile / Report Form state
   const [targetAccountForNewProfile, setTargetAccountForNewProfile] = useState<string>('');
@@ -119,6 +122,13 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   const [newLng, setNewLng] = useState<number>(77.2090);
   const [newGender, setNewGender] = useState<'male' | 'female' | 'other'>('male');
   const [newIncludePartnerMilan, setNewIncludePartnerMilan] = useState<boolean>(false);
+  const [newHealthConcerns, setNewHealthConcerns] = useState<string[]>([]);
+  const [newPartnerName, setNewPartnerName] = useState('');
+  const [newPartnerDob, setNewPartnerDob] = useState('');
+  const [newPartnerTob, setNewPartnerTob] = useState('09:30');
+  const [newPartnerPob, setNewPartnerPob] = useState('');
+  const [newPartnerLat, setNewPartnerLat] = useState<number>(28.6139);
+  const [newPartnerLng, setNewPartnerLng] = useState<number>(77.2090);
   const [newEmail, setNewEmail] = useState('');
   const [newMobile, setNewMobile] = useState('');
 
@@ -126,6 +136,30 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   const [editingProfile, setEditingProfile] = useState<AstroProfileRecord | null>(null);
   // Admin Edit Account Modal State
   const [editingAccount, setEditingAccount] = useState<AccountRecord | null>(null);
+
+  const openEditProfileModal = (prof: AstroProfileRecord) => {
+    const rawPartner = (prof.partnerName || '').trim();
+    const isLegacyDummy =
+      !rawPartner ||
+      rawPartner.toLowerCase() === 'rohit sharma' ||
+      rawPartner.toLowerCase() === 'priyanka sharma';
+    setEditingProfile({
+      ...prof,
+      healthConcerns: prof.healthConcerns ? [...prof.healthConcerns] : [],
+      partnerName: isLegacyDummy ? '' : rawPartner,
+      partnerDob:
+        isLegacyDummy ||
+        prof.partnerDob === '1988-06-15' ||
+        prof.partnerDob === '1990-11-24'
+          ? ''
+          : prof.partnerDob || '',
+      partnerTob: prof.partnerTob || '09:30',
+      partnerPob:
+        isLegacyDummy || prof.partnerPob === 'Mumbai, Maharashtra, India'
+          ? ''
+          : prof.partnerPob || '',
+    });
+  };
 
   // Master Admin Portal: Register New Client or New Healer
   const [adminRegRole, setAdminRegRole] = useState<'client' | 'healer'>('client');
@@ -201,9 +235,51 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
 
   const clientAccounts = accounts.filter((a) => a.role === 'client');
   const healerAccounts = accounts.filter((a) => a.role === 'healer');
-  const myProfiles = isAdmin
-    ? profiles
-    : profiles.filter((p) => p.accountId === currentAccount.id);
+  const clientPortalProfiles = profiles.filter((p) => p.ownerRole === 'client');
+  const healerPortalProfiles = profiles.filter((p) => p.ownerRole === 'healer');
+  // Saved Profiles shows:
+  // - For Admin: ONLY profiles created by Admin
+  // - For Client: ONLY profiles created by that Client
+  // - For Healer: ONLY client profiles created by that Healer
+  const myProfiles = profiles.filter((p) =>
+    isAdmin
+      ? p.accountId === currentAccount.id || p.ownerRole === 'admin'
+      : p.accountId === currentAccount.id
+  );
+
+  // Admin-Only Service Quality Star-Rating Tracker for Admin & Every Healer
+  const serviceQualityProviders = [
+    {
+      id: 'admin_tathastu_master',
+      name: 'Healer Ddeepak Jain',
+      roleLabel: 'Founder & Master Admin',
+      brandName: TATHASTU_BRAND_NAME,
+    },
+    ...healerAccounts.map((h) => ({
+      id: h.id,
+      name: h.name,
+      roleLabel: 'Registered Healer',
+      brandName: h.healerBrandName || 'Tathastu Certified Healer',
+    })),
+  ];
+
+  const getProviderRatingStats = (providerId: string) => {
+    const matching = feedbacks.filter((fb) => {
+      const targetId = fb.ratedHealerId || 'admin_tathastu_master';
+      return targetId === providerId;
+    });
+    const count = matching.length;
+    const avg =
+      count > 0
+        ? matching.reduce((sum, item) => sum + (Number(item.rating) || 5), 0) / count
+        : 0;
+    return {
+      count,
+      avg,
+      avgFormatted: count > 0 ? avg.toFixed(1) : '—',
+      ratings: matching,
+    };
+  };
 
   // Open a Client Profile & transition directly to the Complete Vedic Dashboard for that Client ONLY
   const handleClickClientNameToOpenVedicDashboard = (profId: string) => {
@@ -238,6 +314,13 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
     setNewLng(77.2090);
     setNewGender('male');
     setNewIncludePartnerMilan(false);
+    setNewHealthConcerns([]);
+    setNewPartnerName('');
+    setNewPartnerDob('');
+    setNewPartnerTob('09:30');
+    setNewPartnerPob('');
+    setNewPartnerLat(28.6139);
+    setNewPartnerLng(77.2090);
     setNewEmail('');
     setNewMobile('');
     setStatusFeedback(null);
@@ -268,6 +351,19 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
       return;
     }
 
+    if (res.profile) {
+      await adminUpdateProfile({
+        ...res.profile,
+        healthConcerns: newHealthConcerns,
+        partnerName: newPartnerName.trim(),
+        partnerDob: newPartnerDob,
+        partnerTob: newPartnerTob || '09:30',
+        partnerPob: newPartnerPob.trim(),
+        partnerLat: newPartnerLat,
+        partnerLng: newPartnerLng,
+      });
+    }
+
     setNewName('');
     setNewDob('');
     setNewTob('');
@@ -275,6 +371,11 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
     setNewLat(28.6139);
     setNewLng(77.2090);
     setNewIncludePartnerMilan(false);
+    setNewHealthConcerns([]);
+    setNewPartnerName('');
+    setNewPartnerDob('');
+    setNewPartnerTob('09:30');
+    setNewPartnerPob('');
     setNewEmail('');
     setNewMobile('');
 
@@ -478,7 +579,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   // Reusable Table Header for Saved Client Profiles List
   const renderSavedProfilesTableHeader = () => (
     <div className="hidden md:grid md:grid-cols-12 gap-3 px-4 py-2.5 rounded-xl bg-slate-950/80 border border-amber-500/25 text-[11px] font-bold uppercase tracking-wider text-amber-400">
-      <div className="md:col-span-4">Client Name (Click to Open Vedic Dashboard)</div>
+      <div className="md:col-span-4">Client Name</div>
       <div className="md:col-span-2">Mobile Number</div>
       <div className="md:col-span-2">Report Date</div>
       <div className="md:col-span-4 text-right">Actions</div>
@@ -518,7 +619,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     : 'bg-amber-500/20 text-amber-200 border-amber-400/50'
                 }`}
               >
-                {prof.gender === 'female' ? '♀ Female (Bride)' : '♂ Male (Groom)'}
+                {prof.gender === 'female' ? '♀ Female' : '♂ Male'}
               </span>
               <span className="text-[9.5px] px-2 py-0.5 rounded-full font-mono font-bold bg-indigo-950/90 text-indigo-200 border border-indigo-400/40">
                 {creatorBadgeLabel}
@@ -611,9 +712,9 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
 
           <button
             type="button"
-            onClick={() => setEditingProfile(prof)}
+            onClick={() => openEditProfileModal(prof)}
             className="px-2 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-            title="Edit Report Birth Time (AM/PM), Birth City & Contact"
+            title="Edit Profile, Health Concerns & Groom/Bride Details"
           >
             <Edit3 className="w-3.5 h-3.5 text-amber-400" />
             <span>Edit</span>
@@ -680,9 +781,25 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               Welcome, {currentAccount.name}
             </h2>
             <p className="text-xs text-amber-300/80">
-              Select <strong>Saved Profiles</strong> and click on a Client Name to open their Complete Vedic Dashboard, or click <strong>+ New Profile</strong>.
+              {activeView === 'welcome'
+                ? 'Click any portal option below to open its dedicated page.'
+                : 'Viewing selected portal page. Click any tab below to switch or return to the Welcome Page.'}
             </p>
           </div>
+          {activeView !== 'welcome' && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveView('welcome');
+                setSelectedClientAccId(null);
+                setSelectedHealerAccId(null);
+              }}
+              className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-100 font-bold text-xs flex items-center gap-2 self-start lg:self-auto cursor-pointer shadow-md"
+            >
+              <ArrowLeft className="w-4 h-4 text-amber-300" />
+              <span>Back to Welcome Page</span>
+            </button>
+          )}
         </div>
 
         {/* Navigation Buttons:
@@ -710,7 +827,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               </div>
               <div className="text-[10px] text-amber-300/75">
                 {isAdmin
-                  ? 'Admin Self & All Saved Client Profiles'
+                  ? 'Admin Created Profiles'
                   : 'Click profile name to open report'}
               </div>
             </div>
@@ -754,10 +871,10 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               <User className="w-5 h-5 text-amber-400 shrink-0" />
               <div>
                 <div className="font-serif font-bold text-xs sm:text-sm text-amber-100">
-                  Client Portal (Admin Only)
+                  Client Portal
                 </div>
                 <div className="text-[10px] text-amber-300/75">
-                  {clientAccounts.length} Registered Clients (Live Sync)
+                  {clientAccounts.length} Clients • {clientPortalProfiles.length} Profiles
                 </div>
               </div>
             </button>
@@ -779,10 +896,10 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               <Users className="w-5 h-5 text-emerald-400 shrink-0" />
               <div>
                 <div className="font-serif font-bold text-xs sm:text-sm text-amber-100">
-                  Healer Portal (Admin Only)
+                  Healer Portal
                 </div>
                 <div className="text-[10px] text-emerald-300/75">
-                  {healerAccounts.length} Registered Healers (Live Sync)
+                  {healerAccounts.length} Healers • {healerPortalProfiles.length} Profiles
                 </div>
               </div>
             </button>
@@ -902,11 +1019,11 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               <div>
                 <h3 className="font-serif text-lg font-bold text-amber-100">
                   {isAdmin
-                    ? `Admin Self & All Saved Client Profiles (${myProfiles.length} Real-Time Synced)`
-                    : `Saved Profiles List (${myProfiles.length} / ${currentAccount.maxProfiles})`}
+                    ? `Saved Profiles (${myProfiles.length})`
+                    : `Saved Profiles (${myProfiles.length} / ${currentAccount.maxProfiles})`}
                 </h3>
                 <p className="text-xs text-amber-300/75">
-                  Click on any Profile Name below to open the Complete Vedic & Chaldean Dashboard exclusively for that profile.
+                  Select any profile below to open its Vedic &amp; Chaldean Dashboard.
                 </p>
               </div>
 
@@ -933,50 +1050,6 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               </div>
             </div>
 
-            {/* Admin Quick Filter Bar for Saved Profiles */}
-            {isAdmin && (
-              <div className="flex flex-wrap items-center gap-2 pb-1">
-                {[
-                  { id: 'all', label: `All Saved Profiles (${myProfiles.length})` },
-                  {
-                    id: 'admin-self',
-                    label: `Admin Self Profile (${
-                      myProfiles.filter((p) => p.accountId === currentAccount.id).length
-                    })`,
-                  },
-                  {
-                    id: 'client',
-                    label: `Client Portal Profiles (${
-                      myProfiles.filter((p) => p.ownerRole === 'client').length
-                    })`,
-                  },
-                  {
-                    id: 'healer',
-                    label: `Healer Client Profiles (${
-                      myProfiles.filter((p) => p.ownerRole === 'healer').length
-                    })`,
-                  },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() =>
-                      setAdminSavedProfileFilter(
-                        tab.id as 'all' | 'admin-self' | 'client' | 'healer'
-                      )
-                    }
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                      adminSavedProfileFilter === tab.id
-                        ? 'bg-amber-500 text-slate-950 border-amber-400'
-                        : 'bg-slate-950 text-amber-200 border-amber-500/30 hover:border-amber-400'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
             {/* 1-Line Table Header */}
             {renderSavedProfilesTableHeader()}
 
@@ -994,14 +1067,6 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
             ) : (
               <div className="space-y-2">
                 {myProfiles
-                  .filter((p) => {
-                    if (!isAdmin || adminSavedProfileFilter === 'all') return true;
-                    if (adminSavedProfileFilter === 'admin-self')
-                      return p.accountId === currentAccount.id;
-                    if (adminSavedProfileFilter === 'client') return p.ownerRole === 'client';
-                    if (adminSavedProfileFilter === 'healer') return p.ownerRole === 'healer';
-                    return true;
-                  })
                   .filter(
                     (p) =>
                       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1136,19 +1201,19 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
           <div className="flex items-center justify-between border-b border-amber-500/20 pb-3">
             <div>
               <h3 className="font-serif text-lg font-black text-amber-100">
-                Create New Client Profile & Generate 12-Month Report (Blank Form)
+                Create New Profile
               </h3>
               <p className="text-xs text-amber-300/75">
-                Once saved, Main Name & Date of Birth are permanently locked and the Complete Vedic Dashboard will open for this client.
+                Enter client birth details, health concerns, and optional partner details below.
               </p>
             </div>
           </div>
 
-          <form onSubmit={handleAddProfileSubmit} className="space-y-4">
+          <form onSubmit={handleAddProfileSubmit} className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className="text-[11px] font-bold text-amber-300 block mb-1">
-                  Client Full Name (Locked After Save) *
+                  Client Full Name *
                 </label>
                 <input
                   type="text"
@@ -1162,7 +1227,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
 
               <div>
                 <label className="text-[11px] font-bold text-amber-300 block mb-1">
-                  Gender (Auto-Maps Groom / Bride) *
+                  Gender *
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -1192,7 +1257,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
 
               <div>
                 <label className="text-[11px] font-bold text-amber-300 block mb-1">
-                  Date of Birth (Locked After Save) *
+                  Date of Birth *
                 </label>
                 <input
                   type="date"
@@ -1215,7 +1280,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
 
               <div>
                 <label className="text-[11px] font-bold text-amber-300 block mb-1">
-                  Birth Place City, State & Country (Type 1st 3 Letters) *
+                  Birth Place City, State &amp; Country *
                 </label>
                 <CityAutocompleteInput
                   value={newPob}
@@ -1227,14 +1292,14 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     setNewLat(res.lat);
                     setNewLng(res.lng);
                   }}
-                  placeholder="Type 1st 3 letters (e.g. Del, Mum, Jai)..."
+                  placeholder="Enter birth city..."
                   inputClassName="w-full bg-slate-950 border border-amber-500/35 rounded-xl pl-9 pr-8 py-2.5 text-xs text-amber-100 focus:outline-none focus:border-amber-400"
                 />
               </div>
 
               <div>
                 <label className="text-[11px] font-bold text-amber-300 block mb-1">
-                  Unique Email Address *
+                  Email Address *
                 </label>
                 <input
                   type="email"
@@ -1248,7 +1313,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
 
               <div>
                 <label className="text-[11px] font-bold text-amber-300 block mb-1">
-                  Unique 10-Digit Mobile *
+                  10-Digit Mobile *
                 </label>
                 <input
                   type="tel"
@@ -1261,32 +1326,141 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-pink-500/35 flex items-center justify-between gap-3">
-              <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={newIncludePartnerMilan}
-                  onChange={(e) => setNewIncludePartnerMilan(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 accent-pink-500 rounded cursor-pointer"
-                />
+            {/* Section 2: Current Health Concerns */}
+            <div className="p-4 rounded-2xl bg-slate-950/90 border border-emerald-500/30 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-300 flex items-center gap-1.5">
+                  <HeartPulse className="w-4 h-4 text-emerald-400" />
+                  <span>2. Current Health Concerns (For Daily Vedic Yoga &amp; Pranayama Module)</span>
+                </h4>
+                <span className="text-[11px] font-mono text-emerald-300 bg-emerald-950/60 px-2.5 py-0.5 rounded-md border border-emerald-500/30">
+                  {newHealthConcerns.length} Selected
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                {HEALTH_CONCERN_OPTIONS.map((opt) => {
+                  const checked = newHealthConcerns.includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={checked}
+                      onClick={() =>
+                        setNewHealthConcerns((prev) =>
+                          prev.includes(opt.id)
+                            ? prev.filter((id) => id !== opt.id)
+                            : [...prev, opt.id]
+                        )
+                      }
+                      className={`w-full text-left flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all select-none ${
+                        checked
+                          ? 'bg-emerald-500/20 border-emerald-400 text-amber-100 shadow-sm'
+                          : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-amber-500/35'
+                      }`}
+                    >
+                      <div
+                        className={`mt-0.5 w-4 h-4 rounded flex items-center justify-center border shrink-0 transition-all ${
+                          checked
+                            ? 'bg-emerald-500 border-emerald-400 text-slate-950'
+                            : 'bg-slate-900 border-slate-600 text-transparent'
+                        }`}
+                      >
+                        <Check className="w-3 h-3 stroke-[3]" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold leading-snug">{opt.label}</div>
+                        <div className="text-[10px] text-amber-300/80">{opt.hindiLabel}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Section 3: Partner Milan & Groom/Bride Details (Blank by Default) */}
+            <div className="p-4 rounded-2xl bg-slate-950/90 border border-pink-500/35 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={newIncludePartnerMilan}
+                    onChange={(e) => setNewIncludePartnerMilan(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-pink-500 rounded cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-pink-200 block">
+                      3. Enable Partner Milan &amp; {newGender === 'female' ? 'Groom' : 'Bride'} Details
+                    </span>
+                    <span className="text-[11px] text-slate-400 block">
+                      Enter {newGender === 'female' ? 'Groom' : 'Bride'} / Partner birth details below (blank by default).
+                    </span>
+                  </div>
+                </label>
+                <span
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase shrink-0 ${
+                    newIncludePartnerMilan
+                      ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-slate-900 text-slate-400 border border-slate-700'
+                  }`}
+                >
+                  {newIncludePartnerMilan ? 'Active' : 'Optional'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-pink-500/20">
                 <div>
-                  <span className="text-xs font-bold text-pink-200 block">
-                    Enable Partner Milan &amp; 36-Guna Compatibility Module for this Client
-                  </span>
-                  <span className="text-[11px] text-slate-400 block">
-                    Check this box only if the client requires Partner Milan / Marriage Compatibility in their dashboard and spiritual report.
-                  </span>
+                  <label className="text-[11px] font-bold text-rose-300 block mb-1">
+                    {newGender === 'female' ? 'Groom' : 'Bride'} / Partner Full Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newPartnerName}
+                    onChange={(e) => setNewPartnerName(e.target.value)}
+                    placeholder={`Enter ${newGender === 'female' ? 'Groom' : 'Bride'} Full Name`}
+                    className="w-full bg-slate-900 border border-rose-500/35 rounded-xl px-3 py-2 text-xs text-amber-100"
+                  />
                 </div>
-              </label>
-              <span
-                className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase shrink-0 ${
-                  newIncludePartnerMilan
-                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
-                    : 'bg-slate-900 text-slate-400 border border-slate-700'
-                }`}
-              >
-                {newIncludePartnerMilan ? 'Active' : 'Inactive'}
-              </span>
+                <div>
+                  <label className="text-[11px] font-bold text-rose-300 block mb-1">
+                    {newGender === 'female' ? 'Groom' : 'Bride'} Date of Birth
+                  </label>
+                  <input
+                    type="date"
+                    value={newPartnerDob}
+                    onChange={(e) => setNewPartnerDob(e.target.value)}
+                    className="w-full bg-slate-900 border border-rose-500/35 rounded-xl px-3 py-2 text-xs text-amber-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-rose-300 block mb-1">
+                    {newGender === 'female' ? 'Groom' : 'Bride'} Birth Time ({formatTime12HourAmPm(newPartnerTob || '09:30')})
+                  </label>
+                  <BirthTimeAmPmInput
+                    value={newPartnerTob || '09:30'}
+                    onChange={(val) => setNewPartnerTob(val)}
+                    compact
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-rose-300 block mb-1">
+                    {newGender === 'female' ? 'Groom' : 'Bride'} Birth City
+                  </label>
+                  <CityAutocompleteInput
+                    value={newPartnerPob}
+                    lat={newPartnerLat}
+                    lng={newPartnerLng}
+                    onChangeText={(txt) => setNewPartnerPob(txt)}
+                    onSelectCity={(res) => {
+                      setNewPartnerPob(res.formattedPob);
+                      setNewPartnerLat(res.lat);
+                      setNewPartnerLng(res.lng);
+                    }}
+                    placeholder={`Enter ${newGender === 'female' ? 'Groom' : 'Bride'} Birth City...`}
+                    inputClassName="w-full bg-slate-900 border border-rose-500/35 rounded-xl pl-9 pr-8 py-2 text-xs text-amber-100"
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end gap-3 pt-3">
@@ -1301,7 +1475,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 type="submit"
                 className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black cursor-pointer"
               >
-                Save Profile & Open Vedic Dashboard →
+                Save Profile &amp; Open Dashboard →
               </button>
             </div>
           </form>
@@ -1309,7 +1483,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
       )}
 
       {/* =====================================================================
-          VIEW 3: CLIENT PORTAL (For Admin: All Registered Clients; For Client: My 1-Line Summary & Plan Upgrade)
+          VIEW 3: CLIENT PORTAL
          ===================================================================== */}
       {activeView === 'client-portal' && (
         <div className="rounded-3xl bg-slate-900/95 border border-amber-500/30 p-5 sm:p-6 shadow-xl space-y-5">
@@ -1319,11 +1493,8 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-500/20 pb-4">
                   <div>
                     <h3 className="font-serif text-lg font-bold text-amber-100">
-                      1) Client Portal — Registered Clients (Click Client Name to Open Profile & Reports)
+                      Client Portal ({clientAccounts.length} Registered Clients)
                     </h3>
-                    <p className="text-xs text-amber-300/70">
-                      1-Line View: Client Name • Mobile Number • Date of Registration • Profiles Used/Max (e.g. 1/2)
-                    </p>
                   </div>
                   <button
                     type="button"
@@ -1336,15 +1507,16 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-amber-500 hover:from-emerald-400 hover:to-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shrink-0 cursor-pointer shadow-lg"
                   >
                     <UserPlus className="w-4 h-4" />
-                    <span>+ Register New Client (PayU)</span>
+                    <span>+ Register New Client</span>
                   </button>
                 </div>
 
                 <div className="hidden md:grid md:grid-cols-12 gap-3 px-4 py-2.5 rounded-xl bg-slate-950/80 border border-amber-500/25 text-[11px] font-bold uppercase tracking-wider text-amber-400">
-                  <div className="md:col-span-4">Client Name (Click to Open)</div>
-                  <div className="md:col-span-3">Mobile Number</div>
+                  <div className="md:col-span-3">Client Name &amp; Plan</div>
+                  <div className="md:col-span-3">Email &amp; Mobile</div>
+                  <div className="md:col-span-2">Password</div>
                   <div className="md:col-span-2">Registration Date</div>
-                  <div className="md:col-span-2">Profiles (Used/Max)</div>
+                  <div className="md:col-span-1">Profiles</div>
                   <div className="md:col-span-1 text-right">Action</div>
                 </div>
 
@@ -1358,17 +1530,33 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                         onClick={() => setSelectedClientAccId(clientAcc.id)}
                         className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 items-center px-4 py-3 rounded-xl bg-slate-950/90 hover:bg-slate-800/90 border border-amber-500/25 hover:border-amber-400 transition-all cursor-pointer"
                       >
-                        <div className="md:col-span-4 min-w-0 flex items-center gap-2">
+                        <div className="md:col-span-3 min-w-0 flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-                          <span className="font-bold text-sm text-amber-100 hover:underline truncate">
-                            {clientAcc.name}
-                          </span>
+                          <div className="min-w-0">
+                            <span className="font-bold text-sm text-amber-100 hover:underline block truncate">
+                              {clientAcc.name}
+                            </span>
+                            <span className="text-[10px] text-amber-300/80 block truncate">
+                              {clientAcc.planName}
+                            </span>
+                          </div>
                         </div>
-                        <div className="md:col-span-3 flex md:block items-center justify-between font-mono text-xs text-amber-200">
+                        <div className="md:col-span-3 flex md:block items-center justify-between font-mono text-xs text-amber-200 min-w-0">
                           <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-amber-400 font-sans">
-                            Mobile Number
+                            Email &amp; Mobile
                           </span>
-                          <span>📞 {clientAcc.mobile}</span>
+                          <div className="truncate">
+                            <div className="truncate text-sky-200">{clientAcc.email}</div>
+                            <div className="text-amber-200">📞 {clientAcc.mobile}</div>
+                          </div>
+                        </div>
+                        <div className="md:col-span-2 flex md:block items-center justify-between font-mono text-xs">
+                          <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-amber-400 font-sans">
+                            Password
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-slate-900 border border-amber-500/35 text-emerald-300 font-bold">
+                            🔑 {clientAcc.passwordHash}
+                          </span>
                         </div>
                         <div className="md:col-span-2 flex md:block items-center justify-between font-mono text-xs text-slate-300">
                           <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-amber-400 font-sans">
@@ -1376,9 +1564,9 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                           </span>
                           <span>📅 {clientAcc.subscriptionStart || clientAcc.createdAtIso.slice(0, 10)}</span>
                         </div>
-                        <div className="md:col-span-2 flex md:block items-center justify-between">
+                        <div className="md:col-span-1 flex md:block items-center justify-between">
                           <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-amber-400">
-                            Profiles (Used/Max)
+                            Profiles
                           </span>
                           <span className="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/35 text-amber-200 font-mono text-xs font-bold">
                             {usedCount}/{maxCount}
@@ -1390,6 +1578,17 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                       </div>
                     );
                   })}
+                </div>
+
+                {/* All Profiles Created by Clients */}
+                <div className="pt-5 border-t border-amber-500/20 space-y-3">
+                  <h4 className="font-serif text-base font-bold text-amber-100">
+                    Client Profiles ({clientPortalProfiles.length})
+                  </h4>
+                  {renderSavedProfilesTableHeader()}
+                  <div className="space-y-2">
+                    {clientPortalProfiles.map((prof) => renderSavedClientRow(prof))}
+                  </div>
                 </div>
               </>
             ) : (
@@ -1440,9 +1639,39 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                       </div>
                     </div>
 
+                    {/* Complete Client Login & Account Details Card (Admin View) */}
+                    <div className="p-4 rounded-2xl bg-slate-950 border border-amber-500/35 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-xs">
+                      <div>
+                        <span className="text-[10px] uppercase text-amber-400 font-bold block">Client Name</span>
+                        <strong className="text-amber-100 text-sm">{selectedClient.name}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase text-amber-400 font-bold block">Login Email</span>
+                        <strong className="text-sky-200 font-mono break-all">{selectedClient.email}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase text-amber-400 font-bold block">Login Mobile</span>
+                        <strong className="text-amber-200 font-mono">📞 {selectedClient.mobile}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase text-emerald-400 font-bold block">Login Password</span>
+                        <strong className="text-emerald-300 font-mono">🔑 {selectedClient.passwordHash}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase text-amber-400 font-bold block">Active Plan</span>
+                        <strong className="text-amber-100">{selectedClient.planName}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase text-amber-400 font-bold block">Validity &amp; Quota</span>
+                        <strong className="text-slate-200 font-mono">
+                          {clientProfs.length}/{selectedClient.maxProfiles} • Exp: {(selectedClient.subscriptionExpiry || '').slice(0, 10)}
+                        </strong>
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
                       <h4 className="font-serif text-base font-bold text-amber-100">
-                        Saved Profiles & Reports of {selectedClient.name} (Click Name to Open Vedic Dashboard)
+                        Saved Profiles of {selectedClient.name}
                       </h4>
                       {renderSavedProfilesTableHeader()}
                       {clientProfs.map((prof) => renderSavedClientRow(prof))}
@@ -1452,7 +1681,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               })()
             )
           ) : (
-            /* CLIENT'S OWN 1-LINE SUMMARY & UPGRADE */
+            /* CLIENT'S OWN SUMMARY & UPGRADE */
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 px-4 py-3.5 rounded-2xl bg-slate-950 border border-amber-500/35 items-center text-xs">
                 <div>
@@ -1477,7 +1706,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 </div>
                 <div>
                   <span className="text-[10px] uppercase text-emerald-400 font-bold block">
-                    Profiles Left to Generate
+                    Profiles Used
                   </span>
                   <strong className="text-emerald-300 font-mono text-sm">
                     {myProfiles.length}/{currentAccount.maxProfiles}
@@ -1488,7 +1717,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2">
                 <h4 className="font-serif text-base font-bold text-amber-200 flex items-center gap-2">
                   <CreditCard className="w-4 h-4 text-emerald-400" />
-                  <span>Add / Upgrade Client Plan via PayU (Profiles &amp; Validity Add Into Existing Plan)</span>
+                  <span>Upgrade Client Plan</span>
                 </h4>
                 <input
                   type="text"
@@ -1525,7 +1754,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                         className="w-full py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-amber-500 hover:from-emerald-400 hover:to-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>Pay via PayU (+{pl.maxProfiles} Profiles)</span>
+                        <span>Buy Plan (+{pl.maxProfiles} Profiles)</span>
                       </button>
                     </div>
                   ))}
@@ -1536,7 +1765,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
       )}
 
       {/* =====================================================================
-          VIEW 4: HEALER PORTAL (For Admin: All Registered Healers; For Healer: 1-Line Summary & Cumulative Plan Upgrade)
+          VIEW 4: HEALER PORTAL
          ===================================================================== */}
       {activeView === 'healer-portal' && (
         <div className="rounded-3xl bg-slate-900/95 border border-emerald-500/30 p-5 sm:p-6 shadow-xl space-y-5">
@@ -1546,11 +1775,8 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-500/20 pb-4">
                   <div>
                     <h3 className="font-serif text-lg font-bold text-amber-100">
-                      2) Healer Portal — Registered Healers (Click Healer Name to View Healer Profile & Healer's Reports)
+                      Healer Portal ({healerAccounts.length} Registered Healers)
                     </h3>
-                    <p className="text-xs text-emerald-300/80">
-                      1-Line View: Healer Name • Mobile Number • Date of Registration • Profiles Used/Max (e.g. 3/10)
-                    </p>
                   </div>
                   <button
                     type="button"
@@ -1563,15 +1789,16 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-amber-500 hover:from-emerald-400 hover:to-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shrink-0 cursor-pointer shadow-lg"
                   >
                     <UserPlus className="w-4 h-4" />
-                    <span>+ Register New Healer (PayU)</span>
+                    <span>+ Register New Healer</span>
                   </button>
                 </div>
 
                 <div className="hidden md:grid md:grid-cols-12 gap-3 px-4 py-2.5 rounded-xl bg-slate-950/80 border border-emerald-500/25 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                  <div className="md:col-span-4">Healer Name (Click to Open)</div>
-                  <div className="md:col-span-3">Mobile Number</div>
-                  <div className="md:col-span-2">Registration Date</div>
-                  <div className="md:col-span-2">Profiles (Used/Max)</div>
+                  <div className="md:col-span-3">Healer Name &amp; Brand</div>
+                  <div className="md:col-span-3">Email &amp; Mobile</div>
+                  <div className="md:col-span-2">Password</div>
+                  <div className="md:col-span-1">Rating</div>
+                  <div className="md:col-span-2">Plan &amp; Quota</div>
                   <div className="md:col-span-1 text-right">Action</div>
                 </div>
 
@@ -1579,44 +1806,65 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   {healerAccounts.map((healerAcc) => {
                     const usedCount = profiles.filter((p) => p.accountId === healerAcc.id).length;
                     const maxCount = healerAcc.maxProfiles || 10;
+                    const ratingStats = getProviderRatingStats(healerAcc.id);
                     return (
                       <div
                         key={healerAcc.id}
                         onClick={() => setSelectedHealerAccId(healerAcc.id)}
                         className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-3 items-center px-4 py-3 rounded-xl bg-slate-950/90 hover:bg-slate-800/90 border border-emerald-500/25 hover:border-emerald-400 transition-all cursor-pointer"
                       >
-                        <div className="md:col-span-4 min-w-0 flex items-center gap-2">
+                        <div className="md:col-span-3 min-w-0 flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
                           <div className="min-w-0">
                             <span className="font-bold text-sm text-amber-100 hover:underline block truncate">
                               {healerAcc.name}
                             </span>
-                            {healerAcc.healerBrandName && (
-                              <span className="text-[10px] text-emerald-300/80 block truncate">
-                                {healerAcc.healerBrandName}
-                              </span>
-                            )}
+                            <span className="text-[10px] text-emerald-300/80 block truncate">
+                              {healerAcc.healerBrandName || healerAcc.planName}
+                            </span>
                           </div>
                         </div>
-                        <div className="md:col-span-3 flex md:block items-center justify-between font-mono text-xs text-amber-200">
+                        <div className="md:col-span-3 flex md:block items-center justify-between font-mono text-xs text-amber-200 min-w-0">
                           <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-emerald-400 font-sans">
-                            Mobile Number
+                            Email &amp; Mobile
                           </span>
-                          <span>📞 {healerAcc.mobile}</span>
+                          <div className="truncate">
+                            <div className="truncate text-sky-200">{healerAcc.email}</div>
+                            <div className="text-amber-200">📞 {healerAcc.mobile}</div>
+                          </div>
                         </div>
-                        <div className="md:col-span-2 flex md:block items-center justify-between font-mono text-xs text-slate-300">
+                        <div className="md:col-span-2 flex md:block items-center justify-between font-mono text-xs">
                           <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-emerald-400 font-sans">
-                            Registration Date
+                            Password
                           </span>
-                          <span>📅 {healerAcc.subscriptionStart || healerAcc.createdAtIso.slice(0, 10)}</span>
+                          <span className="px-2 py-0.5 rounded bg-slate-900 border border-emerald-500/35 text-emerald-300 font-bold">
+                            🔑 {healerAcc.passwordHash}
+                          </span>
+                        </div>
+                        <div className="md:col-span-1 flex md:block items-center justify-between">
+                          <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                            Rating
+                          </span>
+                          {ratingStats.count > 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-400/40 text-amber-300 font-mono text-xs font-bold">
+                              <span>★ {ratingStats.avgFormatted}</span>
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 font-mono">—</span>
+                          )}
                         </div>
                         <div className="md:col-span-2 flex md:block items-center justify-between">
                           <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-emerald-400">
-                            Profiles (Used/Max)
+                            Plan &amp; Quota
                           </span>
-                          <span className="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 font-mono text-xs font-bold">
-                            {usedCount}/{maxCount}
-                          </span>
+                          <div>
+                            <span className="px-2 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 font-mono text-xs font-bold">
+                              {usedCount}/{maxCount}
+                            </span>
+                            <span className="block text-[10px] text-slate-400 font-mono mt-0.5">
+                              📅 {healerAcc.subscriptionStart || healerAcc.createdAtIso.slice(0, 10)}
+                            </span>
+                          </div>
                         </div>
                         <div className="md:col-span-1 flex justify-end">
                           <span className="text-xs font-bold text-emerald-400">Open →</span>
@@ -1624,6 +1872,17 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                       </div>
                     );
                   })}
+                </div>
+
+                {/* All Client Profiles Created by Healers */}
+                <div className="pt-5 border-t border-emerald-500/20 space-y-3">
+                  <h4 className="font-serif text-base font-bold text-amber-100">
+                    Healer Client Profiles ({healerPortalProfiles.length})
+                  </h4>
+                  {renderSavedProfilesTableHeader()}
+                  <div className="space-y-2">
+                    {healerPortalProfiles.map((prof) => renderSavedClientRow(prof))}
+                  </div>
                 </div>
               </>
             ) : (
@@ -1658,7 +1917,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                           className="px-3.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
-                          <span>Edit Healer Profile</span>
+                          <span>Edit Healer Account</span>
                         </button>
                         <button
                           type="button"
@@ -1674,9 +1933,42 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                       </div>
                     </div>
 
+                    {/* Complete Healer Login & Account Details Card (Admin View) */}
+                    <div className="p-4 rounded-2xl bg-slate-950 border border-emerald-500/35 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-xs">
+                      <div>
+                        <span className="text-[10px] uppercase text-emerald-400 font-bold block">Healer Name &amp; Brand</span>
+                        <strong className="text-amber-100 text-sm block">{selectedHealer.name}</strong>
+                        {selectedHealer.healerBrandName && (
+                          <span className="text-[11px] text-emerald-300">{selectedHealer.healerBrandName}</span>
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase text-emerald-400 font-bold block">Login Email</span>
+                        <strong className="text-sky-200 font-mono break-all">{selectedHealer.email}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase text-emerald-400 font-bold block">Login Mobile</span>
+                        <strong className="text-amber-200 font-mono">📞 {selectedHealer.mobile}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase text-emerald-400 font-bold block">Login Password</span>
+                        <strong className="text-emerald-300 font-mono">🔑 {selectedHealer.passwordHash}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase text-emerald-400 font-bold block">Active Plan</span>
+                        <strong className="text-amber-100">{selectedHealer.planName}</strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase text-emerald-400 font-bold block">Validity &amp; Quota</span>
+                        <strong className="text-slate-200 font-mono">
+                          {healerProfs.length}/{selectedHealer.maxProfiles} • Exp: {(selectedHealer.subscriptionExpiry || '').slice(0, 10)}
+                        </strong>
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
                       <h4 className="font-serif text-base font-bold text-amber-100">
-                        Client Reports Generated by {selectedHealer.name} (Click Client Name to Open Vedic Dashboard)
+                        Client Reports Generated by {selectedHealer.name}
                       </h4>
                       {healerProfs.length === 0 ? (
                         <p className="text-xs text-slate-400">No client reports generated by this Healer yet.</p>
@@ -1692,7 +1984,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               })()
             )
           ) : (
-            /* HEALER'S OWN 1-LINE SUMMARY, CUSTOM LOGO / WATERMARK BRANDING & CUMULATIVE PLAN UPGRADE */
+            /* HEALER'S OWN SUMMARY, CUSTOM LOGO / WATERMARK BRANDING & PLAN UPGRADE */
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 px-4 py-3.5 rounded-2xl bg-slate-950 border border-emerald-500/35 items-center text-xs">
                 <div>
@@ -1717,7 +2009,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 </div>
                 <div>
                   <span className="text-[10px] uppercase text-emerald-400 font-bold block">
-                    Profiles Left to Generate
+                    Profiles Used
                   </span>
                   <strong className="text-emerald-300 font-mono text-sm">
                     {myProfiles.length}/{currentAccount.maxProfiles}
@@ -1730,10 +2022,10 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-500/20 pb-3">
                   <div>
                     <h4 className="font-serif text-base font-bold text-amber-100">
-                      Your Healer Logo & A4 Report Center Watermark
+                      Your Healer Logo &amp; A4 Report Center Watermark
                     </h4>
                     <p className="text-xs text-emerald-300/80">
-                      Your uploaded Healer Logo and Center Brand Name automatically appear as both the top report logo and the centered A4 watermark on every client report you generate.
+                      Your uploaded Healer Logo and Center Brand Name appear on every client report you generate.
                     </p>
                   </div>
                   <div className="flex items-center gap-3 bg-slate-900 px-3 py-2 rounded-xl border border-emerald-500/30 shrink-0">
@@ -1745,7 +2037,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     />
                     <div className="text-xs">
                       <span className="text-[10px] uppercase text-emerald-400 font-bold block">
-                        Active Report Watermark & Logo
+                        Active Report Watermark &amp; Logo
                       </span>
                       <strong className="text-amber-100 block">
                         {currentAccount.healerBrandName || currentAccount.name}
@@ -1757,7 +2049,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 items-end">
                   <div>
                     <label className="text-[11px] font-bold text-emerald-300 block mb-1">
-                      Healer Center / Brand Name (Shown on Report & Watermark)
+                      Healer Center / Brand Name
                     </label>
                     <input
                       type="text"
@@ -1775,7 +2067,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
 
                   <div>
                     <label className="text-[11px] font-bold text-emerald-300 block mb-1">
-                      Healer Logo Image URL (or Upload File →)
+                      Healer Logo Image URL
                     </label>
                     <input
                       type="text"
@@ -1829,14 +2121,14 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   <div>
                     <h4 className="font-serif text-base font-bold text-emerald-200 flex items-center gap-2">
                       <MessageCircle className="w-4 h-4 text-emerald-400" />
-                      <span>Direct WhatsApp API Connection Hub (1-Click Client Messaging)</span>
+                      <span>WhatsApp Client Messaging Hub</span>
                     </h4>
                     <p className="text-xs text-slate-300">
-                      Send one-click WhatsApp messages to your clients for Specific Vedic Events, Full Report Sharing with QR Link, and Live Auspicious Time Updates.
+                      Send WhatsApp messages to your clients for Vedic Events, Full Report Sharing with QR Link, and Auspicious Time Updates.
                     </p>
                   </div>
                   <span className="px-3 py-1 rounded-full bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono text-[10px] font-bold">
-                    WHATSAPP API CONNECTED
+                    WHATSAPP CONNECTED
                   </span>
                 </div>
 
@@ -1844,7 +2136,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end bg-slate-900/90 p-3.5 rounded-xl border border-emerald-500/25">
                     <div className="lg:col-span-4">
                       <label className="text-[11px] font-bold text-emerald-300 block mb-1">
-                        Select Client for 1-Click WhatsApp Dispatch
+                        Select Client for WhatsApp Dispatch
                       </label>
                       <select
                         value={selectedWaClientProfileId || myProfiles[0]?.id || ''}
@@ -1909,7 +2201,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <h4 className="font-serif text-base font-bold text-emerald-200 flex items-center gap-2">
                     <TrendingUp className="w-4 h-4 text-emerald-400" />
-                    <span>Upgrade Healer Plan via PayU (Purchased Profiles Add Into Existing Quota)</span>
+                    <span>Upgrade Healer Plan</span>
                   </h4>
                   <input
                     type="text"
@@ -1946,7 +2238,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                           className="w-full py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-amber-500 hover:from-emerald-400 hover:to-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           <ShieldCheck className="w-3.5 h-3.5" />
-                          <span>Pay via PayU (+{pl.maxProfiles} Profiles)</span>
+                          <span>Buy Plan (+{pl.maxProfiles} Profiles)</span>
                         </button>
                       </div>
                     ))}
@@ -2255,7 +2547,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                       }}
                       className="w-4 h-4 accent-emerald-500 rounded"
                     />
-                    <span>Activate Free of Cost (F.O.C. — Skip PayU)</span>
+                    <span>Activate Free of Cost (F.O.C.)</span>
                   </label>
 
                   <label className="flex items-center gap-2 text-xs text-amber-200 font-semibold cursor-pointer">
@@ -2266,7 +2558,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                       className="w-4 h-4 accent-amber-500 rounded"
                     />
                     <span>
-                      Redirect &amp; Open New {adminRegRole.toUpperCase()}'s Activated Plan After Payment
+                      Open New {adminRegRole === 'client' ? 'Client' : 'Healer'} Account After Registration
                     </span>
                   </label>
                 </div>
@@ -2277,12 +2569,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 >
                   <ShieldCheck className="w-4 h-4" />
                   <span>
-                    {!adminRegIsFoc &&
-                    (plans.find((p) => p.id === adminRegPlanId)?.priceInr ?? 0) > 0
-                      ? `Register ${adminRegRole.toUpperCase()} Account → Proceed to PayU (₹${plans
-                          .find((p) => p.id === adminRegPlanId)
-                          ?.priceInr.toLocaleString('en-IN')})`
-                      : `Register ${adminRegRole.toUpperCase()} Account`}
+                    {`Register New ${adminRegRole === 'client' ? 'Client' : 'Healer'}`}
                   </span>
                 </button>
               </div>
@@ -2840,135 +3127,214 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
             </div>
           </div>
 
-          {/* E. Real-Time Client & Healer Feedback & Suggestions Inbox (Live Synced to Admin Dashboard) */}
+          {/* E. Client & Healer Feedback & Suggestions */}
           <div className="rounded-3xl bg-slate-900/95 border-2 border-amber-500/40 p-6 shadow-xl space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
               <div>
                 <h3 className="font-serif text-lg font-bold text-amber-100 flex items-center gap-2">
-                  <MessageCircle className="w-5 h-5 text-amber-400" />
+                  <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
                   <span>
-                    5. Real-Time Client &amp; Healer Feedback &amp; Suggestions Inbox ({feedbacks.length})
+                    5. Service Quality Star-Rating Tracker &amp; Client Feedback ({feedbacks.length})
                   </span>
                 </h3>
-                <p className="text-xs text-amber-300/80">
-                  Every feedback, suggestion, or appreciation submitted by any Client or Healer appears here in real time.
-                </p>
               </div>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Live Sync Active
-              </span>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-amber-300">Filter by Healer / Admin:</label>
+                <select
+                  value={ratingFilterProviderId}
+                  onChange={(e) => setRatingFilterProviderId(e.target.value)}
+                  className="bg-slate-950 border border-amber-500/40 rounded-xl px-3 py-1.5 text-xs text-amber-100"
+                >
+                  <option value="all">All Healers &amp; Admin ({feedbacks.length})</option>
+                  {serviceQualityProviders.map((prov) => {
+                    const st = getProviderRatingStats(prov.id);
+                    return (
+                      <option key={prov.id} value={prov.id}>
+                        {prov.name} ({st.count} ratings • ★ {st.avgFormatted})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
             </div>
 
-            {feedbacks.length === 0 ? (
-              <p className="text-xs text-slate-400 py-4 text-center">
-                No feedback or suggestions submitted yet.
-              </p>
-            ) : (
-              <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-                {feedbacks.map((fb) => (
+            {/* Service Quality Scoreboard Cards for Admin & Every Registered Healer */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {serviceQualityProviders.map((prov) => {
+                const stats = getProviderRatingStats(prov.id);
+                const isSelected = ratingFilterProviderId === prov.id;
+                return (
                   <div
-                    key={fb.id}
-                    className="p-4 rounded-2xl bg-slate-950 border border-amber-500/30 space-y-2.5"
+                    key={prov.id}
+                    onClick={() =>
+                      setRatingFilterProviderId(isSelected ? 'all' : prov.id)
+                    }
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-2 ${
+                      isSelected
+                        ? 'bg-amber-500/15 border-amber-400 shadow-lg'
+                        : 'bg-slate-950/90 border-amber-500/25 hover:border-amber-400/50'
+                    }`}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-sm text-amber-200">{fb.senderName}</span>
-                        <span className="px-2 py-0.5 rounded bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 text-[10px] font-bold uppercase">
-                          {fb.senderRole}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
+                          {prov.roleLabel}
                         </span>
-                        <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[10px] font-bold uppercase">
-                          {fb.category}
-                        </span>
-                        <span className="text-amber-400 text-xs font-bold">
-                          {'★'.repeat(fb.rating)} ({fb.rating}/5)
-                        </span>
-                        <span className="text-[11px] font-mono text-slate-400">
-                          📞 {fb.senderMobile} • {fb.senderEmail}
+                        <h4 className="font-serif font-bold text-sm text-amber-100">
+                          {prov.name}
+                        </h4>
+                        <span className="text-[11px] text-slate-400 block">
+                          {prov.brandName}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-slate-400">
-                          {(fb.createdAtIso || '').slice(0, 16).replace('T', ' ')}
+                      <div className="text-right">
+                        <div className="px-2.5 py-1 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 font-mono text-sm font-black">
+                          ★ {stats.avgFormatted}
+                        </div>
+                        <span className="text-[10px] text-amber-200/75 font-mono block mt-0.5">
+                          {stats.count} {stats.count === 1 ? 'Session Rated' : 'Sessions Rated'}
                         </span>
+                      </div>
+                    </div>
+
+                    <div className="w-full h-2 rounded-full bg-slate-900 overflow-hidden border border-slate-800">
+                      <div
+                        className="h-full bg-gradient-to-r from-amber-500 to-emerald-400 transition-all"
+                        style={{
+                          width: `${stats.count > 0 ? Math.min(100, (stats.avg / 5) * 100) : 0}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {(() => {
+              const filteredFeedbacks =
+                ratingFilterProviderId === 'all'
+                  ? feedbacks
+                  : feedbacks.filter(
+                      (fb) => (fb.ratedHealerId || 'admin_tathastu_master') === ratingFilterProviderId
+                    );
+
+              if (filteredFeedbacks.length === 0) {
+                return (
+                  <p className="text-xs text-slate-400 py-4 text-center">
+                    No guidance session ratings or feedback submitted for this selection yet.
+                  </p>
+                );
+              }
+
+              return (
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                  {filteredFeedbacks.map((fb) => (
+                    <div
+                      key={fb.id}
+                      className="p-4 rounded-2xl bg-slate-950 border border-amber-500/30 space-y-2.5"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-sm text-amber-200">{fb.senderName}</span>
+                          <span className="px-2 py-0.5 rounded bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 text-[10px] font-bold uppercase">
+                            {fb.senderRole}
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[11px] font-bold">
+                            Guided By: {fb.ratedHealerName || 'Healer Ddeepak Jain (Founder & Master Admin)'}
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[10px] font-bold uppercase">
+                            {fb.category}
+                          </span>
+                          <span className="text-amber-400 text-xs font-bold">
+                            {'★'.repeat(fb.rating)}
+                            {'☆'.repeat(Math.max(0, 5 - fb.rating))} ({fb.rating}/5)
+                          </span>
+                          <span className="text-[11px] font-mono text-slate-400">
+                            📞 {fb.senderMobile} • {fb.senderEmail}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono text-slate-400">
+                            {(fb.createdAtIso || '').slice(0, 16).replace('T', ' ')}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => adminDeleteFeedback(fb.id)}
+                            className="p-1.5 rounded-lg bg-rose-950 hover:bg-rose-900 text-rose-300 cursor-pointer"
+                            title="Delete Rating / Feedback"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <p className="text-xs sm:text-sm text-slate-200 bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                        {fb.message}
+                      </p>
+
+                      {fb.adminReply && (
+                        <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs text-emerald-200">
+                          <strong className="text-emerald-400">Your Reply: </strong>
+                          {fb.adminReply}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="text"
+                          value={feedbackReplyDrafts[fb.id] ?? ''}
+                          onChange={(e) =>
+                            setFeedbackReplyDrafts((prev) => ({
+                              ...prev,
+                              [fb.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="Write direct reply from Healer Ddeepak Jain..."
+                          className="flex-1 bg-slate-900 border border-amber-500/35 rounded-xl px-3 py-1.5 text-xs text-amber-100"
+                        />
                         <button
                           type="button"
-                          onClick={() => adminDeleteFeedback(fb.id)}
-                          className="p-1.5 rounded-lg bg-rose-950 hover:bg-rose-900 text-rose-300 cursor-pointer"
-                          title="Delete Feedback"
+                          onClick={async () => {
+                            const txt = (feedbackReplyDrafts[fb.id] || '').trim();
+                            if (!txt) return;
+                            await adminReplyToFeedback(fb.id, txt);
+                            setFeedbackReplyDrafts((prev) => ({ ...prev, [fb.id]: '' }));
+                            setStatusFeedback({
+                              type: 'success',
+                              text: `Reply sent to ${fb.senderName}!`,
+                            });
+                          }}
+                          className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs cursor-pointer"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          Send Reply
                         </button>
                       </div>
                     </div>
-
-                    <p className="text-xs sm:text-sm text-slate-200 bg-slate-900/90 p-3 rounded-xl border border-slate-800">
-                      {fb.message}
-                    </p>
-
-                    {fb.adminReply && (
-                      <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs text-emerald-200">
-                        <strong className="text-emerald-400">Your Reply: </strong>
-                        {fb.adminReply}
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-2 pt-1">
-                      <input
-                        type="text"
-                        value={feedbackReplyDrafts[fb.id] ?? ''}
-                        onChange={(e) =>
-                          setFeedbackReplyDrafts((prev) => ({
-                            ...prev,
-                            [fb.id]: e.target.value,
-                          }))
-                        }
-                        placeholder="Write direct reply from Healer Ddeepak Jain (synced live to user)..."
-                        className="flex-1 bg-slate-900 border border-amber-500/35 rounded-xl px-3 py-1.5 text-xs text-amber-100"
-                      />
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const txt = (feedbackReplyDrafts[fb.id] || '').trim();
-                          if (!txt) return;
-                          await adminReplyToFeedback(fb.id, txt);
-                          setFeedbackReplyDrafts((prev) => ({ ...prev, [fb.id]: '' }));
-                          setStatusFeedback({
-                            type: 'success',
-                            text: `Reply sent in real time to ${fb.senderName}!`,
-                          });
-                        }}
-                        className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs cursor-pointer"
-                      >
-                        Send Reply
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
 
       {/* =====================================================================
+          DEFAULT POST-LOGIN WELCOME SHOWCASE:
           HEALER DDEEPAK JAIN INTRODUCTION, MISSION, ANTI-FRAUD SHIELD,
-          APP MOTIVE VISUALS, TATHASTU FAMILY THANKS & REAL-TIME FEEDBACK HUB
-          (Always visible for Client & Healer; also shown on Saved Profiles for Admin)
+          APP MOTIVE VISUALS, TATHASTU FAMILY THANKS & STAR-RATING HUB
+          (Displayed by default after login when activeView === 'welcome' for Admin, Client & Healer)
          ===================================================================== */}
-      {(isClient || isHealer || activeView === 'saved-profiles') && (
-        <HealerDeepakJainMissionShowcase />
-      )}
+      {activeView === 'welcome' && <HealerDeepakJainMissionShowcase />}
 
       {/* =====================================================================
-          MODAL: ADMIN EDIT PROFILE
+          MODAL: EDIT PROFILE, HEALTH CONCERNS & GROOM / BRIDE DETAILS
          ===================================================================== */}
       {editingProfile && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border-2 border-amber-400 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-2xl space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="bg-slate-900 border-2 border-amber-400 rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-2xl space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/20 pb-3">
               <h3 className="font-serif text-lg font-black text-amber-100">
-                Edit &amp; Save Report + {editingProfile.gender === 'female' ? 'Groom' : 'Bride'} / Partner Details ({editingProfile.name})
+                Edit Profile ({editingProfile.name})
               </h3>
               <span
                 className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border ${
@@ -2977,47 +3343,34 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     : 'bg-amber-500/20 text-amber-200 border-amber-400/50'
                 }`}
               >
-                {editingProfile.gender === 'female'
-                  ? '♀ Female Profile ➔ Auto-Shown in Bride'
-                  : '♂ Male Profile ➔ Auto-Shown in Groom'}
+                {editingProfile.gender === 'female' ? '♀ Female (Bride)' : '♂ Male (Groom)'}
               </span>
             </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-[11px] font-bold text-amber-300 block mb-1">
-                  Client ({editingProfile.gender === 'female' ? 'Bride' : 'Groom'}) Full Name
+                  Client Full Name
                 </label>
                 <input
                   type="text"
                   value={editingProfile.name}
                   onChange={(e) =>
-                    setEditingProfile({ ...editingProfile, name: e.target.value })
+                    setEditingProfile((prev) => (prev ? { ...prev, name: e.target.value } : prev))
                   }
                   className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-3 py-2 text-xs text-amber-100"
                 />
               </div>
               <div>
                 <label className="text-[11px] font-bold text-amber-300 block mb-1">
-                  Gender (Auto-Maps to Groom / Bride) *
+                  Gender *
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      const curPartner = (editingProfile.partnerName || '').trim();
-                      setEditingProfile({
-                        ...editingProfile,
-                        gender: 'male',
-                        partnerName:
-                          !curPartner || curPartner.toLowerCase() === 'rohit sharma'
-                            ? 'Priyanka Sharma'
-                            : curPartner,
-                        partnerDob:
-                          !editingProfile.partnerDob || editingProfile.partnerDob === '1988-06-15'
-                            ? '1990-11-24'
-                            : editingProfile.partnerDob,
-                      });
-                    }}
+                    onClick={() =>
+                      setEditingProfile((prev) => (prev ? { ...prev, gender: 'male' } : prev))
+                    }
                     className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                       editingProfile.gender !== 'female'
                         ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md'
@@ -3028,21 +3381,9 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      const curPartner = (editingProfile.partnerName || '').trim();
-                      setEditingProfile({
-                        ...editingProfile,
-                        gender: 'female',
-                        partnerName:
-                          !curPartner || curPartner.toLowerCase() === 'priyanka sharma'
-                            ? 'Rohit Sharma'
-                            : curPartner,
-                        partnerDob:
-                          !editingProfile.partnerDob || editingProfile.partnerDob === '1990-11-24'
-                            ? '1988-06-15'
-                            : editingProfile.partnerDob,
-                      });
-                    }}
+                    onClick={() =>
+                      setEditingProfile((prev) => (prev ? { ...prev, gender: 'female' } : prev))
+                    }
                     className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                       editingProfile.gender === 'female'
                         ? 'bg-pink-500 text-slate-950 border-pink-400 shadow-md'
@@ -3061,7 +3402,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   type="date"
                   value={editingProfile.dob}
                   onChange={(e) =>
-                    setEditingProfile({ ...editingProfile, dob: e.target.value })
+                    setEditingProfile((prev) => (prev ? { ...prev, dob: e.target.value } : prev))
                   }
                   className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-3 py-2 text-xs text-amber-100"
                 />
@@ -3073,30 +3414,34 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 <BirthTimeAmPmInput
                   value={editingProfile.tob || '09:30'}
                   onChange={(newTob) =>
-                    setEditingProfile({ ...editingProfile, tob: newTob })
+                    setEditingProfile((prev) => (prev ? { ...prev, tob: newTob } : prev))
                   }
                 />
               </div>
               <div className="sm:col-span-2">
                 <label className="text-[11px] font-bold text-amber-300 block mb-1">
-                  Birth Place City, State &amp; Country (Type 1st 3 Letters for Exact Lat/Lng)
+                  Birth Place City, State &amp; Country
                 </label>
                 <CityAutocompleteInput
                   value={editingProfile.pob}
                   lat={editingProfile.lat}
                   lng={editingProfile.lng}
                   onChangeText={(txt) =>
-                    setEditingProfile({ ...editingProfile, pob: txt })
+                    setEditingProfile((prev) => (prev ? { ...prev, pob: txt } : prev))
                   }
                   onSelectCity={(res) =>
-                    setEditingProfile({
-                      ...editingProfile,
-                      pob: res.formattedPob,
-                      lat: res.lat,
-                      lng: res.lng,
-                    })
+                    setEditingProfile((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            pob: res.formattedPob,
+                            lat: res.lat,
+                            lng: res.lng,
+                          }
+                        : prev
+                    )
                   }
-                  placeholder="Type 1st 3 letters (e.g. Del, Mum, Jai)..."
+                  placeholder="Enter birth city..."
                   inputClassName="w-full bg-slate-950 border border-amber-500/35 rounded-xl pl-9 pr-8 py-2 text-xs text-amber-100 focus:outline-none focus:border-amber-400"
                 />
               </div>
@@ -3106,7 +3451,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   type="email"
                   value={editingProfile.email}
                   onChange={(e) =>
-                    setEditingProfile({ ...editingProfile, email: e.target.value })
+                    setEditingProfile((prev) => (prev ? { ...prev, email: e.target.value } : prev))
                   }
                   className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-3 py-2 text-xs text-amber-100"
                 />
@@ -3117,27 +3462,81 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   type="text"
                   value={editingProfile.mobile}
                   onChange={(e) =>
-                    setEditingProfile({ ...editingProfile, mobile: e.target.value })
+                    setEditingProfile((prev) => (prev ? { ...prev, mobile: e.target.value } : prev))
                   }
                   className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-3 py-2 text-xs text-amber-100"
                 />
               </div>
 
-              {/* Partner 2 Section (Bride if Client is Male; Groom if Client is Female) */}
+              {/* Section 2: Current Health Concerns (For Daily Vedic Yoga & Pranayama Module) */}
+              <div className="sm:col-span-2 pt-3 border-t border-emerald-500/25 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-300 flex items-center gap-1.5">
+                    <HeartPulse className="w-4 h-4 text-emerald-400" />
+                    <span>2. Current Health Concerns (For Daily Vedic Yoga &amp; Pranayama Module)</span>
+                  </span>
+                  <span className="text-[11px] font-mono text-emerald-300 bg-emerald-950/60 px-2.5 py-0.5 rounded-md border border-emerald-500/30">
+                    {(editingProfile.healthConcerns || []).length} Selected
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {HEALTH_CONCERN_OPTIONS.map((opt) => {
+                    const checked = (editingProfile.healthConcerns || []).includes(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={checked}
+                        onClick={() =>
+                          setEditingProfile((prev) => {
+                            if (!prev) return prev;
+                            const current = prev.healthConcerns || [];
+                            const next = current.includes(opt.id)
+                              ? current.filter((id) => id !== opt.id)
+                              : [...current, opt.id];
+                            return { ...prev, healthConcerns: next };
+                          })
+                        }
+                        className={`w-full text-left flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all select-none ${
+                          checked
+                            ? 'bg-emerald-500/20 border-emerald-400 text-amber-100 shadow-sm'
+                            : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-amber-500/35'
+                        }`}
+                      >
+                        <div
+                          className={`mt-0.5 w-4 h-4 rounded flex items-center justify-center border shrink-0 transition-all ${
+                            checked
+                              ? 'bg-emerald-500 border-emerald-400 text-slate-950'
+                              : 'bg-slate-900 border-slate-600 text-transparent'
+                          }`}
+                        >
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold leading-snug">{opt.label}</div>
+                          <div className="text-[10px] text-amber-300/80">{opt.hindiLabel}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Section 3: Partner 2 Section (Blank by Default & 100% Typeable) */}
               <div className="sm:col-span-2 pt-3 border-t border-rose-500/25 space-y-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-rose-300 block">
-                    {editingProfile.gender === 'female' ? 'Groom' : 'Bride'} / Life Partner Details (For Partner Milan &amp; PDF Report)
+                    3. {editingProfile.gender === 'female' ? 'Groom' : 'Bride'} / Partner Details
                   </span>
                   <label className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-950 border border-pink-500/40 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={Boolean(editingProfile.includePartnerMilan)}
                       onChange={(e) =>
-                        setEditingProfile({
-                          ...editingProfile,
-                          includePartnerMilan: e.target.checked,
-                        })
+                        setEditingProfile((prev) =>
+                          prev ? { ...prev, includePartnerMilan: e.target.checked } : prev
+                        )
                       }
                       className="w-4 h-4 accent-pink-500 rounded cursor-pointer"
                     />
@@ -3153,12 +3552,11 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={
-                    editingProfile.partnerName ||
-                    (editingProfile.gender === 'female' ? 'Rohit Sharma' : 'Priyanka Sharma')
-                  }
+                  value={editingProfile.partnerName ?? ''}
                   onChange={(e) =>
-                    setEditingProfile({ ...editingProfile, partnerName: e.target.value })
+                    setEditingProfile((prev) =>
+                      prev ? { ...prev, partnerName: e.target.value } : prev
+                    )
                   }
                   className="w-full bg-slate-950 border border-rose-500/35 rounded-xl px-3 py-2 text-xs text-amber-100"
                   placeholder={`Enter ${editingProfile.gender === 'female' ? 'Groom' : 'Bride'} Full Name`}
@@ -3170,47 +3568,54 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 </label>
                 <input
                   type="date"
-                  value={
-                    editingProfile.partnerDob ||
-                    (editingProfile.gender === 'female' ? '1988-06-15' : '1990-11-24')
-                  }
+                  value={editingProfile.partnerDob ?? ''}
                   onChange={(e) =>
-                    setEditingProfile({ ...editingProfile, partnerDob: e.target.value })
+                    setEditingProfile((prev) =>
+                      prev ? { ...prev, partnerDob: e.target.value } : prev
+                    )
                   }
                   className="w-full bg-slate-950 border border-rose-500/35 rounded-xl px-3 py-2 text-xs text-amber-100"
                 />
               </div>
               <div className="sm:col-span-2">
                 <label className="text-[11px] font-bold text-rose-300 block mb-1">
-                  {editingProfile.gender === 'female' ? 'Groom' : 'Bride'} Birth Time (AM / PM) — {formatTime12HourAmPm(editingProfile.partnerTob || (editingProfile.gender === 'female' ? '10:30' : '14:20'))}
+                  {editingProfile.gender === 'female' ? 'Groom' : 'Bride'} Birth Time (AM / PM) — {formatTime12HourAmPm(editingProfile.partnerTob || '09:30')}
                 </label>
                 <BirthTimeAmPmInput
-                  value={editingProfile.partnerTob || (editingProfile.gender === 'female' ? '10:30' : '14:20')}
+                  value={editingProfile.partnerTob || '09:30'}
                   onChange={(newTob) =>
-                    setEditingProfile({ ...editingProfile, partnerTob: newTob })
+                    setEditingProfile((prev) =>
+                      prev ? { ...prev, partnerTob: newTob } : prev
+                    )
                   }
                 />
               </div>
               <div className="sm:col-span-2">
                 <label className="text-[11px] font-bold text-rose-300 block mb-1">
-                  {editingProfile.gender === 'female' ? 'Groom' : 'Bride'} Birth Place City, State &amp; Country (Type 1st 3 Letters)
+                  {editingProfile.gender === 'female' ? 'Groom' : 'Bride'} Birth Place City, State &amp; Country
                 </label>
                 <CityAutocompleteInput
-                  value={editingProfile.partnerPob || 'Mumbai, Maharashtra, India'}
-                  lat={editingProfile.partnerLat ?? 19.0760}
-                  lng={editingProfile.partnerLng ?? 72.8777}
+                  value={editingProfile.partnerPob ?? ''}
+                  lat={editingProfile.partnerLat ?? 28.6139}
+                  lng={editingProfile.partnerLng ?? 77.2090}
                   onChangeText={(txt) =>
-                    setEditingProfile({ ...editingProfile, partnerPob: txt })
+                    setEditingProfile((prev) =>
+                      prev ? { ...prev, partnerPob: txt } : prev
+                    )
                   }
                   onSelectCity={(res) =>
-                    setEditingProfile({
-                      ...editingProfile,
-                      partnerPob: res.formattedPob,
-                      partnerLat: res.lat,
-                      partnerLng: res.lng,
-                    })
+                    setEditingProfile((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            partnerPob: res.formattedPob,
+                            partnerLat: res.lat,
+                            partnerLng: res.lng,
+                          }
+                        : prev
+                    )
                   }
-                  placeholder={`Type 1st 3 letters of ${editingProfile.gender === 'female' ? 'Groom' : 'Bride'} Birth City...`}
+                  placeholder={`Enter ${editingProfile.gender === 'female' ? 'Groom' : 'Bride'} Birth City...`}
                   inputClassName="w-full bg-slate-950 border border-rose-500/35 rounded-xl pl-9 pr-8 py-2 text-xs text-amber-100 focus:outline-none focus:border-rose-400"
                 />
               </div>
@@ -3237,12 +3642,12 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   setEditingProfile(null);
                   setStatusFeedback({
                     type: 'success',
-                    text: 'Report & Bride / Partner details saved and synced to PDF!',
+                    text: 'Profile, Health Concerns & Partner details saved!',
                   });
                 }}
                 className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black cursor-pointer shadow-lg"
               >
-                Save Report & Bride Details
+                Save Changes
               </button>
             </div>
           </div>
@@ -3256,7 +3661,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border-2 border-amber-400 rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl space-y-4">
             <h3 className="font-serif text-lg font-black text-amber-100">
-              Admin Override: Edit {editingAccount.role.toUpperCase()} Account ({editingAccount.name})
+              Edit {editingAccount.role.toUpperCase()} Account ({editingAccount.name})
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -3293,6 +3698,17 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 />
               </div>
               <div>
+                <label className="text-[11px] font-bold text-emerald-300 block mb-1">Password</label>
+                <input
+                  type="text"
+                  value={editingAccount.passwordHash}
+                  onChange={(e) =>
+                    setEditingAccount({ ...editingAccount, passwordHash: e.target.value })
+                  }
+                  className="w-full bg-slate-950 border border-emerald-500/40 rounded-xl px-3 py-2 text-xs text-emerald-200 font-mono"
+                />
+              </div>
+              <div>
                 <label className="text-[11px] font-bold text-amber-300 block mb-1">
                   Max Profiles Quota
                 </label>
@@ -3321,7 +3737,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     }
                     className="w-4 h-4 accent-emerald-500"
                   />
-                  <span>Enable Report Download, Print, Share & Direct WhatsApp</span>
+                  <span>Enable Report Download, Print, Share &amp; Direct WhatsApp</span>
                 </label>
               </div>
             </div>
@@ -3347,7 +3763,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   setEditingAccount(null);
                   setStatusFeedback({
                     type: 'success',
-                    text: 'Account updated by Admin in real time.',
+                    text: 'Account updated in real time.',
                   });
                 }}
                 className="px-5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-black cursor-pointer"

@@ -323,6 +323,8 @@ service cloud.firestore {
         'senderEmail',
         'category',
         'rating',
+        'ratedHealerId',
+        'ratedHealerName',
         'message',
         'adminReply',
         'createdAtIso'
@@ -338,6 +340,8 @@ service cloud.firestore {
       data.rating is number && data.rating >= 1 && data.rating <= 5 &&
       data.message is string && data.message.size() >= 2 && data.message.size() <= 1500 &&
       data.createdAtIso is string && data.createdAtIso.size() <= 40 &&
+      (!('ratedHealerId' in data) || (data.ratedHealerId is string && data.ratedHealerId.size() <= 128)) &&
+      (!('ratedHealerName' in data) || (data.ratedHealerName is string && data.ratedHealerName.size() <= 120)) &&
       (!('adminReply' in data) || (data.adminReply is string && data.adminReply.size() <= 1000));
     }
 
@@ -555,9 +559,10 @@ service cloud.firestore {
     }
 
     // Collection 4: /tathastu_feedbacks/{feedbackId}
+    // Star-ratings and guidance session feedbacks are strictly visible ONLY to Admin
     match /tathastu_feedbacks/{feedbackId} {
-      allow get: if isSignedIn() && isValidId(feedbackId) && (existing().ownerUid == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.ownerUid == request.auth.uid || isAdminZeroLookup());
+      allow get: if isSignedIn() && isValidId(feedbackId) && isAdmin();
+      allow list: if isSignedIn() && isAdminZeroLookup();
 
       allow create: if isSignedIn() &&
         isValidId(feedbackId) &&

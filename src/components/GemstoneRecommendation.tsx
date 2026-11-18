@@ -387,6 +387,385 @@ export function calculateGemstoneRecommendationsForProfile(
   };
 }
 
+export interface DetailedRatnaPrescription {
+  purposeTitle: string;
+  purposeSubtitle: string;
+  neededForLabel: string;
+  priorityBadge: string;
+  ratna: VedicRatnaDetail;
+  idealRattiRange: string;
+  idealCaratRange: string;
+  wearingHandAndFinger: string;
+  metalAndSetting: string;
+  dayAndMuhurat: string;
+  pakshaAndNakshatra: string;
+  purificationIngredients: string;
+  beejMantra: string;
+  howToWearStepByStep: string[];
+  astrologicalReason: string;
+  coreBenefits: string[];
+}
+
+/**
+ * Calculates Precious Stone (Ratna & Upratna) recommendations specifically for:
+ * 1. Clients who DO NOT want to change their existing name spelling (No-Name-Change Vibrational Harmonizer Stone)
+ * 2. Personal Growth, Self-Elevation & Career Breakthrough (Personal Growth & Fortune Ratna)
+ */
+export function calculateNameAndPersonalGrowthRatnaRecommendation(
+  profile: BirthProfile,
+  activeNameOverride?: string,
+  bodyWeightKg: number = 68
+): {
+  mulank: number;
+  bhagyank: number;
+  namank: number;
+  rashi: string;
+  nakshatra: string;
+  isNameAlreadyHarmonious: boolean;
+  noNameChangeStone: DetailedRatnaPrescription;
+  personalGrowthStone: DetailedRatnaPrescription;
+} {
+  const base = calculateGemstoneRecommendationsForProfile(profile, bodyWeightKg);
+  const targetName = (activeNameOverride || profile.name || 'SEEKER').trim();
+  const nameAnalysis = analyzeName(targetName, base.mulank, base.bhagyank);
+
+  const mulankProfile = PLANETARY_PROFILES[base.mulank] || PLANETARY_PROFILES[1];
+  const bhagyankProfile = PLANETARY_PROFILES[base.bhagyank] || PLANETARY_PROFILES[3];
+  const namankProfile = PLANETARY_PROFILES[nameAnalysis.chaldeanSingle] || PLANETARY_PROFILES[1];
+
+  const enemySet = new Set([
+    ...(mulankProfile.enemyNumbers || []),
+    ...(bhagyankProfile.enemyNumbers || []),
+  ]);
+
+  // 1. Select the best stone if the client DOES NOT want to change their name:
+  // If the current name root (Namank) is friendly and not an enemy of Mulank/Bhagyank, use a bridge between Mulank/Rashi/Namank.
+  // If the current name has friction or malefic compound, select the supreme Bridge Planet Stone (friendly to Mulank & Bhagyank)
+  // that neutralizes the name's vibrational deficit without requiring any spelling modification.
+  let bridgePlanetNum = base.mulank;
+  const mutualFriends = (mulankProfile.friendlyNumbers || []).filter(
+    (n) => (bhagyankProfile.friendlyNumbers || []).includes(n) && !enemySet.has(n)
+  );
+
+  if (!nameAnalysis.isAuspicious || enemySet.has(nameAnalysis.chaldeanSingle)) {
+    if (!enemySet.has(base.rashiLordNum)) {
+      bridgePlanetNum = base.rashiLordNum;
+    } else if (mutualFriends.length > 0) {
+      bridgePlanetNum = mutualFriends[0];
+    } else {
+      bridgePlanetNum = base.mulank;
+    }
+  } else {
+    if (!enemySet.has(nameAnalysis.chaldeanSingle)) {
+      bridgePlanetNum = nameAnalysis.chaldeanSingle;
+    } else {
+      bridgePlanetNum = base.mulank;
+    }
+  }
+
+  const noChangeRatna = VEDIC_RATNA_DATABASE[bridgePlanetNum] || base.lifeStone;
+  const handLabel = profile.gender === 'female' ? 'Right Hand (or Left Hand for Females if preferred)' : 'Right (Working) Hand';
+
+  const noNameChangeStone: DetailedRatnaPrescription = {
+    purposeTitle: '1. Precious Stone If You Do Not Want to Change Your Name (No-Name-Change Harmony Ratna)',
+    purposeSubtitle: `Harmonizes Existing Name "${targetName}" (Compound ${nameAnalysis.totalChaldeanCompound} ➔ Root ${nameAnalysis.chaldeanSingle}) with Mulank ${base.mulank} & Bhagyank ${base.bhagyank}`,
+    neededForLabel: `For ${targetName} (Without Changing Spelling in Documents or Daily Use)`,
+    priorityBadge: nameAnalysis.isAuspicious
+      ? 'Locks & Amplifies Existing Name Vibration'
+      : 'Essential Remedy If Keeping Original Name Spelling',
+    ratna: noChangeRatna,
+    idealRattiRange: base.idealRattiRange,
+    idealCaratRange: base.idealCaratRange,
+    wearingHandAndFinger: `${noChangeRatna.finger.replace('of Right Hand', '')} of ${handLabel}`,
+    metalAndSetting: `${noChangeRatna.metal} (Open-back Prana-Sparsa ring/pendant setting so the stone touches your skin directly)`,
+    dayAndMuhurat: `${noChangeRatna.wearingDay} • ${noChangeRatna.auspiciousTimeWindow}`,
+    pakshaAndNakshatra: noChangeRatna.pakshaAndNakshatra,
+    purificationIngredients: noChangeRatna.purificationLiquid,
+    beejMantra: noChangeRatna.beejMantra,
+    howToWearStepByStep: [
+      `Step 1 (Metal & Ring Crafting): Set a natural, unheated ${noChangeRatna.primaryGem} (${noChangeRatna.sanskritGem}) of ${base.idealRattiRange} (${base.idealCaratRange}) in ${noChangeRatna.metal} with an open back so solar/cosmic rays enter through the stone into your skin.`,
+      `Step 2 (Panchamrit Shuddhikaran): On ${noChangeRatna.wearingDay} morning during Shukla Paksha, dip the ring for 21–30 minutes in a clean silver/copper bowl containing ${noChangeRatna.purificationLiquid}.`,
+      `Step 3 (Gangajal Rinse & Puja): Rinse with pure Gangajal, wipe with a clean silk cloth, light a cow-ghee lamp and incense before your Ishta Devata, and offer yellow/white flowers.`,
+      `Step 4 (Prana-Pratishtha Mantra): Hold the ring in your right palm facing East and chant "${noChangeRatna.beejMantra}" 108 times with a mental Sankalpa to harmonize your name "${targetName}" without changing its spelling.`,
+      `Step 5 (Wearing Finger & Time): Wear the ring on the ${noChangeRatna.finger.replace('of Right Hand', '')} of your ${handLabel} between ${noChangeRatna.auspiciousTimeWindow}.`,
+    ],
+    astrologicalReason: !nameAnalysis.isAuspicious
+      ? `Your current name "${targetName}" vibrates at Compound ${nameAnalysis.totalChaldeanCompound} (Root ${nameAnalysis.chaldeanSingle} — ${namankProfile.planet}), which creates vibrational friction with Mulank ${base.mulank} (${mulankProfile.planet}) and Bhagyank ${base.bhagyank} (${bhagyankProfile.planet}). If you do not wish to alter your name spelling, wearing ${noChangeRatna.primaryGem} (${noChangeRatna.sanskritGem}) creates an astrological frequency bridge across your ${noChangeRatna.chakra}, neutralizing name-compound obstacles and aligning your aura with ${noChangeRatna.planet} grace.`
+      : `Your name "${targetName}" (Compound ${nameAnalysis.totalChaldeanCompound} ➔ Root ${nameAnalysis.chaldeanSingle}) is already in positive resonance. Wearing ${noChangeRatna.primaryGem} (${noChangeRatna.sanskritGem}) seals and magnifies your existing name's authority without any need for spelling changes.`,
+    coreBenefits: [
+      `Eliminates Chaldean name-compound friction while keeping your existing official & social name "${targetName}" unchanged.`,
+      ...noChangeRatna.coreBenefits,
+    ],
+  };
+
+  // 2. Select the Personal Growth, Career & Self-Elevation Stone:
+  // Combines Bhagyank (Destiny/Karma Lord) and Mulank/Rashi Lord to unlock maximum personal growth, wealth, confidence & career elevation.
+  let growthPlanetNum = base.bhagyank;
+  if (growthPlanetNum === bridgePlanetNum) {
+    // Pick the other primary pillar (Mulank or Rashi Lord or Jupiter #3 if friendly) so client gets a distinct Personal Growth stone
+    if (base.mulank !== bridgePlanetNum && !enemySet.has(base.mulank)) {
+      growthPlanetNum = base.mulank;
+    } else if (base.rashiLordNum !== bridgePlanetNum && !enemySet.has(base.rashiLordNum)) {
+      growthPlanetNum = base.rashiLordNum;
+    } else if (!enemySet.has(3)) {
+      growthPlanetNum = 3;
+    }
+  }
+  const growthRatna = VEDIC_RATNA_DATABASE[growthPlanetNum] || base.destinyStone;
+
+  const personalGrowthStone: DetailedRatnaPrescription = {
+    purposeTitle: '2. Precious Stone for Personal Growth, Career Authority & Self-Elevation (Atma-Unnati Ratna)',
+    purposeSubtitle: `Powered by Destiny Bhagyank ${base.bhagyank} (${bhagyankProfile.planet}), Mulank ${base.mulank} (${mulankProfile.planet}) & ${base.autoAstro.rashi}`,
+    neededForLabel: `For Personal Growth, Financial Stability, Confidence & Career Breakthrough`,
+    priorityBadge: 'Supreme Personal Growth & Fortune Catalyst',
+    ratna: growthRatna,
+    idealRattiRange: base.idealRattiRange,
+    idealCaratRange: base.idealCaratRange,
+    wearingHandAndFinger: `${growthRatna.finger.replace('of Right Hand', '')} of ${handLabel}`,
+    metalAndSetting: `${growthRatna.metal} (Open-back skin-contact ring or throat/heart pendant)`,
+    dayAndMuhurat: `${growthRatna.wearingDay} • ${growthRatna.auspiciousTimeWindow}`,
+    pakshaAndNakshatra: growthRatna.pakshaAndNakshatra,
+    purificationIngredients: growthRatna.purificationLiquid,
+    beejMantra: growthRatna.beejMantra,
+    howToWearStepByStep: [
+      `Step 1 (Metal & Weight): Craft a natural ${growthRatna.primaryGem} (${growthRatna.sanskritGem}) of ${base.idealRattiRange} (${base.idealCaratRange}) in ${growthRatna.metal} with an open bottom setting.`,
+      `Step 2 (Panchamrit Purification): Immerse the ring for 21–30 minutes on ${growthRatna.wearingDay} morning in ${growthRatna.purificationLiquid}.`,
+      `Step 3 (Sacred Energization): Wash with Gangajal, offer sandalwood tilak, incense, and a ghee diya before your Ishta Devata.`,
+      `Step 4 (Mantra Siddhi): Chant "${growthRatna.beejMantra}" 108 times facing East/North-East during Shukla Paksha.`,
+      `Step 5 (Wearing Finger & Time): Wear on the ${growthRatna.finger.replace('of Right Hand', '')} of your ${handLabel} during ${growthRatna.auspiciousTimeWindow}.`,
+    ],
+    astrologicalReason: `For continuous self-growth, financial stability, executive decision-making, and spiritual protection, Vedic Ratna-Shastra prescribes ${growthRatna.primaryGem} (${growthRatna.sanskritGem}) governed by ${growthRatna.sanskritPlanet}. It directly strengthens your ${growthRatna.chakra}, activates your ${base.autoAstro.rashi} (${base.autoAstro.nakshatra}) birth chart potential, and accelerates career & business compounding.`,
+    coreBenefits: [
+      `Accelerates holistic personal growth, self-confidence, mental clarity, and career/business elevation.`,
+      ...growthRatna.coreBenefits,
+    ],
+  };
+
+  return {
+    mulank: base.mulank,
+    bhagyank: base.bhagyank,
+    namank: nameAnalysis.chaldeanSingle,
+    rashi: base.autoAstro.rashi,
+    nakshatra: base.autoAstro.nakshatra,
+    isNameAlreadyHarmonious: nameAnalysis.isAuspicious,
+    noNameChangeStone,
+    personalGrowthStone,
+  };
+}
+
+/**
+ * Calculates Vedic Astrology Precious Stone (Ratna & Upratna) recommendations for Partner Milan
+ * (Bride & Groom Relationship Harmony), identifying who needs the stone (Groom, Bride, or Both)
+ * and providing complete wearing instructions (Finger, Hand, Metal, Day/Time, Purification, Mantra).
+ */
+export function calculatePartnerMilanRatnaRecommendations(
+  groomInput: { name: string; dob: string; tob?: string; pob?: string; lat?: number; lng?: number },
+  brideInput: { name: string; dob: string; tob?: string; pob?: string; lat?: number; lng?: number },
+  analysis: {
+    totalPoints: number;
+    overallPercentage: number;
+    p1Mulank: number;
+    p1Bhagyank: number;
+    p2Mulank: number;
+    p2Bhagyank: number;
+    p1Astrology: { rashi: string; sunSign: string; nakshatra: string; pada: number; nakshatraLord?: string };
+    p2Astrology: { rashi: string; sunSign: string; nakshatra: string; pada: number; nakshatraLord?: string };
+    dimensions: Array<{ name: string; sanskritName: string; obtainedPoints: number; maxPoints: number; verdict: string }>;
+    chakraChallenges: Array<{ chakraName: string; status: string; affectedPartner: string }>;
+  }
+): {
+  whoNeedsItSummary: string;
+  whoNeedsItBadge: 'Both Groom & Bride' | 'Primarily Groom (Supported by Bride)' | 'Primarily Bride (Supported by Groom)';
+  groomStone: DetailedRatnaPrescription;
+  brideStone: DetailedRatnaPrescription;
+  jointHarmonyStoneSummary: string;
+} {
+  const groomName = (groomInput.name || 'Groom').trim();
+  const brideName = (brideInput.name || 'Bride').trim();
+
+  const groomBase = calculateGemstoneRecommendationsForProfile(
+    {
+      id: 'groom_milan',
+      name: groomName,
+      dob: groomInput.dob || '1990-01-01',
+      tob: groomInput.tob || '09:30',
+      pob: groomInput.pob || 'New Delhi, India',
+      lat: groomInput.lat ?? 28.6139,
+      lng: groomInput.lng ?? 77.209,
+      gender: 'male',
+    },
+    72
+  );
+
+  const brideBase = calculateGemstoneRecommendationsForProfile(
+    {
+      id: 'bride_milan',
+      name: brideName,
+      dob: brideInput.dob || '1992-01-01',
+      tob: brideInput.tob || '09:30',
+      pob: brideInput.pob || 'New Delhi, India',
+      lat: brideInput.lat ?? 28.6139,
+      lng: brideInput.lng ?? 77.209,
+      gender: 'female',
+    },
+    58
+  );
+
+  const groomMulankProf = PLANETARY_PROFILES[analysis.p1Mulank] || PLANETARY_PROFILES[1];
+  const groomBhagyankProf = PLANETARY_PROFILES[analysis.p1Bhagyank] || PLANETARY_PROFILES[3];
+  const brideMulankProf = PLANETARY_PROFILES[analysis.p2Mulank] || PLANETARY_PROFILES[2];
+  const brideBhagyankProf = PLANETARY_PROFILES[analysis.p2Bhagyank] || PLANETARY_PROFILES[6];
+
+  const groomEnemySet = new Set([
+    ...(groomMulankProf.enemyNumbers || []),
+    ...(groomBhagyankProf.enemyNumbers || []),
+  ]);
+  const brideEnemySet = new Set([
+    ...(brideMulankProf.enemyNumbers || []),
+    ...(brideBhagyankProf.enemyNumbers || []),
+  ]);
+
+  // Count chakra challenges attributed to Groom vs Bride vs Both
+  let groomChallengeCount = 0;
+  let brideChallengeCount = 0;
+  let bothChallengeCount = 0;
+  for (const ch of analysis.chakraChallenges || []) {
+    if (ch.status !== 'Harmonious') {
+      if (ch.affectedPartner === 'Groom') groomChallengeCount++;
+      else if (ch.affectedPartner === 'Bride') brideChallengeCount++;
+      else if (ch.affectedPartner === 'Both') bothChallengeCount++;
+    }
+  }
+
+  // Select Groom's Vedic Relationship Harmony Stone:
+  // In Vedic marriage astrology, Venus (#6 Shukra - Kalatra Karaka for Groom), Rashi Lord, or Jupiter (#3 Guru - Dharma & Wisdom)
+  // are supreme for marital harmony, provided they do not conflict with the Groom's Mulank/Bhagyank.
+  let groomStoneNum = groomBase.rashiLordNum;
+  if (groomEnemySet.has(groomStoneNum)) {
+    if (!groomEnemySet.has(6)) groomStoneNum = 6; // Venus (Kalatra Karaka for Groom)
+    else if (!groomEnemySet.has(3)) groomStoneNum = 3; // Jupiter
+    else if (!groomEnemySet.has(2)) groomStoneNum = 2; // Moon (Emotional peace)
+    else groomStoneNum = analysis.p1Bhagyank;
+  } else if (!groomEnemySet.has(6) && (analysis.totalPoints < 24 || groomChallengeCount > 0)) {
+    // If Venus is friendly to Groom, Venus or Rashi Lord harmonizes 7th house conjugal peace
+    groomStoneNum = groomBase.rashiLordNum;
+  }
+  const groomRatna = VEDIC_RATNA_DATABASE[groomStoneNum] || groomBase.rashiNakshatraStone;
+
+  // Select Bride's Vedic Relationship Harmony Stone:
+  // In Vedic marriage astrology for a Bride, Jupiter (#3 Brihaspati - Pati/Sauharda Karaka), Rashi Lord, Moon (#2), or Venus (#6)
+  // govern marital bliss, longevity, and emotional security.
+  let brideStoneNum = brideBase.rashiLordNum;
+  if (brideEnemySet.has(brideStoneNum)) {
+    if (!brideEnemySet.has(3)) brideStoneNum = 3; // Jupiter (Sowbhagya & Husband Karaka for Bride)
+    else if (!brideEnemySet.has(6)) brideStoneNum = 6; // Venus (Love & Conjugal Harmony)
+    else if (!brideEnemySet.has(2)) brideStoneNum = 2; // Moon (Emotional Harmony)
+    else brideStoneNum = analysis.p2Bhagyank;
+  }
+  const brideRatna = VEDIC_RATNA_DATABASE[brideStoneNum] || brideBase.rashiNakshatraStone;
+
+  let whoNeedsItBadge: 'Both Groom & Bride' | 'Primarily Groom (Supported by Bride)' | 'Primarily Bride (Supported by Groom)' =
+    'Both Groom & Bride';
+  if (groomChallengeCount > brideChallengeCount + 1) {
+    whoNeedsItBadge = 'Primarily Groom (Supported by Bride)';
+  } else if (brideChallengeCount > groomChallengeCount + 1) {
+    whoNeedsItBadge = 'Primarily Bride (Supported by Groom)';
+  }
+
+  const lowKootas = (analysis.dimensions || [])
+    .filter((d) => d.obtainedPoints / Math.max(1, d.maxPoints) < 0.6)
+    .map((d) => d.name);
+  const kootaText =
+    lowKootas.length > 0
+      ? `to pacify ${lowKootas.join(', ')} Koota dosha and harmonize the ${analysis.totalPoints}/36 Guna chart`
+      : `to lock in and elevate your auspicious ${analysis.totalPoints}/36 Guna (${analysis.overallPercentage}%) marital resonance`;
+
+  const whoNeedsItSummary =
+    whoNeedsItBadge === 'Primarily Groom (Supported by Bride)'
+      ? `Vedic Astrological Assessment: Based on Janma Rashi (${analysis.p1Astrology.rashi} & ${analysis.p2Astrology.rashi}), Ashtakoot (${analysis.totalPoints}/36 Gunas), and 9-Chakra diagnostics (${groomChallengeCount} Groom-carried vs ${brideChallengeCount} Bride-carried patterns), it is ESSENTIAL for Groom (${groomName}) to wear ${groomRatna.primaryGem} (${groomRatna.sanskritGem}) ${kootaText}, while Bride (${brideName}) wearing ${brideRatna.primaryGem} (${brideRatna.sanskritGem}) provides supportive emotional and domestic bliss.`
+      : whoNeedsItBadge === 'Primarily Bride (Supported by Groom)'
+      ? `Vedic Astrological Assessment: Based on Janma Rashi (${analysis.p1Astrology.rashi} & ${analysis.p2Astrology.rashi}), Ashtakoot (${analysis.totalPoints}/36 Gunas), and 9-Chakra diagnostics (${brideChallengeCount} Bride-carried vs ${groomChallengeCount} Groom-carried patterns), it is ESSENTIAL for Bride (${brideName}) to wear ${brideRatna.primaryGem} (${brideRatna.sanskritGem}) ${kootaText}, while Groom (${groomName}) wearing ${groomRatna.primaryGem} (${groomRatna.sanskritGem}) anchors mutual stability and protection.`
+      : `Vedic Astrological Assessment: Based on Janma Rashi (${analysis.p1Astrology.rashi} & ${analysis.p2Astrology.rashi}), Ashtakoot (${analysis.totalPoints}/36 Gunas), and ${bothChallengeCount + groomChallengeCount + brideChallengeCount} shared bio-field dynamics, BOTH Groom (${groomName}) and Bride (${brideName}) are advised to wear their respective Rashi-Harmonizing Precious Stones ${kootaText}.`;
+
+  const groomStone: DetailedRatnaPrescription = {
+    purposeTitle: `Groom’s Relationship Harmony Precious Stone — ${groomName}`,
+    purposeSubtitle: `Janma Rashi: ${analysis.p1Astrology.rashi} (${analysis.p1Astrology.nakshatra} Pada ${analysis.p1Astrology.pada}) • Mulank ${analysis.p1Mulank} / Bhagyank ${analysis.p1Bhagyank}`,
+    neededForLabel:
+      whoNeedsItBadge === 'Primarily Bride (Supported by Groom)'
+        ? `Supportive Relationship & Career Stability Stone for Groom (${groomName})`
+        : `Essential Marital Harmony & Koota-Pacifying Stone for Groom (${groomName})`,
+    priorityBadge:
+      whoNeedsItBadge === 'Primarily Bride (Supported by Groom)'
+        ? 'Supportive Harmony Ratna for Groom'
+        : 'Essential for Groom — High Priority',
+    ratna: groomRatna,
+    idealRattiRange: groomBase.idealRattiRange,
+    idealCaratRange: groomBase.idealCaratRange,
+    wearingHandAndFinger: `${groomRatna.finger.replace('of Right Hand', '')} of Right Hand (Working Hand for Groom)`,
+    metalAndSetting: `${groomRatna.metal} (Open-back ring setting so the bottom of the stone touches the finger skin directly)`,
+    dayAndMuhurat: `${groomRatna.wearingDay} • ${groomRatna.auspiciousTimeWindow}`,
+    pakshaAndNakshatra: groomRatna.pakshaAndNakshatra,
+    purificationIngredients: groomRatna.purificationLiquid,
+    beejMantra: groomRatna.beejMantra,
+    howToWearStepByStep: [
+      `Step 1 (Metal & Finger): Cast a natural ${groomRatna.primaryGem} (${groomRatna.sanskritGem}) of ${groomBase.idealRattiRange} (${groomBase.idealCaratRange}) in ${groomRatna.metal} with an open back for the ${groomRatna.finger.replace('of Right Hand', '')} of the Groom's Right Hand.`,
+      `Step 2 (Panchamrit Purification): On ${groomRatna.wearingDay} morning during Shukla Paksha, soak the ring for 21–30 minutes in ${groomRatna.purificationLiquid}.`,
+      `Step 3 (Sacred Wash & Puja): Wash with pure Gangajal, light a cow-ghee lamp, and offer white/yellow flowers before Lord Shiva & Parvati (or Lakshmi-Narayan).`,
+      `Step 4 (Prana-Pratishtha Mantra): Chant "${groomRatna.beejMantra}" 108 times praying for lifelong marital peace, understanding, and prosperity with ${brideName}.`,
+      `Step 5 (Wearing Time): Wear on the ${groomRatna.finger.replace('of Right Hand', '')} of the Right Hand between ${groomRatna.auspiciousTimeWindow}.`,
+    ],
+    astrologicalReason: `Aligns Groom (${groomName} — ${analysis.p1Astrology.rashi}, Mulank ${analysis.p1Mulank}) with Bride (${brideName} — ${analysis.p2Astrology.rashi}, Mulank ${analysis.p2Mulank}). Wearing ${groomRatna.primaryGem} (${groomRatna.sanskritGem}) pacifies ${groomRatna.planet} afflictions in the 7th house of marriage, dissolves ego/communication friction, and strengthens emotional devotion and financial stability in married life.`,
+    coreBenefits: [
+      `Balances Groom's ${groomRatna.chakra} for calm communication, mutual respect, and marital devotion with ${brideName}.`,
+      ...groomRatna.coreBenefits,
+    ],
+  };
+
+  const brideStone: DetailedRatnaPrescription = {
+    purposeTitle: `Bride’s Relationship Harmony Precious Stone — ${brideName}`,
+    purposeSubtitle: `Janma Rashi: ${analysis.p2Astrology.rashi} (${analysis.p2Astrology.nakshatra} Pada ${analysis.p2Astrology.pada}) • Mulank ${analysis.p2Mulank} / Bhagyank ${analysis.p2Bhagyank}`,
+    neededForLabel:
+      whoNeedsItBadge === 'Primarily Groom (Supported by Bride)'
+        ? `Supportive Emotional Bliss & Sowbhagya Stone for Bride (${brideName})`
+        : `Essential Marital Harmony & Koota-Pacifying Stone for Bride (${brideName})`,
+    priorityBadge:
+      whoNeedsItBadge === 'Primarily Groom (Supported by Bride)'
+        ? 'Supportive Harmony Ratna for Bride'
+        : 'Essential for Bride — High Priority',
+    ratna: brideRatna,
+    idealRattiRange: brideBase.idealRattiRange,
+    idealCaratRange: brideBase.idealCaratRange,
+    wearingHandAndFinger: `${brideRatna.finger.replace('of Right Hand', '')} of Left Hand (or Right Working Hand for Bride)`,
+    metalAndSetting: `${brideRatna.metal} (Open-back ring or sacred Mangalsutra/Heart pendant touching skin)`,
+    dayAndMuhurat: `${brideRatna.wearingDay} • ${brideRatna.auspiciousTimeWindow}`,
+    pakshaAndNakshatra: brideRatna.pakshaAndNakshatra,
+    purificationIngredients: brideRatna.purificationLiquid,
+    beejMantra: brideRatna.beejMantra,
+    howToWearStepByStep: [
+      `Step 1 (Metal & Finger): Cast a natural ${brideRatna.primaryGem} (${brideRatna.sanskritGem}) of ${brideBase.idealRattiRange} (${brideBase.idealCaratRange}) in ${brideRatna.metal} with an open back for the ${brideRatna.finger.replace('of Right Hand', '')} of the Bride's Left Hand (or Right Working Hand).`,
+      `Step 2 (Panchamrit Purification): On ${brideRatna.wearingDay} morning during Shukla Paksha, soak the ring for 21–30 minutes in ${brideRatna.purificationLiquid}.`,
+      `Step 3 (Sacred Wash & Puja): Wash with pure Gangajal, offerkumkum/haldi, incense, and a cow-ghee lamp before Maa Gauri-Shankar or Lakshmi-Narayan.`,
+      `Step 4 (Prana-Pratishtha Mantra): Chant "${brideRatna.beejMantra}" 108 times invoking Akhanda Sowbhagya, emotional security, and deep harmony with ${groomName}.`,
+      `Step 5 (Wearing Time): Wear on the ${brideRatna.finger.replace('of Right Hand', '')} between ${brideRatna.auspiciousTimeWindow}.`,
+    ],
+    astrologicalReason: `Harmonizes Bride (${brideName} — ${analysis.p2Astrology.rashi}, Mulank ${analysis.p2Mulank}) with Groom (${groomName} — ${analysis.p1Astrology.rashi}, Mulank ${analysis.p1Mulank}). Wearing ${brideRatna.primaryGem} (${brideRatna.sanskritGem}) strengthens ${brideRatna.planet} blessings over the 7th & 8th houses (Mangalya & Grihastha Sukha), protecting emotional peace, mutual affection, and family prosperity.`,
+    coreBenefits: [
+      `Harmonizes Bride's ${brideRatna.chakra} for emotional security, affectionate bonding, and domestic happiness with ${groomName}.`,
+      ...brideRatna.coreBenefits,
+    ],
+  };
+
+  const jointHarmonyStoneSummary = `For Joint Couple Aura Protection: In addition to Groom (${groomName}) wearing ${groomRatna.primaryGem} (${groomRatna.metal}, ${groomRatna.finger.replace('of Right Hand', '')}, ${groomRatna.wearingDay}) and Bride (${brideName}) wearing ${brideRatna.primaryGem} (${brideRatna.metal}, ${brideRatna.finger.replace('of Right Hand', '')}, ${brideRatna.wearingDay}), keep a natural Rose Quartz + Sphatik (Clear Quartz) pair in the South-West corner of the master bedroom to maintain 528 Hz & 639 Hz Anahata (Heart Chakra) marital harmony.`;
+
+  return {
+    whoNeedsItSummary,
+    whoNeedsItBadge,
+    groomStone,
+    brideStone,
+    jointHarmonyStoneSummary,
+  };
+}
+
 export const GemstoneRecommendation: React.FC<GemstoneRecommendationProps> = ({ profile }) => {
   const [bodyWeightKg, setBodyWeightKg] = useState<number>(68);
   const [copiedMantraKey, setCopiedMantraKey] = useState<string | null>(null);

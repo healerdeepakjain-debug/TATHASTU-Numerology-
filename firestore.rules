@@ -167,6 +167,7 @@ service cloud.firestore {
         'partnerLat',
         'partnerLng',
         'includePartnerMilan',
+        'includeParivarMilan',
         'healthConcerns',
         'originalName',
         'selectedNameA',
@@ -174,6 +175,7 @@ service cloud.firestore {
         'originalMobile',
         'selectedMobileA',
         'selectedMobileB',
+        'parivarMembers',
         'createdAtIso'
       ]) &&
       isValidId(data.id) &&
@@ -201,13 +203,15 @@ service cloud.firestore {
       (!('partnerLat' in data) || (data.partnerLat is number)) &&
       (!('partnerLng' in data) || (data.partnerLng is number)) &&
       (!('includePartnerMilan' in data) || (data.includePartnerMilan is bool)) &&
+      (!('includeParivarMilan' in data) || (data.includeParivarMilan is bool)) &&
       (!('healthConcerns' in data) || (data.healthConcerns is list && data.healthConcerns.size() <= 10 && (data.healthConcerns.size() == 0 || (data.healthConcerns[0] is string && data.healthConcerns[0].size() <= 80)))) &&
       (!('originalName' in data) || (data.originalName is string && data.originalName.size() <= 120)) &&
       (!('selectedNameA' in data) || (data.selectedNameA is string && data.selectedNameA.size() <= 120)) &&
       (!('selectedNameB' in data) || (data.selectedNameB is string && data.selectedNameB.size() <= 120)) &&
       (!('originalMobile' in data) || (data.originalMobile is string && data.originalMobile.size() <= 24)) &&
       (!('selectedMobileA' in data) || (data.selectedMobileA is string && data.selectedMobileA.size() <= 24)) &&
-      (!('selectedMobileB' in data) || (data.selectedMobileB is string && data.selectedMobileB.size() <= 24));
+      (!('selectedMobileB' in data) || (data.selectedMobileB is string && data.selectedMobileB.size() <= 24)) &&
+      (!('parivarMembers' in data) || (data.parivarMembers is list && data.parivarMembers.size() <= 5));
     }
 
     // Validation Blueprint: SharedReportRecord
@@ -245,6 +249,7 @@ service cloud.firestore {
         'partnerLat',
         'partnerLng',
         'includePartnerMilan',
+        'includeParivarMilan',
         'healthConcerns',
         'originalName',
         'selectedNameA',
@@ -252,6 +257,7 @@ service cloud.firestore {
         'originalMobile',
         'selectedMobileA',
         'selectedMobileB',
+        'parivarMembers',
         'healerName',
         'healerDisplayName',
         'healerBrandName',
@@ -282,6 +288,7 @@ service cloud.firestore {
       (!('partnerLat' in data) || (data.partnerLat is number)) &&
       (!('partnerLng' in data) || (data.partnerLng is number)) &&
       (!('includePartnerMilan' in data) || (data.includePartnerMilan is bool)) &&
+      (!('includeParivarMilan' in data) || (data.includeParivarMilan is bool)) &&
       (!('healthConcerns' in data) || (data.healthConcerns is list && data.healthConcerns.size() <= 25 && (data.healthConcerns.size() == 0 || (data.healthConcerns[0] is string && data.healthConcerns[0].size() <= 80)))) &&
       (!('originalName' in data) || (data.originalName is string && data.originalName.size() <= 120)) &&
       (!('selectedNameA' in data) || (data.selectedNameA is string && data.selectedNameA.size() <= 120)) &&
@@ -289,6 +296,7 @@ service cloud.firestore {
       (!('originalMobile' in data) || (data.originalMobile is string && data.originalMobile.size() <= 30)) &&
       (!('selectedMobileA' in data) || (data.selectedMobileA is string && data.selectedMobileA.size() <= 30)) &&
       (!('selectedMobileB' in data) || (data.selectedMobileB is string && data.selectedMobileB.size() <= 30)) &&
+      (!('parivarMembers' in data) || (data.parivarMembers is list && data.parivarMembers.size() <= 5)) &&
       (!('healerName' in data) || (data.healerName is string && data.healerName.size() <= 120)) &&
       (!('healerDisplayName' in data) || (data.healerDisplayName is string && data.healerDisplayName.size() <= 120)) &&
       (!('healerBrandName' in data) || (data.healerBrandName is string && data.healerBrandName.size() <= 150)) &&
@@ -323,6 +331,8 @@ service cloud.firestore {
         'senderEmail',
         'category',
         'rating',
+        'ratedHealerId',
+        'ratedHealerName',
         'message',
         'adminReply',
         'createdAtIso'
@@ -338,6 +348,8 @@ service cloud.firestore {
       data.rating is number && data.rating >= 1 && data.rating <= 5 &&
       data.message is string && data.message.size() >= 2 && data.message.size() <= 1500 &&
       data.createdAtIso is string && data.createdAtIso.size() <= 40 &&
+      (!('ratedHealerId' in data) || (data.ratedHealerId is string && data.ratedHealerId.size() <= 128)) &&
+      (!('ratedHealerName' in data) || (data.ratedHealerName is string && data.ratedHealerName.size() <= 120)) &&
       (!('adminReply' in data) || (data.adminReply is string && data.adminReply.size() <= 1000));
     }
 
@@ -479,13 +491,15 @@ service cloud.firestore {
                 'partnerLat',
                 'partnerLng',
                 'includePartnerMilan',
+                'includeParivarMilan',
                 'healthConcerns',
                 'originalName',
                 'selectedNameA',
                 'selectedNameB',
                 'originalMobile',
                 'selectedMobileA',
-                'selectedMobileB'
+                'selectedMobileB',
+                'parivarMembers'
               ])
             )
           )
@@ -533,6 +547,7 @@ service cloud.firestore {
               'partnerLat',
               'partnerLng',
               'includePartnerMilan',
+              'includeParivarMilan',
               'healthConcerns',
               'originalName',
               'selectedNameA',
@@ -540,6 +555,7 @@ service cloud.firestore {
               'originalMobile',
               'selectedMobileA',
               'selectedMobileB',
+              'parivarMembers',
               'healerName',
               'healerDisplayName',
               'healerBrandName',
@@ -555,9 +571,10 @@ service cloud.firestore {
     }
 
     // Collection 4: /tathastu_feedbacks/{feedbackId}
+    // Star-ratings and guidance session feedbacks are strictly visible ONLY to Admin
     match /tathastu_feedbacks/{feedbackId} {
-      allow get: if isSignedIn() && isValidId(feedbackId) && (existing().ownerUid == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.ownerUid == request.auth.uid || isAdminZeroLookup());
+      allow get: if isSignedIn() && isValidId(feedbackId) && isAdmin();
+      allow list: if isSignedIn() && isAdminZeroLookup();
 
       allow create: if isSignedIn() &&
         isValidId(feedbackId) &&

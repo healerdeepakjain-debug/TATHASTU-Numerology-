@@ -12,10 +12,11 @@ import {
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { sendBrowserNotification } from './notifications';
+import { ParivarMemberRecord } from './parivarMilan';
+import healerPortraitImg from '../assets/images/healer_ddeepak_jain_portrait_opt.jpg';
 
 export const TATHASTU_LOGO_PATH = '/assets/aistudio/tathastu_logo_small_6cf3db26.jpg';
-export const HEALER_DEEPAK_JAIN_IMAGE_PATH =
-  '/assets/aistudio/HEALER_DDEEPAK_JAIN_cdc6843a.png';
+export const HEALER_DEEPAK_JAIN_IMAGE_PATH = healerPortraitImg;
 export const TATHASTU_ADMIN_PHONE = '8899444444';
 export const TATHASTU_ADMIN_EMAIL = 'CONTACT@TATHASTULIGHT.COM';
 export const TATHASTU_APP_NAME = 'Tathastu Numerology';
@@ -70,6 +71,8 @@ export interface FeedbackSuggestionRecord {
   senderEmail: string;
   category: 'feedback' | 'suggestion' | 'appreciation' | 'support';
   rating: number;
+  ratedHealerId?: string;
+  ratedHealerName?: string;
   message: string;
   adminReply?: string;
   createdAtIso: string;
@@ -278,6 +281,7 @@ export interface AstroProfileRecord {
   partnerLat?: number;
   partnerLng?: number;
   includePartnerMilan?: boolean;
+  includeParivarMilan?: boolean;
   healthConcerns?: string[];
   originalName?: string;
   selectedNameA?: string;
@@ -285,6 +289,7 @@ export interface AstroProfileRecord {
   originalMobile?: string;
   selectedMobileA?: string;
   selectedMobileB?: string;
+  parivarMembers?: ParivarMemberRecord[];
   createdAtIso: string;
 }
 
@@ -307,6 +312,7 @@ export interface SharedReportRecord {
   partnerLat?: number;
   partnerLng?: number;
   includePartnerMilan?: boolean;
+  includeParivarMilan?: boolean;
   healthConcerns?: string[];
   originalName?: string;
   selectedNameA?: string;
@@ -314,6 +320,7 @@ export interface SharedReportRecord {
   originalMobile?: string;
   selectedMobileA?: string;
   selectedMobileB?: string;
+  parivarMembers?: ParivarMemberRecord[];
   healerName?: string;
   healerBrandName?: string;
   healerMobile?: string;
@@ -361,6 +368,9 @@ function buildSharedReportPayload(
   if (typeof profile.includePartnerMilan === 'boolean') {
     record.includePartnerMilan = profile.includePartnerMilan;
   }
+  if (typeof profile.includeParivarMilan === 'boolean') {
+    record.includeParivarMilan = profile.includeParivarMilan;
+  }
   if (Array.isArray(profile.healthConcerns) && profile.healthConcerns.length <= 25) {
     record.healthConcerns = profile.healthConcerns;
   }
@@ -370,6 +380,9 @@ function buildSharedReportPayload(
   if (typeof profile.originalMobile === 'string') record.originalMobile = profile.originalMobile.slice(0, 30);
   if (typeof profile.selectedMobileA === 'string') record.selectedMobileA = profile.selectedMobileA.slice(0, 30);
   if (typeof profile.selectedMobileB === 'string') record.selectedMobileB = profile.selectedMobileB.slice(0, 30);
+  if (Array.isArray(profile.parivarMembers) && profile.parivarMembers.length <= 5) {
+    record.parivarMembers = profile.parivarMembers.slice(0, 5);
+  }
 
   return record;
 }
@@ -566,11 +579,29 @@ const INITIAL_FEEDBACKS: FeedbackSuggestionRecord[] = [
     senderEmail: 'deepak.jain@example.com',
     category: 'appreciation',
     rating: 5,
+    ratedHealerId: 'admin_tathastu_master',
+    ratedHealerName: 'Healer Ddeepak Jain (Admin)',
     message:
       'Thank you Healer Ddeepak Jain Ji for creating such an authentic, transparent Vedic & Chaldean platform that protects seekers from fraud and gives accurate life guidance.',
     adminReply:
       'Tathastu! Welcome to the TATHASTU THE DIVINE LIGHT family. May divine wisdom and stability always illuminate your path.',
     createdAtIso: '2026-01-04T10:30:00.000Z',
+  },
+  {
+    id: 'fb_session_healer_1',
+    accountId: 'client_deepak_jain',
+    ownerUid: 'client_deepak_jain',
+    senderRole: 'client',
+    senderName: 'Aarav Mehta',
+    senderMobile: '9820011223',
+    senderEmail: 'aarav.mehta@example.com',
+    category: 'feedback',
+    rating: 5,
+    ratedHealerId: 'healer_demo_1',
+    ratedHealerName: 'Dr. Kavita Sharma',
+    message:
+      'Very accurate guidance session and chakra remedies. Felt immediate clarity and peace.',
+    createdAtIso: '2026-01-05T14:15:00.000Z',
   },
 ];
 
@@ -603,6 +634,9 @@ function loadLocalAccounts(): AccountRecord[] {
  * - If created by Admin OR created by the Client themselves:
  *   returns Healer Name = "Deepak Jain" along with official TATHASTU details.
  */
+export const TATHASTU_AUTHENTIC_REMEDIES_STORE_NOTE =
+  'Visit www.tathastulight.com for 100% Genuine & Authentic Rudraksha, Crystals, Home Cleansing Material, Precious & Semi-Precious Stones.';
+
 export function resolveReportHealerAttribution(
   profile: AstroProfileRecord | null | undefined,
   accounts: AccountRecord[],
@@ -614,7 +648,8 @@ export function resolveReportHealerAttribution(
   const isCreatedByHealer =
     ownerAcc?.role === 'healer' ||
     profile?.ownerRole === 'healer' ||
-    (!ownerAcc && currentAccount?.role === 'healer');
+    profile?.relationTag === 'healer-client' ||
+    (!ownerAcc && !profile?.ownerRole && currentAccount?.role === 'healer');
 
   const healerAcc =
     ownerAcc?.role === 'healer'
@@ -637,10 +672,14 @@ export function resolveReportHealerAttribution(
       healerAcc.healerAddress?.trim() ||
       healerAcc.healerWebsite?.trim() ||
       `${hBrand} • ${hMobile}`;
-    const hInsta = healerAcc.healerInstagram?.trim() || '@tathastudivinelight';
-    const hFb = healerAcc.healerFacebook?.trim() || 'fb.com/tathastudivinelight';
-    const hYt = healerAcc.healerYoutube?.trim() || 'youtube.com/@tathastudivinelight';
-    const hWeb = healerAcc.healerWebsite?.trim() || 'www.tathastulight.com';
+    const hInsta = healerAcc.healerInstagram?.trim() || `@${hName.toLowerCase().replace(/\s+/g, '')}`;
+    const hFb = healerAcc.healerFacebook?.trim() || `fb.com/${hName.toLowerCase().replace(/\s+/g, '')}`;
+    const hYt = healerAcc.healerYoutube?.trim() || `youtube.com/@${hName.toLowerCase().replace(/\s+/g, '')}`;
+    const hWeb =
+      healerAcc.healerWebsite?.trim() &&
+      healerAcc.healerWebsite.trim().toLowerCase() !== 'www.tathastulight.com'
+        ? healerAcc.healerWebsite.trim()
+        : hBrand;
 
     return {
       isHealerReport: true,
@@ -907,7 +946,9 @@ interface TathastuContextValue {
   submitFeedbackSuggestion: (params: {
     category: 'feedback' | 'suggestion' | 'appreciation' | 'support';
     rating: number;
-    message: string;
+    message?: string;
+    ratedHealerId?: string;
+    ratedHealerName?: string;
   }) => Promise<{ ok: boolean; error?: string }>;
   adminReplyToFeedback: (feedbackId: string, replyText: string) => Promise<void>;
   adminDeleteFeedback: (feedbackId: string) => Promise<void>;
@@ -975,7 +1016,9 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (ra && ra.id && !deletedMap[ra.id]) map.set(ra.id, ra);
           });
           const merged = Array.from(map.values());
-          localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(merged));
+          const serialized = JSON.stringify(merged);
+          if (serialized === JSON.stringify(prev)) return prev;
+          localStorage.setItem(ACCOUNTS_STORAGE_KEY, serialized);
           return merged;
         });
       }
@@ -990,7 +1033,9 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (rp && rp.id && !deletedMap[rp.id]) map.set(rp.id, rp);
           });
           const merged = Array.from(map.values());
-          localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(merged));
+          const serialized = JSON.stringify(merged);
+          if (serialized === JSON.stringify(prev)) return prev;
+          localStorage.setItem(PROFILES_STORAGE_KEY, serialized);
           return merged;
         });
       }
@@ -1005,7 +1050,9 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (rpl && rpl.id && !deletedMap[rpl.id]) map.set(rpl.id, rpl);
           });
           const merged = Array.from(map.values());
-          localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(merged));
+          const serialized = JSON.stringify(merged);
+          if (serialized === JSON.stringify(prev)) return prev;
+          localStorage.setItem(PLANS_STORAGE_KEY, serialized);
           return merged;
         });
       }
@@ -1022,7 +1069,9 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const merged = Array.from(map.values()).sort((a, b) =>
             String(b.createdAtIso || '').localeCompare(String(a.createdAtIso || ''))
           );
-          localStorage.setItem(COUPONS_STORAGE_KEY, JSON.stringify(merged));
+          const serialized = JSON.stringify(merged);
+          if (serialized === JSON.stringify(prev)) return prev;
+          localStorage.setItem(COUPONS_STORAGE_KEY, serialized);
           return merged;
         });
       }
@@ -1039,7 +1088,9 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const merged = Array.from(map.values()).sort((a, b) =>
             String(b.createdAtIso || '').localeCompare(String(a.createdAtIso || ''))
           );
-          localStorage.setItem(FEEDBACKS_STORAGE_KEY, JSON.stringify(merged));
+          const serialized = JSON.stringify(merged);
+          if (serialized === JSON.stringify(prev)) return prev;
+          localStorage.setItem(FEEDBACKS_STORAGE_KEY, serialized);
           return merged;
         });
       }
@@ -1258,6 +1309,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             notificationsEnabled: true,
             notificationChannelsJson: JSON.stringify(DEFAULT_SIX_NOTIFICATION_CHANNELS),
             includePartnerMilan: params.get('includePartnerMilan') === '1',
+            includeParivarMilan: params.get('includeParivarMilan') !== '0',
             partnerName: params.get('partnerName') || 'Priyanka Sharma',
             partnerDob: params.get('partnerDob') || '1990-11-24',
             partnerTob: params.get('partnerTob') || '14:20',
@@ -1317,6 +1369,8 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 partnerLng: shared.partnerLng ?? existing?.partnerLng,
                 includePartnerMilan:
                   shared.includePartnerMilan ?? existing?.includePartnerMilan,
+                includeParivarMilan:
+                  shared.includeParivarMilan ?? existing?.includeParivarMilan,
                 healthConcerns: shared.healthConcerns ?? existing?.healthConcerns,
                 originalName: shared.originalName ?? existing?.originalName,
                 selectedNameA: shared.selectedNameA ?? existing?.selectedNameA,
@@ -1444,34 +1498,33 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     );
 
-    const fbQuery = isAdminEmail
-      ? collection(db, 'tathastu_feedbacks')
-      : query(collection(db, 'tathastu_feedbacks'), where('ownerUid', '==', firebaseUser.uid));
-
-    const unsubFb = onSnapshot(
-      fbQuery,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const remoteFbs = snapshot.docs.map((d) => d.data() as FeedbackSuggestionRecord);
-          setFeedbacks((prev) => {
-            const map = new Map(prev.map((f) => [f.id, f]));
-            remoteFbs.forEach((rf) => map.set(rf.id, rf));
-            const merged = Array.from(map.values()).sort((a, b) =>
-              String(b.createdAtIso || '').localeCompare(String(a.createdAtIso || ''))
-            );
-            localStorage.setItem(FEEDBACKS_STORAGE_KEY, JSON.stringify(merged));
-            return merged;
-          });
-        }
-      },
-      (error) => {
-        try {
-          handleFirestoreError(error, OperationType.GET, 'tathastu_feedbacks');
-        } catch {
-          // Handled
-        }
-      }
-    );
+    // Only Admin can read/list guidance session ratings & feedbacks from Firestore
+    const unsubFb = isAdminEmail
+      ? onSnapshot(
+          collection(db, 'tathastu_feedbacks'),
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const remoteFbs = snapshot.docs.map((d) => d.data() as FeedbackSuggestionRecord);
+              setFeedbacks((prev) => {
+                const map = new Map(prev.map((f) => [f.id, f]));
+                remoteFbs.forEach((rf) => map.set(rf.id, rf));
+                const merged = Array.from(map.values()).sort((a, b) =>
+                  String(b.createdAtIso || '').localeCompare(String(a.createdAtIso || ''))
+                );
+                localStorage.setItem(FEEDBACKS_STORAGE_KEY, JSON.stringify(merged));
+                return merged;
+              });
+            }
+          },
+          (error) => {
+            try {
+              handleFirestoreError(error, OperationType.GET, 'tathastu_feedbacks');
+            } catch {
+              // Handled
+            }
+          }
+        )
+      : () => {};
 
     return () => {
       unsubAcc();
@@ -1812,7 +1865,6 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (params.role === 'client' && params.dob) {
       const newProfileId = `prof_${Date.now()}`;
       createdProfileId = newProfileId;
-      const isFemale = params.gender === 'female';
       const newProfile: AstroProfileRecord = {
         id: newProfileId,
         accountId: newAccountId,
@@ -1831,12 +1883,12 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         isLocked: true,
         notificationsEnabled: true,
         notificationChannelsJson: JSON.stringify(DEFAULT_SIX_NOTIFICATION_CHANNELS),
-        partnerName: isFemale ? 'Rohit Sharma' : 'Priyanka Sharma',
-        partnerDob: isFemale ? '1988-06-15' : '1990-11-24',
-        partnerTob: isFemale ? '10:30' : '14:20',
-        partnerPob: 'Mumbai, Maharashtra, India',
-        partnerLat: 19.0760,
-        partnerLng: 72.8777,
+        partnerName: '',
+        partnerDob: '',
+        partnerTob: '09:30',
+        partnerPob: '',
+        partnerLat: 28.6139,
+        partnerLng: 77.2090,
         createdAtIso: now.toISOString(),
       };
       nextProfiles = [...profiles, newProfile];
@@ -2095,7 +2147,6 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const now = new Date();
     const newProfileId = `prof_${Date.now()}`;
-    const isFemale = params.gender === 'female';
     const newProfile: AstroProfileRecord = {
       id: newProfileId,
       accountId: targetAcc.id,
@@ -2114,13 +2165,14 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       isLocked: true,
       notificationsEnabled: true,
       notificationChannelsJson: JSON.stringify(DEFAULT_SIX_NOTIFICATION_CHANNELS),
-      partnerName: params.partnerName?.trim() || (isFemale ? 'Rohit Sharma' : 'Priyanka Sharma'),
-      partnerDob: params.partnerDob || (isFemale ? '1988-06-15' : '1990-11-24'),
-      partnerTob: params.partnerTob || (isFemale ? '10:30' : '14:20'),
-      partnerPob: params.partnerPob || 'Mumbai, Maharashtra, India',
-      partnerLat: params.partnerLat ?? 19.0760,
-      partnerLng: params.partnerLng ?? 72.8777,
+      partnerName: params.partnerName?.trim() || '',
+      partnerDob: params.partnerDob || '',
+      partnerTob: params.partnerTob || '09:30',
+      partnerPob: params.partnerPob || '',
+      partnerLat: params.partnerLat ?? 28.6139,
+      partnerLng: params.partnerLng ?? 77.2090,
       includePartnerMilan: Boolean(params.includePartnerMilan),
+      includeParivarMilan: true,
       healthConcerns: params.healthConcerns || [],
       createdAtIso: now.toISOString(),
     };
@@ -2525,12 +2577,18 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     params
   ) => {
     if (!currentAccount) {
-      return { ok: false, error: 'Please log in to submit your feedback or suggestion.' };
+      return { ok: false, error: 'Please log in to submit your rating or feedback.' };
     }
-    const cleanMessage = params.message.trim().slice(0, 1500);
-    if (cleanMessage.length < 2) {
-      return { ok: false, error: 'Please enter your feedback or suggestion message.' };
-    }
+    const rawMsg = (params.message || '').trim();
+    const cleanMessage = (rawMsg.length >= 2 ? rawMsg : `Guidance Session Rated ${params.rating}/5 Stars`).slice(
+      0,
+      1500
+    );
+    const cleanHealerId = (params.ratedHealerId || 'admin_tathastu_master').trim().slice(0, 128);
+    const cleanHealerName = (params.ratedHealerName || 'Healer Ddeepak Jain (Admin)')
+      .trim()
+      .slice(0, 120);
+
     const newFb: FeedbackSuggestionRecord = {
       id: `fb_${Date.now()}`,
       accountId: currentAccount.id,
@@ -2541,6 +2599,8 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       senderEmail: (currentAccount.email || 'seeker@tathastulight.com').slice(0, 160),
       category: params.category,
       rating: Math.max(1, Math.min(5, Number(params.rating) || 5)),
+      ratedHealerId: cleanHealerId,
+      ratedHealerName: cleanHealerName,
       message: cleanMessage,
       createdAtIso: new Date().toISOString(),
     };

@@ -123,14 +123,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const handleProfileEditClick = () => {
-    if (currentAccount?.role === 'admin') {
-      onOpenProfileModal();
-    } else {
-      triggerAdminRestrictionPopup(
-        'Edit Locked Profile',
-        `Once saved, Profile Name (${profile.name}) & Date of Birth (${profile.dob}) are permanently locked and cannot be edited by Clients or Healers. Please contact Admin — ${TATHASTU_BRAND_NAME} on ${TATHASTU_ADMIN_PHONE} (${TATHASTU_ADMIN_EMAIL}).`
-      );
-    }
+    onOpenProfileModal();
   };
 
   const navItems = [
@@ -140,6 +133,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'mantras', label: t('tab_mantras'), icon: Volume2 },
     { id: 'yoga-pranayama', label: t('tab_yoga', 'Yoga & Pranayama'), icon: HeartPulse },
     { id: 'compatibility', label: t('tab_compatibility'), icon: HeartHandshake },
+    { id: 'parivar-milan', label: t('tab_parivar', 'Parivar Milan'), icon: Users },
     { id: 'festivals', label: t('tab_festivals'), icon: Sun },
     { id: 'notifications-hub', label: t('tab_notifications', '6 Daily Alerts & WhatsApp'), icon: Bell },
     {

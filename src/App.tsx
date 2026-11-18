@@ -13,6 +13,7 @@ import { NumericValidator } from './components/NumericValidator';
 import { CosmicCalendar } from './components/CosmicCalendar';
 import { WeeklyPredictions } from './components/WeeklyPredictions';
 import { PartnerCompatibility } from './components/PartnerCompatibility';
+import { ParivarMilan } from './components/ParivarMilan';
 import { IndianFestivalsCalendar } from './components/IndianFestivalsCalendar';
 import { TransitsAndMoon } from './components/TransitsAndMoon';
 import { AiConsultant } from './components/AiConsultant';
@@ -48,7 +49,8 @@ const SECTION_TITLES: Record<string, string> = {
   'mobile-auditor': 'ADVANCE MOBILE NUMEROLOGY AUDIT',
   mantras: 'DAILY VEDIC MANTRAS & SOUND REMEDIES',
   'yoga-pranayama': 'VEDIC YOGA, PRANAYAMA & 7-DAY SADHANA PLANNER',
-  compatibility: 'PARTNER MILAN & 7-CHAKRA CHALLENGES',
+  compatibility: 'PARTNER MILAN & 9-CHAKRA CHALLENGES',
+  'parivar-milan': 'PARIVAR MILAN & 9-CHAKRA FAMILY DIAGNOSTICS',
   festivals: 'ALL-INDIA FESTIVALS & PUJA MUHURAT (2026–2030)',
   'notifications-hub': '6 DAILY GOOD/BAD TIME & WHATSAPP ALERTS',
   'profiles-portal': 'CLIENT, HEALER & MASTER ADMIN PORTAL',
@@ -187,19 +189,35 @@ function TathastuMainApp() {
       mobile: activeProfile.mobile,
       gender: activeProfile.gender || 'male',
       includePartnerMilan: Boolean(activeProfile.includePartnerMilan),
+      includeParivarMilan: activeProfile.includeParivarMilan !== false,
       healthConcerns: activeProfile.healthConcerns || [],
-      partnerName: activeProfile.partnerName || 'Priyanka Sharma',
-      partnerDob: activeProfile.partnerDob || '1990-11-24',
-      partnerTob: activeProfile.partnerTob || '14:20',
-      partnerPob: activeProfile.partnerPob || 'Mumbai, Maharashtra, India',
-      partnerLat: activeProfile.partnerLat ?? 19.076,
-      partnerLng: activeProfile.partnerLng ?? 72.8777,
+      partnerName:
+        activeProfile.partnerName === 'Rohit Sharma' ||
+        activeProfile.partnerName === 'Priyanka Sharma'
+          ? ''
+          : activeProfile.partnerName || '',
+      partnerDob:
+        activeProfile.partnerDob === '1988-06-15' ||
+        activeProfile.partnerDob === '1990-11-24'
+          ? ''
+          : activeProfile.partnerDob || '',
+      partnerTob: activeProfile.partnerTob || '09:30',
+      partnerPob:
+        activeProfile.partnerPob === 'Mumbai, Maharashtra, India' &&
+        (!activeProfile.partnerName ||
+          activeProfile.partnerName === 'Rohit Sharma' ||
+          activeProfile.partnerName === 'Priyanka Sharma')
+          ? ''
+          : activeProfile.partnerPob || '',
+      partnerLat: activeProfile.partnerLat ?? 28.6139,
+      partnerLng: activeProfile.partnerLng ?? 77.209,
       originalName: activeProfile.originalName || activeProfile.name,
       selectedNameA: activeProfile.selectedNameA,
       selectedNameB: activeProfile.selectedNameB,
       originalMobile: activeProfile.originalMobile || activeProfile.mobile,
       selectedMobileA: activeProfile.selectedMobileA,
       selectedMobileB: activeProfile.selectedMobileB,
+      parivarMembers: activeProfile.parivarMembers || [],
     };
   }, [activeProfile, fallbackProfile]);
 
@@ -219,6 +237,10 @@ function TathastuMainApp() {
           updated.includePartnerMilan !== undefined
             ? updated.includePartnerMilan
             : activeProfile.includePartnerMilan,
+        includeParivarMilan:
+          updated.includeParivarMilan !== undefined
+            ? updated.includeParivarMilan
+            : activeProfile.includeParivarMilan,
         healthConcerns: updated.healthConcerns ?? activeProfile.healthConcerns,
         partnerName: updated.partnerName ?? activeProfile.partnerName,
         partnerDob: updated.partnerDob ?? activeProfile.partnerDob,
@@ -232,6 +254,7 @@ function TathastuMainApp() {
         originalMobile: updated.originalMobile ?? activeProfile.originalMobile ?? activeProfile.mobile,
         selectedMobileA: updated.selectedMobileA ?? activeProfile.selectedMobileA,
         selectedMobileB: updated.selectedMobileB ?? activeProfile.selectedMobileB,
+        parivarMembers: updated.parivarMembers ?? activeProfile.parivarMembers,
       });
     }
   };
@@ -466,6 +489,13 @@ function TathastuMainApp() {
 
             {activeTab === 'compatibility' && (
               <PartnerCompatibility profile={profile} />
+            )}
+
+            {activeTab === 'parivar-milan' && (
+              <ParivarMilan
+                profile={profile}
+                onUpdateProfile={handleUpdateProfile}
+              />
             )}
 
             {activeTab === 'festivals' && (

@@ -31,6 +31,7 @@ import {
 import { useTathastu } from '../utils/tathastuStore';
 import { InteractiveLoShuGrid } from './InteractiveLoShuGrid';
 import { GemstoneRecommendation } from './GemstoneRecommendation';
+import { TransitAlertsWidget } from './TransitAlertsWidget';
 
 interface DashboardProps {
   profile: BirthProfile;
@@ -132,6 +133,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
             >
               <HeartPulse className="w-4 h-4" />
               <span>Yoga & Pranayama Planner</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('parivar-milan')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 text-white shadow-lg shadow-indigo-500/25 transition-all cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Parivar Milan (9 Chakras)</span>
             </button>
             <button
               onClick={() => setActiveTab('festivals')}
@@ -435,6 +443,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
+      {/* Live Planetary Transit Alerts (Zodiac & Birth Synchronized Auspicious Windows) */}
+      <TransitAlertsWidget
+        profile={profile}
+        onOpenFullTransits={() => setActiveTab('transits')}
+      />
+
       {/* Interactive Sacred 3x3 Lo-Shu Grid & Vedic Planetary Remedies */}
       <InteractiveLoShuGrid
         dob={profile.dob}
@@ -490,7 +504,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             Ashtakoot Partner Milan
           </h4>
           <p className="text-xs text-slate-400">
-            36-point Guna Milan, 7-Chakra challenges & Bride/Groom remedies.
+            36-point Guna Milan, 9-Chakra challenges & Bride/Groom remedies.
           </p>
         </div>
 

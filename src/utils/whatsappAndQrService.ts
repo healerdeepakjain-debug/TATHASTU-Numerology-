@@ -20,6 +20,7 @@ import {
 } from './numerology';
 import { calculateVedicAstrologyFromBirth } from './astrologyAndCities';
 import { getBestUpcomingEventsNext12Months } from '../components/CosmicCalendar';
+import { calculateParivarMilanReport, ParivarMemberRecord } from './parivarMilan';
 import {
   getCurrentLanguage,
   translateMultilineBlock,
@@ -116,6 +117,11 @@ export function getClientReportDirectUrl(
     if (profile.partnerDob) params.set('partnerDob', profile.partnerDob);
     if (profile.partnerTob) params.set('partnerTob', profile.partnerTob);
     if (profile.partnerPob) params.set('partnerPob', profile.partnerPob);
+  }
+  if (profile.includeParivarMilan === false) {
+    params.set('includeParivarMilan', '0');
+  } else if (profile.includeParivarMilan === true) {
+    params.set('includeParivarMilan', '1');
   }
   if (profile.originalName) params.set('originalName', profile.originalName);
   if (profile.selectedNameA) params.set('selectedNameA', profile.selectedNameA);
@@ -388,6 +394,34 @@ export async function sendWhatsAppFullReportShare(
   const { reportStatusSummary, auspiciousTimeSummary, deepLinkSection } =
     buildClientStatusAndAuspiciousUpdateBlock(profile);
 
+  const savedParivarMembers = ((profile.parivarMembers || []) as ParivarMemberRecord[])
+    .filter((fm) => fm && fm.isSaved && fm.name?.trim() && fm.dob?.trim())
+    .slice(0, 5);
+  const parivarSummaryLines: string[] = [];
+  if (profile.includeParivarMilan !== false && savedParivarMembers.length > 0) {
+    const pRep = calculateParivarMilanReport(
+      {
+        name: profile.name,
+        dob: profile.dob,
+        tob: profile.tob || '09:30',
+        pob: profile.pob || 'New Delhi, India',
+        lat: profile.lat ?? 28.6139,
+        lng: profile.lng ?? 77.209,
+      },
+      savedParivarMembers
+    );
+    parivarSummaryLines.push(
+      `👨‍👩‍👧‍👦 *PARIVAR MILAN (9-CHAKRA & VEDIC HARMONY):*`,
+      `• Overall Parivar Harmony: *${pRep.averageFamilyHarmony}%* (${pRep.familyCollectiveVerdict})`,
+      ...pRep.memberResults.map(
+        (mr) =>
+          `• ${mr.member.name} (${mr.member.relation}): *${mr.overallHarmonyScore}%* | Rudraksha: ${mr.gemstoneAndRudrakshaRemedy.familyUnityRudraksha}`
+      ),
+      `_${pRep.importantDisclaimer}_`,
+      ``
+    );
+  }
+
   const lines = [
     `🕉️ *${brandTitle}*`,
     `✨ *${TATHASTU_BRAND_NAME} — ${TATHASTU_TAGLINE}*`,
@@ -400,6 +434,7 @@ export async function sendWhatsAppFullReportShare(
     `• Mulank: ${m} (${PLANETARY_PROFILES[m]?.planet}) | Bhagyank: ${b} (${PLANETARY_PROFILES[b]?.planet})`,
     `• Vedic Rashi: ${astro.rashi} | Nakshatra: ${astro.nakshatra} (Pada ${astro.pada})`,
     ``,
+    ...parivarSummaryLines,
     ...reportStatusSummary,
     ``,
     ...auspiciousTimeSummary,

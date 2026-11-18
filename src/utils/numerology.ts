@@ -2058,7 +2058,57 @@ export function calculateCompatibility(
     remedialSuggestions.push('Schedule key joint decisions during Jupiter or Venus Horas to soften planetary friction.');
   }
 
-  // 7-Chakra Post-Marriage Challenges & Fortune Reading + Aura Scan Remedies
+  // Automatic Name + DOB Vibrations Compatibility Score (Mulank + Bhagyank + Chaldean Namank + Cross-Link)
+  const relToScore = (rel: 'friendly' | 'neutral' | 'inimical', sameBonus: boolean) => {
+    if (sameBonus) return 91;
+    if (rel === 'friendly') return 94;
+    if (rel === 'neutral') return 77;
+    return 52;
+  };
+  const mulankRelND = getPlanetaryRelationship(m1, m2);
+  const bhagyankRelND = getPlanetaryRelationship(b1, b2);
+  const namankRelND = getPlanetaryRelationship(name1Analysis.chaldeanSingle, name2Analysis.chaldeanSingle);
+  const cross1RelND = getPlanetaryRelationship(m1, name2Analysis.chaldeanSingle);
+  const cross2RelND = getPlanetaryRelationship(m2, name1Analysis.chaldeanSingle);
+
+  const mulankHarmony = relToScore(mulankRelND, m1 === m2);
+  const bhagyankHarmony = relToScore(bhagyankRelND, b1 === b2);
+  const compoundBonus =
+    (name1Analysis.compoundInfo.type === 'fortunate' || name1Analysis.compoundInfo.type === 'auspicious' ? 4 : 0) +
+    (name2Analysis.compoundInfo.type === 'fortunate' || name2Analysis.compoundInfo.type === 'auspicious' ? 4 : 0);
+  const namankHarmony = Math.min(
+    99,
+    relToScore(namankRelND, name1Analysis.chaldeanSingle === name2Analysis.chaldeanSingle) +
+      Math.round(compoundBonus / 2)
+  );
+  const crossNumberHarmony = Math.round(
+    (relToScore(cross1RelND, m1 === name2Analysis.chaldeanSingle) +
+      relToScore(cross2RelND, m2 === name1Analysis.chaldeanSingle)) /
+      2
+  );
+  const nameDobOverallScore = Math.max(
+    45,
+    Math.min(
+      98,
+      Math.round(
+        mulankHarmony * 0.3 +
+          bhagyankHarmony * 0.25 +
+          namankHarmony * 0.3 +
+          crossNumberHarmony * 0.15
+      )
+    )
+  );
+  const nameDobVerdict =
+    nameDobOverallScore >= 85
+      ? 'Supremely Magnetic Name-DOB Synergy'
+      : nameDobOverallScore >= 72
+      ? 'Harmonious & Supportive Vibrations'
+      : nameDobOverallScore >= 60
+      ? 'Balanced Resonance (Spelling Tuning Helpful)'
+      : 'Contrasting Vibrations — Name Alignment Recommended';
+  const nameDobSummary = `Combines Groom (${p1.name}: M${m1}/B${b1}/N${name1Analysis.chaldeanSingle}) & Bride (${p2.name}: M${m2}/B${b2}/N${name2Analysis.chaldeanSingle}) across Chaldean Name Sound, Psychic Mulank & Destiny Bhagyank.`;
+
+  // 9-Chakra Post-Marriage Challenges & Fortune Reading + Aura Scan Remedies (Earth Star #1 to Soul Star #9)
   const chakraChallenges = calculatePartnerChakraChallenges(
     m1,
     b1,
@@ -2160,6 +2210,15 @@ export function calculateCompatibility(
     dimensions,
     totalPoints,
     overallPercentage,
+    nameDobCompatibility: {
+      overallScore: nameDobOverallScore,
+      mulankHarmony,
+      bhagyankHarmony,
+      namankHarmony,
+      crossNumberHarmony,
+      verdict: nameDobVerdict,
+      summary: nameDobSummary,
+    },
     verdict,
     summary,
     strengths,

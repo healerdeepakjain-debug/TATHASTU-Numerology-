@@ -182,7 +182,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
     const rawText =
       `*${TATHASTU_BRAND_NAME}* (${TATHASTU_APP_NAME})\n` +
       `_${TATHASTU_TAGLINE}_\n\n` +
-      `Access your personalized Vedic & Chaldean Numerology Report, Name & Mobile Frequency Verifier, 7-Chakra Aura Remedies, Yoga Sadhana & Daily Good/Bad Time Muhurat App:\n` +
+      `Access your personalized Vedic & Chaldean Numerology Report, Name & Mobile Frequency Verifier, 9-Chakra Aura Remedies, Yoga Sadhana & Daily Good/Bad Time Muhurat App:\n` +
       `${appShareUrl}`;
     const text = validateAndNormalizeLocaleText(
       translateMultilineBlock(rawText, activeLang),
@@ -575,7 +575,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
               </div>
 
               <p className="text-xs sm:text-sm text-amber-100/90 leading-relaxed">
-                Welcome to the complete Spiritual & Data-Driven Mystical Alignment Platform. Synchronize your Name, Mobile Number, Career Path, Marriage Compatibility, 7-Chakra Energy Centres, and Daily Auspicious Muhurat Timing through authentic Vedic Jyotish & Chaldean Numerology.
+                Welcome to the complete Spiritual & Data-Driven Mystical Alignment Platform. Synchronize your Name, Mobile Number, Career Path, Marriage Compatibility, 9-Chakra Energy Centres, and Daily Auspicious Muhurat Timing through authentic Vedic Jyotish & Chaldean Numerology.
               </p>
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -613,11 +613,11 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
               <div className="rounded-2xl overflow-hidden border border-amber-500/40 bg-slate-950 shadow-lg">
                 <img
                   src={chakraHealingArt}
-                  alt="7-Chakra Spiritual Healing"
+                  alt="9-Chakra Spiritual Healing"
                   className="w-full h-36 sm:h-44 object-cover"
                 />
                 <div className="p-3">
-                  <div className="text-xs font-bold text-amber-200">7-Chakra & Aura Alignment</div>
+                  <div className="text-xs font-bold text-amber-200">9-Chakra & Aura Alignment</div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
                     Post-marriage chakra challenges, pranic energy scan & exact remedies.
                   </p>
@@ -990,9 +990,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
             >
               <ShieldCheck className="w-4 h-4 text-indigo-400" />
               <span>
-                {isGoogleSigningIn
-                  ? 'Connecting Google Sync...'
-                  : 'Connect Cloud Real-Time Sync'}
+                {isGoogleSigningIn ? 'Signing in...' : 'Sign In with Google'}
               </span>
             </button>
           </div>
@@ -1453,11 +1451,11 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                       <div className="font-bold text-amber-300 flex items-center gap-1.5">
                         <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
                         <span>
-                          Mandatory PayU Payment Gateway Confirmation Required
+                          Plan Payment Confirmation Required
                         </span>
                       </div>
                       <p className="text-[11px] text-amber-100/90 leading-relaxed">
-                        Your {selectedRole === 'client' ? 'Client' : 'Healer'} registration details are staged. Dashboard access is unlocked only after completing payment confirmation on the PayU Payment Portal.
+                        Your {selectedRole === 'client' ? 'Client' : 'Healer'} registration details are ready. Confirm your subscription plan to unlock your dashboard.
                       </p>
                       <button
                         type="button"
@@ -1465,7 +1463,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                         className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
                       >
                         <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>Open PayU Payment Portal &amp; Confirm Plan to Unlock Dashboard</span>
+                        <span>Confirm Plan &amp; Unlock Dashboard</span>
                       </button>
                     </div>
                   )}
@@ -1476,9 +1474,9 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                   >
                     <ShieldCheck className="w-4 h-4" />
                     <span>
-                      {`Register ${
+                      {`Register New ${
                         selectedRole === 'client' ? 'Client' : 'Healer'
-                      } Account → Proceed to PayU Payment Portal`}
+                      }`}
                     </span>
                   </button>
                 </div>
@@ -1592,8 +1590,8 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
               },
               {
                 icon: HeartHandshake,
-                title: '4. 36-Guna Partner Milan & 7-Chakra Marriage Remedies',
-                desc: 'Complete Ashtakoot Guna Milan, post-marriage 7-Chakra alignment analysis, and targeted spiritual remedies clearly prescribed for Groom, Bride, and Both.',
+                title: '4. 36-Guna Partner Milan & 9-Chakra Marriage Remedies',
+                desc: 'Complete Ashtakoot Guna Milan, post-marriage 9-Chakra alignment analysis (#1 Earth Star to #9 Soul Star), and targeted spiritual remedies clearly prescribed for Groom, Bride, and Both.',
               },
               {
                 icon: Bell,
@@ -1714,7 +1712,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
           {[
             {
               q: 'Q1. How do I register and activate my Client or Healer account?',
-              a: 'Select "Client Sign-Up" or "Healer Sign-Up", fill in your details, choose your preferred subscription plan, and click Register. You will be redirected to the PayU Payment Portal to confirm your plan payment, after which your dashboard unlocks immediately.',
+              a: 'Select "Client Sign-Up" or "Healer Sign-Up", fill in your details, choose your preferred subscription plan, and click Register to confirm your plan and unlock your dashboard immediately.',
             },
             {
               q: 'Q2. How does the Real-Time Name Spelling & 3-Way Comparison work?',

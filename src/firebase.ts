@@ -1,13 +1,42 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDocFromServer } from 'firebase/firestore';
+import {
+  getFirestore,
+  initializeFirestore,
+  setLogLevel,
+  doc,
+  setDoc,
+  getDocFromServer,
+} from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
 export { doc, setDoc };
 
+// Suppress internal @firebase/firestore 10s WebChannel timeout console.error noise in iframe/proxy environments
+try {
+  setLogLevel('silent');
+} catch {
+  // Ignore if setLogLevel is unavailable
+}
+
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+function initResilientFirestore() {
+  try {
+    return initializeFirestore(
+      app,
+      {
+        experimentalForceLongPolling: true,
+      },
+      firebaseConfig.firestoreDatabaseId
+    );
+  } catch {
+    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  }
+}
+
+export const db = initResilientFirestore();
 export const auth = getAuth(app);
 export const storage = getStorage(
   app,
@@ -46,8 +75,9 @@ export function handleFirestoreError(
   operationType: OperationType,
   path: string | null
 ): never {
+  const errMsg = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -63,7 +93,13 @@ export function handleFirestoreError(
     operationType,
     path,
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  const isOfflineOrTransient =
+    errMsg.toLowerCase().includes('offline') ||
+    errMsg.toLowerCase().includes('unavailable') ||
+    errMsg.toLowerCase().includes('could not reach cloud firestore');
+  if (!isOfflineOrTransient) {
+    console.warn('Firestore Error: ', JSON.stringify(errInfo));
+  }
   throw new Error(JSON.stringify(errInfo));
 }
 
@@ -204,14 +240,16 @@ export function triggerCrossPlatformPdfBlobDownload(
   }
 }
 
-// Validate connection to Firestore on boot as required by firebase-integration-rpc
+// Validate connection to Firestore on boot without emitting false-positive console.error on offline/iframe networks
 async function testConnection() {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
+      console.info('Firestore client is operating in offline/hybrid cache mode.');
     }
   }
 }
-testConnection();
+void testConnection();
+
