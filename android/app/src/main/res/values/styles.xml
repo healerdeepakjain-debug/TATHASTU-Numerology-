@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.TathastuNumerology" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/tathastu_gold</item>
+        <item name="colorPrimaryDark">@color/tathastu_bg</item>
+        <item name="colorAccent">@color/tathastu_gold_light</item>
+        <item name="android:windowBackground">@color/tathastu_bg</item>
+        <item name="android:statusBarColor">@color/tathastu_bg</item>
+        <item name="android:navigationBarColor">@color/tathastu_bg</item>
+    </style>
+</resources>

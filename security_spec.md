@@ -3,7 +3,7 @@
 ## 1. Data Invariants
 1. **Default-Deny Catch-All**: All paths not explicitly matched (`/{document=**}`) deny all reads and writes.
 2. **Identity & Verified Email Invariant**: Every standard write requires `request.auth != null && request.auth.token.email_verified == true`.
-3. **Admin Lookup Invariant**: Admin privileges are verified via `exists(/databases/$(database)/documents/admins/$(request.auth.uid))` or verified runtime owner email (`healer.ddeepak.jain@gmail.com`, `healer.deepak.jain@gmail.com`, or `contact@tathastulight.com`) with `request.auth.token.email_verified == true`.
+3. **Admin Lookup Invariant**: Admin privileges are verified via `exists(/databases/$(database)/documents/admins/$(request.auth.uid))` or verified runtime owner email (`healer.ddeepak.jain@gmail.com`) with `request.auth.token.email_verified == true`.
 4. **Immutable Core Fields**:
    - In `tathastu_accounts/{accountId}`, `id`, `ownerUid`, `role`, and `createdAtIso` cannot be mutated by non-admin users.
    - In `tathastu_profiles/{profileId}`, `id`, `accountId`, `ownerUid`, `dob`, and `createdAtIso` are strictly immutable after creation for non-admin users, while harmonized name/mobile/partner/yoga fields are strictly validated by `isValidAstroProfileRecord(incoming())` and explicit action `affectedKeys().hasOnly(...)`.

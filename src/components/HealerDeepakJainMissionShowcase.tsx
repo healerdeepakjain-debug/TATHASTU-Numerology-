@@ -23,6 +23,9 @@ import {
 import {
   useTathastu,
   HEALER_DEEPAK_JAIN_IMAGE_PATH,
+  TATHASTU_ADMIN_EMAIL,
+  TATHASTU_ADMIN_PHONE,
+  TATHASTU_APP_NAME,
   FeedbackSuggestionRecord,
 } from '../utils/tathastuStore';
 import { useLanguage } from '../utils/i18n';
@@ -287,13 +290,16 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
             <div className="mt-4 w-64 sm:w-72 rounded-2xl bg-slate-950/95 border border-amber-400/50 px-4 py-3 text-center shadow-xl">
               <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-[11px] font-bold uppercase tracking-widest mb-1">
                 <Crown className="w-3.5 h-3.5 text-amber-400" />
-                Founder & Spiritual Master
+                App Creator, Founder &amp; Master Admin
               </span>
               <h3 className="text-xl font-serif font-bold text-white tracking-wide">
                 HEALER DDEEPAK JAIN
               </h3>
-              <p className="text-xs text-amber-300/90 font-medium mt-0.5">
-                TATHASTU THE DIVINE LIGHT
+              <p className="text-xs text-amber-300/95 font-bold mt-0.5">
+                {TATHASTU_APP_NAME} • TATHASTU THE DIVINE LIGHT
+              </p>
+              <p className="text-[11px] text-cyan-300 font-mono mt-1 break-all">
+                {TATHASTU_ADMIN_EMAIL}
               </p>
             </div>
 
@@ -352,11 +358,11 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 text-xs text-emerald-300 bg-emerald-500/10 px-3.5 py-2 rounded-xl border border-emerald-500/30">
                 <PhoneCall className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Helpline / WhatsApp: 8899444444</span>
+                <span>Helpline / WhatsApp: {TATHASTU_ADMIN_PHONE}</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-cyan-300 bg-cyan-500/10 px-3.5 py-2 rounded-xl border border-cyan-500/30">
                 <Mail className="w-4 h-4 text-cyan-400 shrink-0" />
-                <span>Email: contact@tathastulight.com</span>
+                <span>Admin &amp; App Creator Email: {TATHASTU_ADMIN_EMAIL}</span>
               </div>
             </div>
           </div>

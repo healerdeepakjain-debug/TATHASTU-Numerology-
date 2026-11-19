@@ -27,16 +27,12 @@ service cloud.firestore {
     // Zero-lookup admin check for list queries (prevents O(n) exists() calls)
     function isAdminZeroLookup() {
       return isSignedIn() && (
-        request.auth.token.email == 'contact@tathastulight.com' ||
-        request.auth.token.email == 'healer.deepak.jain@gmail.com' ||
         request.auth.token.email == 'healer.ddeepak.jain@gmail.com'
       );
     }
 
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email == 'contact@tathastulight.com' ||
-        request.auth.token.email == 'healer.deepak.jain@gmail.com' ||
         request.auth.token.email == 'healer.ddeepak.jain@gmail.com' ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );

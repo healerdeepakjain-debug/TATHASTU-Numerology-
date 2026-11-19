@@ -35,6 +35,7 @@ import { LanguageProvider, useLanguage, INDIAN_LANGUAGES, SupportedLanguage } fr
 import {
   TathastuProvider,
   useTathastu,
+  TATHASTU_APP_NAME,
   TATHASTU_BRAND_NAME,
   TATHASTU_TAGLINE,
   TATHASTU_ADMIN_PHONE,
@@ -548,7 +549,7 @@ function TathastuMainApp() {
                   className="w-8 h-8 rounded-lg object-cover border border-amber-500/40"
                 />
                 <span className="text-amber-300 font-serif font-extrabold text-sm tracking-wide">
-                  {TATHASTU_BRAND_NAME} — {TATHASTU_TAGLINE}
+                  {TATHASTU_APP_NAME} • {TATHASTU_BRAND_NAME} — {TATHASTU_TAGLINE}
                 </span>
               </div>
               <div className="flex items-center justify-center gap-3 text-amber-400 font-serif font-bold text-xs">
@@ -557,7 +558,7 @@ function TathastuMainApp() {
                 <span>ॐ</span>
               </div>
               <p className="text-[11px] text-slate-400 max-w-2xl mx-auto">
-                Official Spiritual Energy & Vedic Numerology Portal by <strong>{TATHASTU_BRAND_NAME}</strong>. Admin Email: <strong className="text-amber-300 font-mono">{TATHASTU_ADMIN_EMAIL}</strong> • Helpline: <strong className="text-amber-300 font-mono">{TATHASTU_ADMIN_PHONE}</strong>.
+                <strong>{TATHASTU_APP_NAME}</strong> by <strong>{TATHASTU_BRAND_NAME}</strong>. App Creator &amp; Admin: <strong className="text-amber-200">Healer Ddeepak Jain</strong> • Email: <strong className="text-amber-300 font-mono">{TATHASTU_ADMIN_EMAIL}</strong> • Helpline: <strong className="text-amber-300 font-mono">{TATHASTU_ADMIN_PHONE}</strong>.
               </p>
               <div className="flex flex-wrap justify-center gap-4 pt-2 text-[11px] text-amber-400/80">
                 <button

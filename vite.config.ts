@@ -22,10 +22,10 @@ export default defineConfig(() => {
         ],
         manifest: {
           id: '/',
-          name: 'Tathastu Numerology — TATHASTU THE DIVINE LIGHT',
-          short_name: 'Tathastu',
+          name: 'TATHASTU NUMEROLOGY',
+          short_name: 'TATHASTU',
           description:
-            'TATHASTU THE DIVINE LIGHT — One place . EVERY SOLUTION. Vedic, Chaldean, Islamic-Vedic & Pranic Energy Alignment Portal.',
+            'TATHASTU NUMEROLOGY (TATHASTU THE DIVINE LIGHT) — One place . EVERY SOLUTION. Vedic, Chaldean, Islamic-Vedic & Pranic Energy Alignment Portal.',
           theme_color: '#020617',
           background_color: '#020617',
           display: 'standalone',

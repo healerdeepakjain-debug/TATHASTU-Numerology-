@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="tathastu_bg">#020617</color>
+    <color name="tathastu_surface">#0F172A</color>
+    <color name="tathastu_gold">#F59E0B</color>
+    <color name="tathastu_gold_light">#FDE68A</color>
+</resources>

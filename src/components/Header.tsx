@@ -34,6 +34,7 @@ import { useResponsiveViewport } from '../utils/useResponsiveViewport';
 import {
   useTathastu,
   TATHASTU_LOGO_PATH,
+  TATHASTU_APP_NAME,
   TATHASTU_BRAND_NAME,
   TATHASTU_TAGLINE,
   TATHASTU_ADMIN_PHONE,
@@ -260,10 +261,10 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <h1 className="font-serif text-sm sm:text-xl font-extrabold tracking-wide bg-gradient-to-r from-amber-100 via-amber-300 to-amber-500 bg-clip-text text-transparent truncate">
-                {TATHASTU_BRAND_NAME}
+                {TATHASTU_APP_NAME}
               </h1>
               <span className="text-[10px] sm:text-[11px] font-semibold text-amber-300/90 hidden sm:inline">
-                · {TATHASTU_TAGLINE}
+                · {TATHASTU_BRAND_NAME} ({TATHASTU_TAGLINE})
               </span>
             </div>
             <p className="text-[10px] sm:text-[11px] text-amber-200/75 tracking-wider truncate">

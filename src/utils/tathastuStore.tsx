@@ -18,8 +18,8 @@ import healerPortraitImg from '../assets/images/healer_ddeepak_jain_portrait_opt
 export const TATHASTU_LOGO_PATH = '/assets/aistudio/tathastu_logo_small_6cf3db26.jpg';
 export const HEALER_DEEPAK_JAIN_IMAGE_PATH = healerPortraitImg;
 export const TATHASTU_ADMIN_PHONE = '8899444444';
-export const TATHASTU_ADMIN_EMAIL = 'CONTACT@TATHASTULIGHT.COM';
-export const TATHASTU_APP_NAME = 'Tathastu Numerology';
+export const TATHASTU_ADMIN_EMAIL = 'healer.ddeepak.jain@gmail.com';
+export const TATHASTU_APP_NAME = 'TATHASTU NUMEROLOGY';
 export const TATHASTU_BRAND_NAME = 'TATHASTU THE DIVINE LIGHT';
 export const TATHASTU_TAGLINE = 'One place . EVERY SOLUTION';
 export const TATHASTU_DEFAULT_HEALER_NAME = 'Deepak Jain';
@@ -410,7 +410,7 @@ const INITIAL_ACCOUNTS: AccountRecord[] = [
     ownerUid: 'admin_tathastu_master',
     role: 'admin',
     name: 'Deepak Jain',
-    email: 'contact@tathastulight.com',
+    email: 'healer.ddeepak.jain@gmail.com',
     mobile: '8899444444',
     passwordHash: 'admin123',
     planId: 'admin_unlimited',
@@ -421,13 +421,13 @@ const INITIAL_ACCOUNTS: AccountRecord[] = [
     canDownloadShare: true,
     subscriptionStart: '2026-01-01',
     subscriptionExpiry: '2099-12-31',
-    healerBrandName: 'TATHASTU — THE DIVINE LIGHT',
+    healerBrandName: 'TATHASTU NUMEROLOGY — TATHASTU THE DIVINE LIGHT',
     healerLogoUrl: TATHASTU_LOGO_PATH,
     healerInstagram: '@tathastu_thedivinelight',
     healerFacebook: 'facebook.com/tathastuthedivinelight',
     healerYoutube: 'youtube.com/@tathastuthedivinelight',
     healerWebsite: 'www.tathastulight.com',
-    healerAddress: 'TATHASTU — THE DIVINE LIGHT • CONTACT@TATHASTULIGHT.COM • +91 8899444444',
+    healerAddress: 'TATHASTU NUMEROLOGY • TATHASTU THE DIVINE LIGHT • healer.ddeepak.jain@gmail.com • +91 8899444444',
     notificationPrefsJson: JSON.stringify(DEFAULT_SIX_NOTIFICATION_CHANNELS),
     createdAtIso: '2026-01-01T00:00:00.000Z',
   },
@@ -611,11 +611,18 @@ function loadLocalAccounts(): AccountRecord[] {
     if (raw) {
       const parsed = JSON.parse(raw) as AccountRecord[];
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const migrated = parsed.map((a) =>
-          a.id === 'admin_tathastu_master' && a.name === 'TATHASTU Master Admin'
-            ? { ...a, name: TATHASTU_DEFAULT_HEALER_NAME }
-            : a
-        );
+        const migrated = parsed.map((a) => {
+          if (a.id === 'admin_tathastu_master' || a.role === 'admin') {
+            return {
+              ...a,
+              name: a.name === 'TATHASTU Master Admin' ? TATHASTU_DEFAULT_HEALER_NAME : a.name,
+              email: TATHASTU_ADMIN_EMAIL,
+              healerAddress:
+                'TATHASTU NUMEROLOGY • TATHASTU THE DIVINE LIGHT • healer.ddeepak.jain@gmail.com • +91 8899444444',
+            };
+          }
+          return a;
+        });
         localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(migrated));
         return migrated;
       }
@@ -1013,7 +1020,18 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (!deletedMap[a.id]) map.set(a.id, a);
           });
           remoteState.accounts.forEach((ra: AccountRecord) => {
-            if (ra && ra.id && !deletedMap[ra.id]) map.set(ra.id, ra);
+            if (ra && ra.id && !deletedMap[ra.id]) {
+              const normalized =
+                ra.id === 'admin_tathastu_master' || ra.role === 'admin'
+                  ? {
+                      ...ra,
+                      email: TATHASTU_ADMIN_EMAIL,
+                      healerAddress:
+                        'TATHASTU NUMEROLOGY • TATHASTU THE DIVINE LIGHT • healer.ddeepak.jain@gmail.com • +91 8899444444',
+                    }
+                  : ra;
+              map.set(ra.id, normalized);
+            }
           });
           const merged = Array.from(map.values());
           const serialized = JSON.stringify(merged);
@@ -1411,10 +1429,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!firebaseUser) return;
 
     const userEmailLower = (firebaseUser.email || '').toLowerCase();
-    const isAdminEmail =
-      userEmailLower === 'healer.deepak.jain@gmail.com' ||
-      userEmailLower === 'healer.ddeepak.jain@gmail.com' ||
-      userEmailLower === 'contact@tathastulight.com';
+    const isAdminEmail = userEmailLower === 'healer.ddeepak.jain@gmail.com';
     const accountsRef = collection(db, 'tathastu_accounts');
     const profilesRef = collection(db, 'tathastu_profiles');
 
@@ -1599,9 +1614,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const mobileMatch = cleanMobile.length === 10 && mobileDigits === cleanMobile;
       if (
         acc.role === 'admin' &&
-        (cleanId === 'contact@tathastulight.com' ||
-          cleanId === 'healer.deepak.jain@gmail.com' ||
-          cleanId === 'healer.ddeepak.jain@gmail.com' ||
+        (cleanId === 'healer.ddeepak.jain@gmail.com' ||
           cleanMobile === '8899444444')
       ) {
         return true;
@@ -1669,10 +1682,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       };
     }
 
-    const isOwnerAdmin =
-      emailLower === 'healer.ddeepak.jain@gmail.com' ||
-      emailLower === 'healer.deepak.jain@gmail.com' ||
-      emailLower === 'contact@tathastulight.com';
+    const isOwnerAdmin = emailLower === 'healer.ddeepak.jain@gmail.com';
 
     let matched = isOwnerAdmin
       ? accounts.find((a) => a.role === 'admin') || INITIAL_ACCOUNTS[0]

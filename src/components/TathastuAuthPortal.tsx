@@ -566,16 +566,16 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                     <span>Vedic • Chaldean • Pranic Energy • Aura & Chakra Science</span>
                   </span>
                   <h1 className="font-serif text-2xl sm:text-4xl font-black tracking-wide bg-gradient-to-r from-amber-100 via-amber-300 to-amber-500 bg-clip-text text-transparent mt-1">
-                    {TATHASTU_BRAND_NAME}
+                    {TATHASTU_APP_NAME}
                   </h1>
                   <p className="text-sm sm:text-base font-serif italic text-sky-300">
-                    {TATHASTU_TAGLINE}
+                    {TATHASTU_BRAND_NAME} — {TATHASTU_TAGLINE}
                   </p>
                 </div>
               </div>
 
               <p className="text-xs sm:text-sm text-amber-100/90 leading-relaxed">
-                Welcome to the complete Spiritual & Data-Driven Mystical Alignment Platform. Synchronize your Name, Mobile Number, Career Path, Marriage Compatibility, 9-Chakra Energy Centres, and Daily Auspicious Muhurat Timing through authentic Vedic Jyotish & Chaldean Numerology.
+                Welcome to <strong>{TATHASTU_APP_NAME}</strong> — the complete Spiritual &amp; Data-Driven Mystical Alignment Platform created by <strong>Healer Ddeepak Jain</strong>. Synchronize your Name, Mobile Number, Career Path, Marriage Compatibility, Parivar Milan, 9-Chakra Energy Centres, and Daily Auspicious Muhurat Timing through authentic Vedic Jyotish &amp; Chaldean Numerology.
               </p>
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -603,7 +603,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                 )}
 
                 <div className="px-4 py-2.5 rounded-xl bg-slate-950/90 border border-amber-500/30 text-xs text-amber-200 font-mono max-w-full break-words">
-                  App: <strong>{TATHASTU_APP_NAME}</strong> • Helpline: <strong>{TATHASTU_ADMIN_PHONE}</strong> • <strong>{TATHASTU_ADMIN_EMAIL}</strong>
+                  App: <strong>{TATHASTU_APP_NAME}</strong> • App Creator &amp; Admin: <strong>{TATHASTU_ADMIN_EMAIL}</strong> • Helpline: <strong>{TATHASTU_ADMIN_PHONE}</strong>
                 </div>
               </div>
             </div>

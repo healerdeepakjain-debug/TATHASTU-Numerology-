@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Volume2, VolumeX, SkipForward } from 'lucide-react';
 import {
+  TATHASTU_APP_NAME,
   TATHASTU_BRAND_NAME,
   TATHASTU_LOGO_PATH,
   TATHASTU_TAGLINE,
@@ -410,11 +411,11 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
         </div>
 
         <h1 className="font-serif text-2xl sm:text-4xl md:text-5xl font-black tracking-wider bg-gradient-to-r from-amber-100 via-amber-300 to-yellow-500 bg-clip-text text-transparent drop-shadow-[0_4px_24px_rgba(245,158,11,0.45)] tathastu-intro-fade-up">
-          {TATHASTU_BRAND_NAME}
+          {TATHASTU_APP_NAME}
         </h1>
 
-        <p className="mt-2 text-xs sm:text-base font-serif italic text-emerald-300 tracking-widest tathastu-intro-fade-up">
-          {TATHASTU_TAGLINE}
+        <p className="mt-1.5 text-xs sm:text-sm font-serif font-bold text-amber-200/95 tracking-widest uppercase tathastu-intro-fade-up">
+          {TATHASTU_BRAND_NAME} — {TATHASTU_TAGLINE}
         </p>
 
         <p className="mt-3 text-[11px] sm:text-xs text-amber-200/80 max-w-md leading-relaxed tathastu-intro-fade-up">

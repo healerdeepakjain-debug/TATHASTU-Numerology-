@@ -18,9 +18,11 @@ import {
 import QRCode from 'qrcode';
 import {
   TATHASTU_LOGO_PATH,
+  TATHASTU_APP_NAME,
   TATHASTU_BRAND_NAME,
   TATHASTU_TAGLINE,
   TATHASTU_ADMIN_PHONE,
+  TATHASTU_ADMIN_EMAIL,
   TATHASTU_OFFICIAL_APP_URL,
 } from '../utils/tathastuStore';
 import { getPublicAppOriginUrl } from '../utils/whatsappAndQrService';
@@ -89,6 +91,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [downloadedLauncher, setDownloadedLauncher] = useState(false);
   const [sharedAppFile, setSharedAppFile] = useState(false);
+  const [exportedAndroidKit, setExportedAndroidKit] = useState(false);
 
   const liveAppUrl = getPublicAppOriginUrl() || TATHASTU_OFFICIAL_APP_URL;
   const publicSharedUrl = TATHASTU_OFFICIAL_APP_URL;
@@ -150,7 +153,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Tathastu" />
-  <title>${TATHASTU_BRAND_NAME} — Mobile App (${TATHASTU_TAGLINE})</title>
+  <title>${TATHASTU_APP_NAME} — ${TATHASTU_BRAND_NAME} (${TATHASTU_TAGLINE})</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -259,8 +262,8 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
       <div class="header-left">
         <img class="logo" src="${absLogo}" alt="Tathastu Logo" />
         <div>
-          <div class="brand-title">${TATHASTU_BRAND_NAME}</div>
-          <div class="brand-sub">${TATHASTU_TAGLINE} • Vedic &amp; Chaldean App</div>
+          <div class="brand-title">${TATHASTU_APP_NAME}</div>
+          <div class="brand-sub">${TATHASTU_BRAND_NAME} • ${TATHASTU_TAGLINE}</div>
         </div>
       </div>
       <div class="badge">✓ 100% READY<br/>NO 403 / OFFLINE OK</div>
@@ -379,8 +382,8 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
     </div>
 
     <div class="card" style="text-align:center; font-size:11px; color:#cbd5e1;">
-      <strong style="color:#fde68a;">${TATHASTU_BRAND_NAME} (${TATHASTU_TAGLINE})</strong><br/>
-      Healer Deepak Jain • Support &amp; Admin WhatsApp: <strong>+91 ${TATHASTU_ADMIN_PHONE}</strong>
+      <strong style="color:#fde68a;">${TATHASTU_APP_NAME} (${TATHASTU_BRAND_NAME})</strong><br/>
+      App Creator &amp; Admin: Healer Ddeepak Jain • <strong>${TATHASTU_ADMIN_EMAIL}</strong> • WhatsApp: <strong>+91 ${TATHASTU_ADMIN_PHONE}</strong>
     </div>
   </div>
 
@@ -708,7 +711,41 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
 </html>`;
 
     const blob = new Blob([standaloneHtml], { type: 'text/html;charset=utf-8' });
-    return { blob, fileName: 'Tathastu_Divine_Light_Mobile_App.html' };
+    return { blob, fileName: 'Tathastu_Numerology_Mobile_App.html' };
+  };
+
+  const handleDownloadNativeAndroidContainer = async () => {
+    try {
+      const res = await fetch('/api/android/export-bundle', { cache: 'no-store' });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'Tathastu_Numerology_Android_Container_Setup.mjs';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        setExportedAndroidKit(true);
+        setTimeout(() => setExportedAndroidKit(false), 5000);
+        return;
+      }
+    } catch {
+      // Fallback guide download below
+    }
+    const fallbackGuide = `TATHASTU NUMEROLOGY — Native Android Container Guide\nApp ID: com.tathastulight.numerology\nAdmin & App Creator: Healer Ddeepak Jain (${TATHASTU_ADMIN_EMAIL})\nHelpline: +91 ${TATHASTU_ADMIN_PHONE}\n\n1. Export project code and run: npm install && npm run android:sync\n2. Open ./android folder in Android Studio\n3. Click Build -> Build APK(s) or Generate Signed App Bundle (.aab)\n`;
+    const blob = new Blob([fallbackGuide], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'TATHASTU_NUMEROLOGY_ANDROID_BUILD_GUIDE.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    setExportedAndroidKit(true);
+    setTimeout(() => setExportedAndroidKit(false), 5000);
   };
 
   const handleDownloadAndroidStandaloneApp = async () => {
@@ -778,16 +815,17 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   const handleWhatsAppAppLink = () => {
     const activeLang = getCurrentLanguage();
     const rawText = [
-      `🕉️ *${TATHASTU_BRAND_NAME} (${TATHASTU_TAGLINE})*`,
-      `📲 *Official Vedic & Chaldean Numerology Mobile & Desktop App*`,
+      `🕉️ *${TATHASTU_APP_NAME}* — *${TATHASTU_BRAND_NAME} (${TATHASTU_TAGLINE})*`,
+      `📲 *Official Vedic & Chaldean Numerology Android, iOS & Desktop App*`,
       ``,
       `👉 *Official Live App Link:*`,
       `${TATHASTU_OFFICIAL_APP_URL}`,
       ``,
       `✨ *Install & Open on Android, iPhone & Desktop:*`,
       `• *Official Cloud Link:* Open ${TATHASTU_OFFICIAL_APP_URL} in Chrome (Android/Desktop) or Safari (iOS) and tap *"Add to Home screen"* / *"Install App"*.`,
-      `• *Offline Standalone Option:* You can also share the *Tathastu_Divine_Light_Mobile_App.html* file via WhatsApp for 100% offline mobile access.`,
+      `• *Offline Standalone Option:* You can also share the *Tathastu_Numerology_Mobile_App.html* file via WhatsApp for 100% offline mobile access.`,
       ``,
+      `📧 Admin & App Creator: ${TATHASTU_ADMIN_EMAIL}`,
       `📞 Support / Admin: +91 ${TATHASTU_ADMIN_PHONE}`,
     ].join('\n');
     const text = validateAndNormalizeLocaleText(
@@ -837,9 +875,11 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
                     <Sparkles className="w-3 h-3" /> Android, iOS &amp; Desktop Ready
                   </div>
                   <h3 className="text-base sm:text-lg font-serif font-bold text-amber-200 leading-tight">
-                    Download &amp; Install {TATHASTU_BRAND_NAME}
+                    Download &amp; Install {TATHASTU_APP_NAME}
                   </h3>
-                  <p className="text-[11px] text-amber-300/90 font-medium">{TATHASTU_TAGLINE}</p>
+                  <p className="text-[11px] text-amber-300/90 font-medium">
+                    {TATHASTU_BRAND_NAME} • {TATHASTU_TAGLINE}
+                  </p>
                 </div>
               </div>
 
@@ -879,6 +919,32 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
                       : '2. Send App File to Phone / WA'}
                   </button>
                 </div>
+              </div>
+
+              {/* NATIVE ANDROID STUDIO / CAPACITOR APK CONTAINER EXPORT */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-950/90 via-slate-900 to-slate-950 border border-indigo-400/50 mb-3.5 space-y-2 shadow-lg">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                    <Smartphone className="w-4 h-4 text-emerald-400 shrink-0" />
+                    Native Android Studio Project (APK / Play Store AAB)
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 font-mono text-[9.5px] font-bold">
+                    com.tathastulight.numerology
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Complete native Android Gradle project (<code className="text-amber-300">android/</code> + <code className="text-amber-300">MainActivity.java</code> + <code className="text-amber-300">AndroidManifest.xml</code> + <code className="text-amber-300">capacitor.config.ts</code>) is ready in this codebase. Export the setup kit below, run <code className="text-emerald-300">npm run android:sync</code>, and open <code className="text-emerald-300">android/</code> in Android Studio to generate your signed APK / AAB.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleDownloadNativeAndroidContainer}
+                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 text-white font-black text-xs shadow-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <FileDown className="w-4 h-4 shrink-0" />
+                  {exportedAndroidKit
+                    ? '✓ Android Container Setup Kit Exported!'
+                    : 'Export Native Android Container Code (.mjs Setup Kit)'}
+                </button>
               </div>
 
               {/* Native Browser PWA Prompt (if supported on current browser) */}
@@ -1022,7 +1088,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
             />
             <div className="text-left">
               <div className="text-xs font-serif font-bold text-amber-200 uppercase tracking-wider">
-                {TATHASTU_BRAND_NAME} — Mobile &amp; Desktop App
+                {TATHASTU_APP_NAME} — Android, iOS &amp; Desktop App
               </div>
               <div className="text-[10px] text-emerald-300 font-semibold">
                 Direct Android &amp; iOS Mobile App Download (Zero 403 Error • Works Offline &amp; Online)

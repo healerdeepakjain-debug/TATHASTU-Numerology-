@@ -39,8 +39,21 @@ function loadRealtimeState(): RealtimeSyncState {
       const raw = fs.readFileSync(REALTIME_DB_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
+        const rawAccounts = Array.isArray(parsed.accounts) ? parsed.accounts : [];
+        const normalizedAccounts = rawAccounts.map((acc: Record<string, any>) => {
+          if (acc && (acc.id === 'admin_tathastu_master' || acc.role === 'admin')) {
+            return {
+              ...acc,
+              email: 'healer.ddeepak.jain@gmail.com',
+              healerBrandName: 'TATHASTU NUMEROLOGY — TATHASTU THE DIVINE LIGHT',
+              healerAddress:
+                'TATHASTU NUMEROLOGY • TATHASTU THE DIVINE LIGHT • healer.ddeepak.jain@gmail.com • +91 8899444444',
+            };
+          }
+          return acc;
+        });
         return {
-          accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
+          accounts: normalizedAccounts,
           profiles: Array.isArray(parsed.profiles) ? parsed.profiles : [],
           plans: Array.isArray(parsed.plans) ? parsed.plans : [],
           coupons: Array.isArray(parsed.coupons) ? parsed.coupons : [],
@@ -603,6 +616,73 @@ Include:
     });
   } catch (error: any) {
     return res.status(500).json({ available: false, error: error.message });
+  }
+});
+
+// Native Android Container Project Export Endpoint (Generates self-extracting Android Studio + Capacitor setup kit)
+app.get('/api/android/export-bundle', (_req, res) => {
+  try {
+    const androidFiles = [
+      'capacitor.config.ts',
+      'ANDROID_BUILD_GUIDE.md',
+      'scripts/sync-android-assets.mjs',
+      'android/settings.gradle',
+      'android/build.gradle',
+      'android/gradle.properties',
+      'android/app/build.gradle',
+      'android/app/proguard-rules.pro',
+      'android/app/src/main/AndroidManifest.xml',
+      'android/app/src/main/java/com/tathastulight/numerology/MainActivity.java',
+      'android/app/src/main/res/values/strings.xml',
+      'android/app/src/main/res/values/colors.xml',
+      'android/app/src/main/res/values/styles.xml',
+      'android/app/src/main/res/xml/network_security_config.xml',
+      'android/app/src/main/res/xml/file_paths.xml',
+    ];
+
+    const payload: Record<string, string> = {};
+    for (const relPath of androidFiles) {
+      const fullPath = path.resolve(__dirname, relPath);
+      if (fs.existsSync(fullPath)) {
+        payload[relPath] = fs.readFileSync(fullPath, 'utf-8');
+      }
+    }
+
+    const installerScript = [
+      '#!/usr/bin/env node',
+      '/**',
+      ' * TATHASTU NUMEROLOGY — Native Android Container Project Extractor',
+      ' * App Creator & Master Admin: Healer Ddeepak Jain (healer.ddeepak.jain@gmail.com)',
+      ' * Usage: Place inside your exported project root and run:',
+      ' *   node Tathastu_Numerology_Android_Container_Setup.mjs',
+      ' * Then run `npm run android:sync` and open `./android` in Android Studio to build APK / AAB.',
+      ' */',
+      "import fs from 'fs';",
+      "import path from 'path';",
+      '',
+      `const FILES = ${JSON.stringify(payload, null, 2)};`,
+      '',
+      'for (const [relPath, content] of Object.entries(FILES)) {',
+      '  const target = path.resolve(process.cwd(), relPath);',
+      '  fs.mkdirSync(path.dirname(target), { recursive: true });',
+      "  fs.writeFileSync(target, content, 'utf-8');",
+      '  console.log("✓ Wrote", relPath);',
+      '}',
+      'console.log("\\n✅ TATHASTU NUMEROLOGY Android Studio container files extracted!");',
+      'console.log("Next steps:");',
+      'console.log("  1. npm install");',
+      'console.log("  2. npm run build && node scripts/sync-android-assets.mjs");',
+      'console.log("  3. Open ./android in Android Studio -> Build -> Build APK(s) / Generate Signed AAB");',
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="Tathastu_Numerology_Android_Container_Setup.mjs"'
+    );
+    return res.send(installerScript);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Failed to export Android bundle' });
   }
 });
 
