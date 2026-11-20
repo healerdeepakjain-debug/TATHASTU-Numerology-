@@ -68,6 +68,7 @@ function TathastuMainApp() {
   const { language, setLanguage, t } = useLanguage();
   const {
     profiles,
+    payuConfig,
     currentAccount,
     activeProfile,
     latestLiveBroadcastAlert,
@@ -77,6 +78,7 @@ function TathastuMainApp() {
     logout,
     quickSwitchRoleAccount,
     restoreAccountSessionById,
+    applyServerActivatedPayuOrder,
     registerAccountAndPrimaryProfile,
     upgradeAccountPlan,
     adminUpdateProfile,
@@ -132,19 +134,63 @@ function TathastuMainApp() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isAuthPortalOpen, setIsAuthPortalOpen] = useState(false);
 
-  // Automatic Subscription Activation when redirected back from Official PayU Payment Confirmation Page
+  // Listen for instant real-time PayU activation events dispatched by PayUPaymentModal
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onPayuActivated = (ev: Event) => {
+      const detail = (ev as CustomEvent)?.detail;
+      setIsAuthPortalOpen(false);
+      setActiveTab('profiles-portal');
+      setPayuReturnBanner({
+        type: 'success',
+        title: detail?.title || 'Official PayU Payment Confirmed — Subscription Activated!',
+        message:
+          detail?.message ||
+          'Your PayU payment has been verified and your subscription is now live in real time.',
+      });
+    };
+    window.addEventListener('tathastu:payu-activated', onPayuActivated);
+    return () => window.removeEventListener('tathastu:payu-activated', onPayuActivated);
+  }, []);
+
+  // Automatic Subscription Activation when redirected back from Official PayU Confirmation Page
+  // OR when returning to the app after completing UPI/Card payment on PayU (auto-resume pending order)
   useEffect(() => {
     if (typeof window === 'undefined' || payuCallbackProcessedRef.current) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get('payuCallback') !== '1') return;
+    const isDirectCallback = params.get('payuCallback') === '1';
+
+    let localPending: {
+      txnid?: string;
+      orderType?: string;
+      checkoutPayload?: Record<string, any>;
+      amountInr?: number;
+      createdAt?: number;
+    } | null = null;
+    try {
+      const rawLocal = localStorage.getItem(PENDING_PAYU_ORDER_STORAGE_KEY);
+      if (rawLocal) {
+        const parsed = JSON.parse(rawLocal);
+        if (parsed?.txnid && Date.now() - Number(parsed.createdAt || 0) < 2 * 60 * 60 * 1000) {
+          localPending = parsed;
+        } else {
+          localStorage.removeItem(PENDING_PAYU_ORDER_STORAGE_KEY);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    if (!isDirectCallback && !localPending?.txnid) return;
 
     payuCallbackProcessedRef.current = true;
     const status = (params.get('status') || '').toLowerCase();
-    const txnid = (params.get('txnid') || '').trim();
+    const txnid = (params.get('txnid') || localPending?.txnid || '').trim();
     const mihpayid = (params.get('mihpayid') || '').trim();
     const reason = (params.get('reason') || '').trim();
 
     const cleanUrl = () => {
+      if (!isDirectCallback) return;
       try {
         window.history.replaceState({}, '', window.location.pathname);
       } catch {
@@ -152,7 +198,7 @@ function TathastuMainApp() {
       }
     };
 
-    if (status !== 'success' || !txnid) {
+    if (isDirectCallback && status !== 'success' && !txnid) {
       cleanUrl();
       setPayuReturnBanner({
         type: 'error',
@@ -164,163 +210,167 @@ function TathastuMainApp() {
       return;
     }
 
+    if (!txnid) return;
+
     (async () => {
       try {
-        const res = await fetch(`/api/payu/order/${encodeURIComponent(txnid)}`, {
+        const res = await fetch(`/api/payu/verify-status/${encodeURIComponent(txnid)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           cache: 'no-store',
+          body: JSON.stringify({
+            key: payuConfig.merchantKey.trim(),
+            salt: payuConfig.merchantSalt.trim(),
+            environment: payuConfig.environment,
+            ...(localPending?.checkoutPayload
+              ? {
+                  orderType: localPending.orderType,
+                  checkoutPayload: localPending.checkoutPayload,
+                  amount: localPending.amountInr,
+                }
+              : {}),
+          }),
         });
         const data = await res.json();
-        if (!res.ok || !data?.ok || !data?.order) {
-          cleanUrl();
-          setPayuReturnBanner({
-            type: 'error',
-            title: 'PayU Order Verification Failed',
-            message: 'Could not verify PayU order record on server. Please contact Master Admin.',
-          });
-          return;
-        }
-
-        const order = data.order;
-        if (order.status !== 'success' || !order.hashVerified) {
-          cleanUrl();
-          setPayuReturnBanner({
-            type: 'error',
-            title: 'PayU Hash Verification Failed',
-            message: 'Official PayU cryptographic confirmation did not succeed. Subscription was not activated.',
-          });
-          return;
-        }
-
-        if (order.consumed) {
-          cleanUrl();
-          return;
-        }
-
-        let payload: Record<string, any> = order.checkoutPayload || {};
-        if (!payload || Object.keys(payload).length === 0) {
-          try {
-            const rawLocal = localStorage.getItem(PENDING_PAYU_ORDER_STORAGE_KEY);
-            if (rawLocal) {
-              const parsed = JSON.parse(rawLocal);
-              if (parsed?.txnid === txnid && parsed?.checkoutPayload) {
-                payload = parsed.checkoutPayload;
-              }
-            }
-          } catch {
-            // ignore
+        if (!res.ok || !data?.ok) {
+          if (isDirectCallback) {
+            cleanUrl();
+            setPayuReturnBanner({
+              type: 'error',
+              title: 'PayU Verification Notice',
+              message:
+                data?.error ||
+                'Could not verify PayU order record on server. Please contact Master Admin.',
+            });
           }
+          return;
         }
 
-        const verifiedTxn = order.mihpayid || mihpayid || txnid;
-        const verifiedAmount = Number(order.amount || payload.expectedAmountInr || 0);
+        if (data.status === 'pending') {
+          if (isDirectCallback) {
+            cleanUrl();
+            setPayuReturnBanner({
+              type: 'error',
+              title: 'PayU Payment Still Pending',
+              message:
+                'Your PayU transaction is still pending bank/UPI confirmation. Once completed, reload the app and it will activate automatically.',
+            });
+          }
+          return;
+        }
 
-        if (order.orderType === 'plan_upgrade' && payload.accountId && payload.planId) {
-          const upRes = await upgradeAccountPlan(
-            payload.accountId,
-            payload.planId,
-            payload.couponCode || ''
-          );
-          restoreAccountSessionById(payload.accountId);
-          setIsAuthPortalOpen(false);
-          setActiveTab('profiles-portal');
-          await fetch(`/api/payu/order/${encodeURIComponent(txnid)}/consume`, { method: 'POST' }).catch(() => {});
+        if (data.status !== 'success') {
           try {
             localStorage.removeItem(PENDING_PAYU_ORDER_STORAGE_KEY);
           } catch {
             // ignore
           }
           cleanUrl();
-          if (upRes.ok) {
-            setPayuReturnBanner({
-              type: 'success',
-              title: 'Official PayU Payment Confirmed — Plan Upgraded Automatically!',
-              message: `₹${verifiedAmount.toLocaleString('en-IN')} confirmed by PayU (ID: ${verifiedTxn}). ${payload.planName || 'Your selected plan'} has been added to your account automatically.`,
-            });
-          } else {
+          if (isDirectCallback) {
             setPayuReturnBanner({
               type: 'error',
-              title: 'Plan Upgrade Activation Notice',
-              message: upRes.error || 'Payment confirmed, but plan could not be applied automatically. Contact Master Admin.',
+              title: 'PayU Payment Not Completed',
+              message:
+                data.errorMessage ||
+                reason ||
+                'Payment was cancelled or failed on Official PayU. No account or subscription was activated.',
             });
           }
           return;
         }
 
-        // New Client / Healer Registration (self sign-up or Master Admin paid registration)
+        const order = data.order || {};
+        const payload: Record<string, any> =
+          order.checkoutPayload || localPending?.checkoutPayload || {};
+        const verifiedTxn = order.mihpayid || mihpayid || txnid;
+        const verifiedAmount = Number(order.amount || payload.expectedAmountInr || 0);
         const keepAdminSession =
           order.orderType === 'admin_registration' && Boolean(payload.keepCurrentSession);
-        const regRes = await registerAccountAndPrimaryProfile({
-          role: payload.role === 'healer' ? 'healer' : 'client',
-          name: payload.name || order.firstname || 'Divine Seeker',
-          dob: payload.role === 'client' ? payload.dob : undefined,
-          tob: payload.role === 'client' ? payload.tob || '09:30' : undefined,
-          pob: payload.role === 'client' ? payload.pob || 'New Delhi, Delhi, India' : undefined,
-          lat: payload.lat,
-          lng: payload.lng,
-          gender: payload.gender || 'male',
-          email: payload.email || order.email,
-          mobile: payload.mobile || order.phone,
-          password: payload.password || 'tathastu123',
-          planId: payload.planId,
-          isFoc: false,
-          couponCode: payload.couponCode || '',
-          keepCurrentSession: keepAdminSession,
-          paymentVerification: {
-            transactionId: verifiedTxn,
-            utrNumber: order.bankRefNum || verifiedTxn,
-            paymentMethod: `PayU Official (${order.paymentMode || 'ONLINE'})`,
-            verifiedAmountInr: verifiedAmount,
-          },
-          healerBrandName: payload.healerBrandName,
-          healerLogoUrl: payload.healerLogoUrl,
-          healerInstagram: payload.healerInstagram,
-          healerFacebook: payload.healerFacebook,
-          healerYoutube: payload.healerYoutube,
-          healerWebsite: payload.healerWebsite,
-          healerAddress: payload.healerAddress,
-        });
 
-        if (keepAdminSession && payload.adminAccountId) {
-          restoreAccountSessionById(payload.adminAccountId);
+        if (data.activatedAccount) {
+          await applyServerActivatedPayuOrder({
+            account: data.activatedAccount,
+            profile: data.activatedProfile || null,
+            keepCurrentSession: keepAdminSession,
+            adminAccountId: payload.adminAccountId,
+          });
+        } else if (order.orderType === 'plan_upgrade' && payload.accountId && payload.planId) {
+          await upgradeAccountPlan(payload.accountId, payload.planId, payload.couponCode || '');
+          restoreAccountSessionById(payload.accountId);
+        } else {
+          await registerAccountAndPrimaryProfile({
+            role: payload.role === 'healer' ? 'healer' : 'client',
+            name: payload.name || order.firstname || 'Divine Seeker',
+            dob: payload.role === 'client' ? payload.dob : undefined,
+            tob: payload.role === 'client' ? payload.tob || '09:30' : undefined,
+            pob: payload.role === 'client' ? payload.pob || 'New Delhi, Delhi, India' : undefined,
+            lat: payload.lat,
+            lng: payload.lng,
+            gender: payload.gender || 'male',
+            email: payload.email || order.email,
+            mobile: payload.mobile || order.phone,
+            password: payload.password || 'tathastu123',
+            planId: payload.planId,
+            isFoc: false,
+            couponCode: payload.couponCode || '',
+            keepCurrentSession: keepAdminSession,
+            paymentVerification: {
+              transactionId: verifiedTxn,
+              utrNumber: order.bankRefNum || verifiedTxn,
+              paymentMethod: `PayU Official (${order.paymentMode || 'ONLINE'})`,
+              verifiedAmountInr: verifiedAmount,
+            },
+            healerBrandName: payload.healerBrandName,
+            healerLogoUrl: payload.healerLogoUrl,
+            healerInstagram: payload.healerInstagram,
+            healerFacebook: payload.healerFacebook,
+            healerYoutube: payload.healerYoutube,
+            healerWebsite: payload.healerWebsite,
+            healerAddress: payload.healerAddress,
+          });
+          if (keepAdminSession && payload.adminAccountId) {
+            restoreAccountSessionById(payload.adminAccountId);
+          }
         }
 
-        await fetch(`/api/payu/order/${encodeURIComponent(txnid)}/consume`, { method: 'POST' }).catch(() => {});
         try {
           localStorage.removeItem(PENDING_PAYU_ORDER_STORAGE_KEY);
         } catch {
           // ignore
         }
         cleanUrl();
-
-        if (regRes.ok) {
-          setIsAuthPortalOpen(false);
-          setActiveTab('profiles-portal');
-          setPayuReturnBanner({
-            type: 'success',
-            title: 'Official PayU Payment Confirmed — Subscription Activated Automatically!',
-            message: `₹${verifiedAmount.toLocaleString('en-IN')} verified by PayU (Payment ID: ${verifiedTxn}). Your ${String(
-              payload.role || 'client'
-            ).toUpperCase()} account (${payload.planName || 'Paid Plan'}) is now live!`,
-          });
-        } else {
+        setIsAuthPortalOpen(false);
+        setActiveTab('profiles-portal');
+        setPayuReturnBanner({
+          type: 'success',
+          title:
+            order.orderType === 'plan_upgrade'
+              ? 'Official PayU Payment Confirmed — Plan Upgraded Automatically!'
+              : 'Official PayU Payment Confirmed — Subscription Activated Automatically!',
+          message: `₹${verifiedAmount.toLocaleString('en-IN')} verified by PayU (Payment ID: ${verifiedTxn}). Your ${String(
+            payload.role || data.activatedAccount?.role || 'client'
+          ).toUpperCase()} account (${payload.planName || data.activatedAccount?.planName || 'Paid Plan'}) is now live!`,
+        });
+      } catch {
+        if (isDirectCallback) {
+          cleanUrl();
           setPayuReturnBanner({
             type: 'error',
-            title: 'Subscription Activation Notice',
-            message:
-              regRes.error ||
-              `Payment confirmed (${verifiedTxn}), please contact Master Admin for assistance.`,
+            title: 'PayU Callback Error',
+            message: 'Network error while verifying your PayU payment. Please contact Master Admin.',
           });
         }
-      } catch {
-        cleanUrl();
-        setPayuReturnBanner({
-          type: 'error',
-          title: 'PayU Callback Error',
-          message: 'Network error while verifying your PayU payment. Please contact Master Admin.',
-        });
       }
     })();
-  }, [registerAccountAndPrimaryProfile, upgradeAccountPlan, restoreAccountSessionById]);
+  }, [
+    applyServerActivatedPayuOrder,
+    payuConfig.environment,
+    payuConfig.merchantKey,
+    payuConfig.merchantSalt,
+    registerAccountAndPrimaryProfile,
+    restoreAccountSessionById,
+    upgradeAccountPlan,
+  ]);
 
   // Forced mobile-viewport adjustment script: enforces mobile viewport meta & adds 'tathastu-mobile-view' to document.body
   useEffect(() => {

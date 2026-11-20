@@ -95,6 +95,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
     feedbacks,
     payuConfig,
     adminUpdatePayuConfig,
+    applyServerActivatedPayuOrder,
     currentAccount,
     selectActiveProfile,
     addNewProfileUnderAccount,
@@ -250,9 +251,28 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   const [adminAppQrDataUrl, setAdminAppQrDataUrl] = useState<string>('');
   const adminAppShareUrl = getPublicAppOriginUrl() || TATHASTU_OFFICIAL_APP_URL;
 
-  // Master Admin Official PayU Hosted Gateway Config State
+  // Master Admin Official PayU Hosted Gateway Config & Live Orders State
   const [payuDraft, setPayuDraft] = useState<PayUMerchantSyncConfig>(payuConfig);
   const [showPayuSalt, setShowPayuSalt] = useState(false);
+  const [payuOrdersList, setPayuOrdersList] = useState<
+    Array<{
+      txnid: string;
+      amount: string;
+      productinfo: string;
+      firstname: string;
+      email: string;
+      phone: string;
+      orderType: string;
+      status: string;
+      mihpayid?: string;
+      paymentMode?: string;
+      activatedAccountId?: string;
+      createdAt: number;
+    }>
+  >([]);
+  const [isLoadingPayuOrders, setIsLoadingPayuOrders] = useState(false);
+  const [adminVerifyTxnidInput, setAdminVerifyTxnidInput] = useState('');
+  const [verifyingTxnid, setVerifyingTxnid] = useState<string | null>(null);
 
   // Change Password Modal State (Available to Client, Healer & Master Admin after login)
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
@@ -263,9 +283,99 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   const [cpError, setCpError] = useState<string | null>(null);
   const [cpSuccess, setCpSuccess] = useState<string | null>(null);
 
+  const loadRecentPayuOrders = async () => {
+    setIsLoadingPayuOrders(true);
+    try {
+      const res = await fetch('/api/payu/orders', { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && data?.ok && Array.isArray(data.orders)) {
+        setPayuOrdersList(data.orders);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingPayuOrders(false);
+    }
+  };
+
+  const handleVerifyPayuOrderLive = async (txnidToVerify: string) => {
+    const cleanId = txnidToVerify.trim();
+    if (!cleanId) {
+      setStatusFeedback({
+        type: 'error',
+        text: 'Please enter a PayU Order ID (txnid) to verify live with PayU.',
+      });
+      return;
+    }
+    setVerifyingTxnid(cleanId);
+    try {
+      const res = await fetch('/api/payu/admin-verify-txnid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          txnid: cleanId,
+          key: payuDraft.merchantKey.trim() || payuConfig.merchantKey.trim(),
+          salt: payuDraft.merchantSalt.trim() || payuConfig.merchantSalt.trim(),
+          environment: payuDraft.environment || payuConfig.environment,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        setStatusFeedback({
+          type: 'error',
+          text: data?.error || 'Could not verify Order ID with PayU.',
+        });
+        return;
+      }
+
+      if (data.gatewayState === 'success') {
+        if (data.activatedAccount) {
+          await applyServerActivatedPayuOrder({
+            account: data.activatedAccount,
+            profile: data.activatedProfile || null,
+            keepCurrentSession: true,
+            adminAccountId: currentAccount?.id,
+          });
+          setStatusFeedback({
+            type: 'success',
+            text: `✓ Official PayU Verified (PayU ID: ${data.transaction?.mihpayid || cleanId} • ₹${data.transaction?.amount || ''}) — ${data.activatedAccount.name} (${data.activatedAccount.role.toUpperCase()}) is now ACTIVE in real time!`,
+          });
+        } else {
+          setStatusFeedback({
+            type: 'success',
+            text: `✓ PayU Confirmed SUCCESS for ${cleanId} (PayU ID: ${data.transaction?.mihpayid || '—'} • ₹${data.transaction?.amount || '—'} • ${data.transaction?.firstname || ''} / ${data.transaction?.email || ''}).`,
+          });
+        }
+        setAdminVerifyTxnidInput('');
+        void loadRecentPayuOrders();
+      } else {
+        setStatusFeedback({
+          type: 'error',
+          text: `PayU Gateway Status for ${cleanId}: ${String(data.gatewayState || 'pending').toUpperCase()}${
+            data.transaction?.errorMessage ? ` — ${data.transaction.errorMessage}` : ''
+          }.`,
+        });
+        void loadRecentPayuOrders();
+      }
+    } catch {
+      setStatusFeedback({
+        type: 'error',
+        text: 'Network error while querying PayU verify_payment API.',
+      });
+    } finally {
+      setVerifyingTxnid(null);
+    }
+  };
+
   useEffect(() => {
     setPayuDraft(payuConfig);
   }, [payuConfig]);
+
+  useEffect(() => {
+    if (currentAccount?.role === 'admin' && activeView === 'master-admin-portal') {
+      void loadRecentPayuOrders();
+    }
+  }, [currentAccount?.role, activeView]);
 
   useEffect(() => {
     if (currentAccount?.role !== 'admin') return;
@@ -1070,7 +1180,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     {currentAccount.healerBrandName || currentAccount.name}
                   </h4>
                   <p className="text-xs text-slate-300">
-                    Your custom brand name & logo appear on all 25-page client PDF reports and watermarks.
+                    Your custom brand name &amp; logo appear on all client PDF reports and watermarks.
                   </p>
                 </div>
               </div>
@@ -2574,6 +2684,100 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 <ShieldCheck className="w-4 h-4" />
                 <span>Save &amp; Sync Official PayU Credentials</span>
               </button>
+            </div>
+
+            {/* Live PayU Transactions Monitor & 1-Click Official PayU Auto-Verify */}
+            <div className="rounded-2xl bg-slate-950/90 border border-emerald-500/30 p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-black text-emerald-300 uppercase tracking-wider">
+                    Live PayU Transactions &amp; Instant Official PayU Sync
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Payments verify automatically in real time every 2.5s via Official PayU API. You can also sync any Order ID below to confirm directly from PayU.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => loadRecentPayuOrders()}
+                  disabled={isLoadingPayuOrders}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-emerald-500/35 text-emerald-300 text-[11px] font-bold cursor-pointer"
+                >
+                  {isLoadingPayuOrders ? 'Refreshing...' : 'Refresh Orders'}
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={adminVerifyTxnidInput}
+                  onChange={(e) => setAdminVerifyTxnidInput(e.target.value)}
+                  placeholder="Enter PayU Order ID / txnid (e.g. TN1795...) to verify live with PayU"
+                  className="flex-1 bg-slate-900 border border-amber-500/35 rounded-xl px-3 py-2 text-xs text-amber-100 font-mono"
+                />
+                <button
+                  type="button"
+                  disabled={verifyingTxnid !== null}
+                  onClick={() => handleVerifyPayuOrderLive(adminVerifyTxnidInput)}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 font-black text-xs cursor-pointer shrink-0"
+                >
+                  {verifyingTxnid === adminVerifyTxnidInput.trim() && verifyingTxnid
+                    ? 'Checking PayU...'
+                    : 'Verify Live with PayU'}
+                </button>
+              </div>
+
+              {payuOrdersList.length > 0 && (
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {payuOrdersList.slice(0, 8).map((ord) => (
+                    <div
+                      key={ord.txnid}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900/90 border border-slate-800 px-3 py-2 text-[11px]"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono font-bold text-amber-200">{ord.txnid}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                              ord.status === 'success'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/50'
+                                : ord.status === 'failure'
+                                ? 'bg-rose-500/20 text-rose-300 border border-rose-400/50'
+                                : 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
+                            }`}
+                          >
+                            {ord.status}
+                          </span>
+                          <span className="font-mono font-bold text-emerald-300">₹{ord.amount}</span>
+                          {ord.mihpayid && (
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              PayU ID: {ord.mihpayid}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {ord.firstname} ({ord.email}) • {ord.productinfo}
+                        </div>
+                      </div>
+
+                      {ord.status !== 'success' || !ord.activatedAccountId ? (
+                        <button
+                          type="button"
+                          disabled={verifyingTxnid === ord.txnid}
+                          onClick={() => handleVerifyPayuOrderLive(ord.txnid)}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] cursor-pointer"
+                        >
+                          {verifyingTxnid === ord.txnid ? 'Verifying...' : 'Verify & Activate'}
+                        </button>
+                      ) : (
+                        <span className="text-[10px] font-bold text-emerald-400">
+                          ✓ Activated Live
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

@@ -928,6 +928,12 @@ interface TathastuContextValue {
   }>;
   quickSwitchRoleAccount: (role: UserRole) => void;
   restoreAccountSessionById: (accountId: string) => void;
+  applyServerActivatedPayuOrder: (params: {
+    account?: AccountRecord | null;
+    profile?: AstroProfileRecord | null;
+    keepCurrentSession?: boolean;
+    adminAccountId?: string;
+  }) => Promise<void>;
   logout: () => void;
   registerAccountAndPrimaryProfile: (params: {
     role: 'client' | 'healer';
@@ -1235,7 +1241,11 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const incoming = remoteState.payuConfig as PayUMerchantSyncConfig;
           const incomingTs = typeof incoming.updatedAt === 'number' ? incoming.updatedAt : 0;
           const prevTs = typeof prev.updatedAt === 'number' ? prev.updatedAt : 0;
-          if (incomingTs >= prevTs || (!prev.upiVpa && incoming.upiVpa)) {
+          if (
+            incomingTs >= prevTs ||
+            (!prev.upiVpa && incoming.upiVpa) ||
+            (!prev.merchantKey && incoming.merchantKey)
+          ) {
             const nextCfg: PayUMerchantSyncConfig = {
               merchantKey: String(incoming.merchantKey || '').trim(),
               merchantSalt: String(incoming.merchantSalt || '').trim(),
@@ -2030,8 +2040,12 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       healerWebsite: params.healerWebsite?.trim() || '',
       healerAddress: params.healerAddress?.trim() || '',
       notificationPrefsJson: JSON.stringify(DEFAULT_SIX_NOTIFICATION_CHANNELS),
-      payuTransactionId: params.paymentVerification?.transactionId || undefined,
-      payuUtrNumber: params.paymentVerification?.utrNumber || undefined,
+      ...(params.paymentVerification?.transactionId
+        ? { payuTransactionId: params.paymentVerification.transactionId }
+        : {}),
+      ...(params.paymentVerification?.utrNumber
+        ? { payuUtrNumber: params.paymentVerification.utrNumber }
+        : {}),
       createdAtIso: now.toISOString(),
     };
 
@@ -2128,6 +2142,110 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     return { ok: true, account: newAccount };
   };
+
+  const applyServerActivatedPayuOrder: TathastuContextValue['applyServerActivatedPayuOrder'] = useCallback(
+    async ({ account, profile, keepCurrentSession, adminAccountId }) => {
+      let nextAccountsSnapshot: AccountRecord[] = [];
+      let nextProfilesSnapshot: AstroProfileRecord[] = [];
+
+      if (account && account.id) {
+        setAccounts((prev) => {
+          const exists = prev.some((a) => a.id === account.id);
+          const merged = exists
+            ? prev.map((a) => (a.id === account.id ? { ...a, ...account } : a))
+            : [...prev, account];
+          nextAccountsSnapshot = merged;
+          try {
+            localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(merged));
+          } catch {
+            // ignore
+          }
+          return merged;
+        });
+      }
+
+      if (profile && profile.id) {
+        setProfiles((prev) => {
+          const exists = prev.some((p) => p.id === profile.id);
+          const merged = exists
+            ? prev.map((p) => (p.id === profile.id ? { ...p, ...profile } : p))
+            : [...prev, profile];
+          nextProfilesSnapshot = merged;
+          try {
+            localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(merged));
+          } catch {
+            // ignore
+          }
+          return merged;
+        });
+      }
+
+      if (typeof BroadcastChannel !== 'undefined') {
+        try {
+          const bc = new BroadcastChannel('tathastu_realtime_sync_channel');
+          bc.postMessage({ type: 'TATHASTU_SYNC', ts: Date.now() });
+          bc.close();
+        } catch {
+          // ignore
+        }
+      }
+
+      const targetSessionAccountId = keepCurrentSession
+        ? adminAccountId || currentAccountId
+        : account?.id || null;
+
+      if (targetSessionAccountId) {
+        setCurrentAccountId(targetSessionAccountId);
+        setActiveProfileId(null);
+        setPublicQrSharedProfileId(null);
+        try {
+          sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, targetSessionAccountId);
+          sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
+          localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
+          localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+        } catch {
+          // ignore
+        }
+      }
+
+      // Also persist to Firebase Firestore when signed in (strip undefined fields for strict rule compliance)
+      if (firebaseUser) {
+        if (account && account.id) {
+          try {
+            const cleanAccount = Object.fromEntries(
+              Object.entries({ ...account, ownerUid: firebaseUser.uid }).filter(
+                ([, v]) => v !== undefined
+              )
+            );
+            await setDoc(doc(db, 'tathastu_accounts', account.id), cleanAccount);
+          } catch {
+            // Non-blocking: realtime server DB + SSE already persisted & broadcast
+          }
+        }
+        if (profile && profile.id) {
+          try {
+            const cleanProfile = Object.fromEntries(
+              Object.entries({ ...profile, ownerUid: firebaseUser.uid }).filter(
+                ([, v]) => v !== undefined
+              )
+            );
+            await setDoc(doc(db, 'tathastu_profiles', profile.id), cleanProfile);
+            const sharedPayload = buildSharedReportPayload(
+              profile,
+              firebaseUser.uid,
+              nextAccountsSnapshot.length > 0 ? nextAccountsSnapshot : accounts,
+              account || undefined
+            );
+            await setDoc(doc(db, 'tathastu_shared_reports', profile.id), sharedPayload);
+          } catch {
+            // Non-blocking
+          }
+        }
+      }
+      void nextProfilesSnapshot;
+    },
+    [accounts, currentAccountId, firebaseUser]
+  );
 
   const upgradeAccountPlan: TathastuContextValue['upgradeAccountPlan'] = async (
     accountId,
@@ -3010,6 +3128,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         loginWithFirebaseGoogleUser,
         quickSwitchRoleAccount,
         restoreAccountSessionById,
+        applyServerActivatedPayuOrder,
         logout,
         registerAccountAndPrimaryProfile,
         upgradeAccountPlan,

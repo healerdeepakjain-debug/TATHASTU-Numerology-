@@ -720,12 +720,18 @@ app.get('/api/android/export-bundle', (_req, res) => {
 });
 
 // ============================================================================
-// OFFICIAL PAYU INDIA HOSTED CHECKOUT (STANDARD REDIRECT + AUTO-ACTIVATION)
-// 1. POST /api/payu/initiate  -> Saves pending order & computes SHA-512 hash
+// OFFICIAL PAYU INDIA HOSTED CHECKOUT (STANDARD REDIRECT + SERVER-TO-SERVER
+// VERIFY_PAYMENT + REAL-TIME AUTO-ACTIVATION & SSE BROADCAST)
+// 1. POST /api/payu/initiate            -> Saves pending order & computes SHA-512 hash
 // 2. Browser submits official POST form directly to https://secure.payu.in/_payment
-// 3. POST /api/payu/callback  -> Verifies reverse SHA-512 hash, marks order verified,
-//                                shows PayU Payment Confirmation & auto-redirects to app
-// 4. GET  /api/payu/order/:txnid -> App verifies & auto-activates subscription
+// 3. ALL  /api/payu/callback            -> Verifies reverse SHA-512 hash (with live
+//                                          verify_payment fallback), ACTIVATES account/plan
+//                                          immediately on server + SSE broadcast, notifies
+//                                          opener tab & redirects cleanly back to app
+// 4. POST /api/payu/verify-status/:txnid -> Live server-to-server PayU verify_payment API
+//                                          check + immediate activation & SSE broadcast
+// 5. GET  /api/payu/orders              -> Lists recent PayU orders for Master Admin
+// 6. POST /api/payu/admin-verify-txnid  -> Master Admin live PayU Order ID verification
 // ============================================================================
 interface PayuOrderRecord {
   txnid: string;
@@ -743,11 +749,36 @@ interface PayuOrderRecord {
   paymentMode?: string;
   errorMessage?: string;
   consumed?: boolean;
+  activatedAccountId?: string;
+  activatedProfileId?: string;
+  merchantKey?: string;
+  merchantSalt?: string;
+  environment?: 'production' | 'test';
   createdAt: number;
   verifiedAt?: number;
 }
 
 const PAYU_ORDERS_DB_FILE = path.resolve(__dirname, '.tathastu-payu-orders.json');
+
+const DEFAULT_FALLBACK_PLANS = [
+  { id: 'client_free_1m', role: 'client', name: 'Plan 1: Free Trial (1 Month)', durationMonths: 1, priceInr: 0, maxProfiles: 2, canDownloadShare: false },
+  { id: 'client_paid_3m', role: 'client', name: 'Plan 2: Quarterly Plan (3 Months)', durationMonths: 3, priceInr: 999, maxProfiles: 2, canDownloadShare: true },
+  { id: 'client_paid_6m', role: 'client', name: 'Plan 3: Half-Yearly Plan (6 Months)', durationMonths: 6, priceInr: 1555, maxProfiles: 2, canDownloadShare: true },
+  { id: 'client_paid_12m', role: 'client', name: 'Plan 4: Annual Plan (12 Months)', durationMonths: 12, priceInr: 2999, maxProfiles: 2, canDownloadShare: true },
+  { id: 'healer_free_1m', role: 'healer', name: 'Healer Free Starter (1 Profile • 1 Month)', durationMonths: 1, priceInr: 0, maxProfiles: 1, canDownloadShare: false },
+  { id: 'healer_paid_10', role: 'healer', name: 'Healer 10 Profiles Plan', durationMonths: 12, priceInr: 3333, maxProfiles: 10, canDownloadShare: true },
+  { id: 'healer_paid_25', role: 'healer', name: 'Healer 25 Profiles Plan', durationMonths: 12, priceInr: 6999, maxProfiles: 25, canDownloadShare: true },
+  { id: 'healer_paid_50', role: 'healer', name: 'Healer 50 Profiles Plan', durationMonths: 12, priceInr: 11111, maxProfiles: 50, canDownloadShare: true },
+];
+
+const DEFAULT_SERVER_NOTIF_PREFS = JSON.stringify({
+  goodTimeChoghadiya: true,
+  badTimeRahuCaution: true,
+  dailyLuckyNumbers: true,
+  planetaryHoraTransit: true,
+  dailyVedicMantra: true,
+  dailyWeeklyForecast: true,
+});
 
 function loadPayuOrders(): Record<string, PayuOrderRecord> {
   try {
@@ -768,8 +799,7 @@ let payuOrdersStore: Record<string, PayuOrderRecord> = loadPayuOrders();
 
 function persistPayuOrders(): void {
   try {
-    // Prune orders older than 7 days to keep file compact
-    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
     for (const key of Object.keys(payuOrdersStore)) {
       if ((payuOrdersStore[key]?.createdAt || 0) < cutoff) {
         delete payuOrdersStore[key];
@@ -781,17 +811,46 @@ function persistPayuOrders(): void {
   }
 }
 
-function resolveActivePayuCredentials(body?: Record<string, any>) {
+function sanitizeOrderForClient(order: PayuOrderRecord) {
+  const { merchantSalt: _ignoredSalt, ...safeOrder } = order;
+  void _ignoredSalt;
+  return safeOrder;
+}
+
+function resolveActivePayuCredentials(
+  body?: Record<string, any>,
+  order?: PayuOrderRecord
+) {
   const cfg = realtimeState.payuConfig;
-  const rawKey = String(body?.key || cfg?.merchantKey || process.env.PAYU_MERCHANT_KEY || '').trim();
-  const rawSalt = String(body?.salt || cfg?.merchantSalt || process.env.PAYU_MERCHANT_SALT || '').trim();
+  const rawKey = String(
+    body?.key ||
+      order?.merchantKey ||
+      cfg?.merchantKey ||
+      process.env.PAYU_MERCHANT_KEY ||
+      ''
+  ).trim();
+  const rawSalt = String(
+    body?.salt ||
+      order?.merchantSalt ||
+      cfg?.merchantSalt ||
+      process.env.PAYU_MERCHANT_SALT ||
+      ''
+  ).trim();
   const environment: 'production' | 'test' =
-    body?.environment === 'test' || cfg?.environment === 'test' ? 'test' : 'production';
+    body?.environment === 'test' ||
+    order?.environment === 'test' ||
+    cfg?.environment === 'test'
+      ? 'test'
+      : 'production';
   const gatewayUrl =
     environment === 'test'
       ? 'https://test.payu.in/_payment'
       : 'https://secure.payu.in/_payment';
-  return { key: rawKey, salt: rawSalt, environment, gatewayUrl };
+  const verifyApiUrl =
+    environment === 'test'
+      ? 'https://test.payu.in/merchant/postservice?form=2'
+      : 'https://info.payu.in/merchant/postservice?form=2';
+  return { key: rawKey, salt: rawSalt, environment, gatewayUrl, verifyApiUrl };
 }
 
 function escapeHtmlSafe(str: string): string {
@@ -801,6 +860,411 @@ function escapeHtmlSafe(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/**
+ * Queries Official PayU Server-to-Server Merchant Webservice (`command=verify_payment`)
+ * to retrieve authoritative real-time transaction status directly from PayU India.
+ * Works even when browser cross-site POST redirect (`surl`) is blocked by proxies or mobile UPI app switches.
+ */
+async function queryPayuVerifyPaymentApi(params: {
+  key: string;
+  salt: string;
+  environment: 'production' | 'test';
+  txnid: string;
+}): Promise<{
+  ok: boolean;
+  gatewayState: 'success' | 'failure' | 'pending' | 'unknown';
+  mihpayid?: string;
+  bankRefNum?: string;
+  paymentMode?: string;
+  amount?: string;
+  firstname?: string;
+  email?: string;
+  phone?: string;
+  productinfo?: string;
+  errorMessage?: string;
+  rawStatus?: string;
+}> {
+  const { key, salt, environment, txnid } = params;
+  if (!key || !salt || !txnid) {
+    return {
+      ok: false,
+      gatewayState: 'unknown',
+      errorMessage: 'Missing PayU credentials or txnid for verify_payment.',
+    };
+  }
+
+  try {
+    const verifyApiUrl =
+      environment === 'test'
+        ? 'https://test.payu.in/merchant/postservice?form=2'
+        : 'https://info.payu.in/merchant/postservice?form=2';
+    const command = 'verify_payment';
+    const hash = crypto
+      .createHash('sha512')
+      .update(`${key}|${command}|${txnid}|${salt}`)
+      .digest('hex');
+
+    const formBody = new URLSearchParams({
+      key,
+      command,
+      var1: txnid,
+      hash,
+    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch(verifyApiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+      body: formBody.toString(),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    const rawText = await response.text();
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      return {
+        ok: false,
+        gatewayState: 'unknown',
+        errorMessage: 'Non-JSON response from PayU verify_payment API.',
+      };
+    }
+
+    const detailsMap = parsed?.transaction_details;
+    const tx =
+      detailsMap && typeof detailsMap === 'object'
+        ? detailsMap[txnid] || Object.values(detailsMap)[0]
+        : null;
+
+    if (!tx || typeof tx !== 'object') {
+      return {
+        ok: true,
+        gatewayState: 'pending',
+        rawStatus: 'not_found_yet',
+      };
+    }
+
+    const rawStatus = String(tx.status || '').toLowerCase().trim();
+    const mihpayid = String(tx.mihpayid || '').trim();
+    const bankRefNum = String(tx.bank_ref_num || '').trim();
+    const paymentMode = String(tx.mode || 'ONLINE').trim();
+    const amount = String(tx.amt || tx.transaction_amount || '').trim();
+    const firstname = String(tx.firstname || '').trim();
+    const email = String(tx.email || '').trim();
+    const phone = String(tx.phone || '').trim();
+    const productinfo = String(tx.productinfo || '').trim();
+    const errMsg = String(tx.error_Message || tx.field9 || '').trim();
+
+    if (rawStatus === 'success') {
+      return {
+        ok: true,
+        gatewayState: 'success',
+        mihpayid,
+        bankRefNum,
+        paymentMode,
+        amount,
+        firstname,
+        email,
+        phone,
+        productinfo,
+        rawStatus,
+      };
+    }
+
+    if (
+      rawStatus === 'failure' ||
+      rawStatus === 'failed' ||
+      rawStatus === 'bounced' ||
+      rawStatus === 'dropped' ||
+      rawStatus === 'usercancelled' ||
+      rawStatus === 'cancelled' ||
+      rawStatus === 'auto refunded'
+    ) {
+      return {
+        ok: true,
+        gatewayState: 'failure',
+        mihpayid,
+        bankRefNum,
+        paymentMode,
+        amount,
+        firstname,
+        email,
+        phone,
+        productinfo,
+        errorMessage: errMsg || `PayU transaction status: ${rawStatus}`,
+        rawStatus,
+      };
+    }
+
+    return {
+      ok: true,
+      gatewayState: 'pending',
+      mihpayid,
+      bankRefNum,
+      paymentMode,
+      amount,
+      firstname,
+      email,
+      phone,
+      productinfo,
+      rawStatus: rawStatus || 'pending',
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      gatewayState: 'unknown',
+      errorMessage: err?.message || 'Unable to reach PayU verify_payment API.',
+    };
+  }
+}
+
+/**
+ * Idempotently activates a verified PayU order directly inside `realtimeState`,
+ * persists `.tathastu-realtime-db.json`, and broadcasts via SSE to ALL connected
+ * Client, Healer, and Master Admin dashboards in real time.
+ */
+function activatePayuOrderOnServer(txnid: string): {
+  ok: boolean;
+  alreadyActivated?: boolean;
+  account?: Record<string, any>;
+  profile?: Record<string, any>;
+  error?: string;
+} {
+  const order = payuOrdersStore[txnid];
+  if (!order) {
+    return { ok: false, error: 'PayU order record not found.' };
+  }
+  if (order.status !== 'success' || !order.hashVerified) {
+    return { ok: false, error: 'PayU payment is not cryptographically confirmed yet.' };
+  }
+
+  // Idempotent return if already activated
+  if (order.activatedAccountId) {
+    const existingAcc = realtimeState.accounts.find((a) => a.id === order.activatedAccountId);
+    const existingProf = order.activatedProfileId
+      ? realtimeState.profiles.find((p) => p.id === order.activatedProfileId)
+      : undefined;
+    if (existingAcc) {
+      return {
+        ok: true,
+        alreadyActivated: true,
+        account: existingAcc,
+        profile: existingProf,
+      };
+    }
+  }
+
+  const payload = order.checkoutPayload || {};
+  const allPlans =
+    Array.isArray(realtimeState.plans) && realtimeState.plans.length > 0
+      ? realtimeState.plans
+      : DEFAULT_FALLBACK_PLANS;
+
+  const targetRole = payload.role === 'healer' || payload.planRole === 'healer' ? 'healer' : 'client';
+  const matchedPlan =
+    allPlans.find((pl: any) => pl.id === payload.planId) ||
+    DEFAULT_FALLBACK_PLANS.find((pl) => pl.id === payload.planId) ||
+    allPlans.find((pl: any) => pl.role === targetRole && Number(pl.priceInr) > 0) ||
+    (targetRole === 'healer' ? DEFAULT_FALLBACK_PLANS[5] : DEFAULT_FALLBACK_PLANS[1]);
+
+  const planMaxProfiles = Number(payload.planMaxProfiles || matchedPlan?.maxProfiles || (targetRole === 'healer' ? 10 : 2));
+  const planDurationMonths = Number(payload.planDurationMonths || matchedPlan?.durationMonths || 12);
+  const planName = String(payload.planName || matchedPlan?.name || order.productinfo || 'Paid Plan');
+  const verifiedAmount = Number(order.amount || payload.expectedAmountInr || matchedPlan?.priceInr || 0);
+  const verifiedTxn = order.mihpayid || txnid;
+  const now = new Date();
+  const nowTs = Date.now();
+
+  // Case 1: Cumulative Plan Upgrade for an existing account
+  if (order.orderType === 'plan_upgrade') {
+    const cleanEmail = String(payload.email || order.email || '').trim().toLowerCase();
+    const cleanMobile = String(payload.mobile || order.phone || '').replace(/\D/g, '').slice(-10);
+    const targetIdx = realtimeState.accounts.findIndex(
+      (a) =>
+        (payload.accountId && a.id === payload.accountId) ||
+        (cleanEmail && String(a.email || '').trim().toLowerCase() === cleanEmail) ||
+        (cleanMobile && String(a.mobile || '').replace(/\D/g, '').slice(-10) === cleanMobile)
+    );
+
+    if (targetIdx === -1) {
+      return { ok: false, error: 'Target account for plan upgrade not found on server.' };
+    }
+
+    const existingAcc = realtimeState.accounts[targetIdx];
+    const existingExpiryMs = existingAcc.subscriptionExpiry
+      ? new Date(existingAcc.subscriptionExpiry).getTime()
+      : 0;
+    const baseExpiryDate =
+      existingExpiryMs > now.getTime() ? new Date(existingExpiryMs) : new Date(now);
+    baseExpiryDate.setMonth(baseExpiryDate.getMonth() + planDurationMonths);
+
+    const nextMaxProfiles = (Number(existingAcc.maxProfiles) || 0) + planMaxProfiles;
+    const updatedAcc: Record<string, any> = {
+      ...existingAcc,
+      planId: matchedPlan?.id || payload.planId || existingAcc.planId,
+      planName: `${planName} (Total Quota: ${nextMaxProfiles} Profiles)`,
+      planPrice: verifiedAmount,
+      maxProfiles: nextMaxProfiles,
+      canDownloadShare: true,
+      subscriptionStart: existingAcc.subscriptionStart || now.toISOString().slice(0, 10),
+      subscriptionExpiry: baseExpiryDate.toISOString().slice(0, 10),
+      payuTransactionId: verifiedTxn,
+      payuUtrNumber: order.bankRefNum || verifiedTxn,
+    };
+
+    realtimeState.accounts[targetIdx] = updatedAcc;
+    realtimeState.updatedAt = nowTs;
+    persistRealtimeState();
+
+    order.activatedAccountId = updatedAcc.id;
+    order.consumed = true;
+    persistPayuOrders();
+
+    broadcastSsePayload('payu_plan_upgraded', {
+      txnid,
+      accountId: updatedAcc.id,
+      role: updatedAcc.role,
+    });
+
+    return { ok: true, account: updatedAcc };
+  }
+
+  // Case 2: New Client / Healer Registration (self sign-up or Master Admin paid registration)
+  const cleanEmail = String(payload.email || order.email || '').trim().toLowerCase();
+  const cleanMobile = String(payload.mobile || order.phone || '').replace(/\D/g, '').slice(-10);
+
+  // If account with this email or mobile already exists (e.g. duplicate submit), upgrade/activate it instead of failing!
+  const existingIdx = realtimeState.accounts.findIndex(
+    (a) =>
+      (cleanEmail && String(a.email || '').trim().toLowerCase() === cleanEmail) ||
+      (cleanMobile && String(a.mobile || '').replace(/\D/g, '').slice(-10) === cleanMobile)
+  );
+
+  if (existingIdx !== -1) {
+    const existingAcc = realtimeState.accounts[existingIdx];
+    const expiry = new Date(now);
+    expiry.setMonth(expiry.getMonth() + planDurationMonths);
+    const updatedAcc: Record<string, any> = {
+      ...existingAcc,
+      planId: matchedPlan?.id || payload.planId || existingAcc.planId,
+      planName,
+      planPrice: verifiedAmount,
+      maxProfiles: Math.max(Number(existingAcc.maxProfiles) || 0, planMaxProfiles),
+      canDownloadShare: true,
+      subscriptionStart: now.toISOString().slice(0, 10),
+      subscriptionExpiry: expiry.toISOString().slice(0, 10),
+      payuTransactionId: verifiedTxn,
+      payuUtrNumber: order.bankRefNum || verifiedTxn,
+    };
+    realtimeState.accounts[existingIdx] = updatedAcc;
+    realtimeState.updatedAt = nowTs;
+    persistRealtimeState();
+
+    order.activatedAccountId = updatedAcc.id;
+    order.consumed = true;
+    persistPayuOrders();
+
+    broadcastSsePayload('payu_auto_activated', {
+      txnid,
+      accountId: updatedAcc.id,
+      role: updatedAcc.role,
+    });
+
+    const linkedProfile = realtimeState.profiles.find((p) => p.accountId === updatedAcc.id);
+    return { ok: true, account: updatedAcc, profile: linkedProfile };
+  }
+
+  const expiry = new Date(now);
+  expiry.setMonth(expiry.getMonth() + planDurationMonths);
+
+  const newAccountId = `acc_${nowTs}`;
+  const newAccount: Record<string, any> = {
+    id: newAccountId,
+    ownerUid: newAccountId,
+    role: targetRole,
+    name: String(payload.name || order.firstname || 'Divine Seeker').trim(),
+    email: cleanEmail || `user_${nowTs}@tathastu.app`,
+    mobile: cleanMobile || '8899444444',
+    passwordHash: String(payload.password || 'tathastu123'),
+    planId: matchedPlan?.id || payload.planId || (targetRole === 'healer' ? 'healer_paid_10' : 'client_paid_3m'),
+    planName,
+    planPrice: verifiedAmount,
+    isFoc: false,
+    maxProfiles: planMaxProfiles,
+    canDownloadShare: true,
+    subscriptionStart: now.toISOString().slice(0, 10),
+    subscriptionExpiry: expiry.toISOString().slice(0, 10),
+    healerBrandName: String(payload.healerBrandName || '').trim(),
+    healerLogoUrl: String(payload.healerLogoUrl || '/assets/aistudio/pic_2_93a8f2dc.png').trim(),
+    healerInstagram: String(payload.healerInstagram || '').trim(),
+    healerFacebook: String(payload.healerFacebook || '').trim(),
+    healerYoutube: String(payload.healerYoutube || '').trim(),
+    healerWebsite: String(payload.healerWebsite || '').trim(),
+    healerAddress: String(payload.healerAddress || '').trim(),
+    notificationPrefsJson: DEFAULT_SERVER_NOTIF_PREFS,
+    payuTransactionId: verifiedTxn,
+    payuUtrNumber: order.bankRefNum || verifiedTxn,
+    createdAtIso: now.toISOString(),
+  };
+
+  realtimeState.accounts.push(newAccount);
+
+  let createdProfile: Record<string, any> | undefined;
+  if (targetRole === 'client' && payload.dob) {
+    const newProfileId = `prof_${nowTs}`;
+    createdProfile = {
+      id: newProfileId,
+      accountId: newAccountId,
+      ownerUid: newAccountId,
+      ownerRole: 'client',
+      relationTag: 'self',
+      name: newAccount.name,
+      dob: String(payload.dob),
+      tob: String(payload.tob || '09:30'),
+      pob: String(payload.pob || 'New Delhi, India'),
+      lat: typeof payload.lat === 'number' ? payload.lat : 28.6139,
+      lng: typeof payload.lng === 'number' ? payload.lng : 77.209,
+      email: newAccount.email,
+      mobile: newAccount.mobile,
+      gender: payload.gender || 'male',
+      isLocked: true,
+      notificationsEnabled: true,
+      notificationChannelsJson: DEFAULT_SERVER_NOTIF_PREFS,
+      partnerName: '',
+      partnerDob: '',
+      partnerTob: '09:30',
+      partnerPob: '',
+      partnerLat: 28.6139,
+      partnerLng: 77.209,
+      createdAtIso: now.toISOString(),
+    };
+    realtimeState.profiles.push(createdProfile);
+  }
+
+  realtimeState.updatedAt = nowTs;
+  persistRealtimeState();
+
+  order.activatedAccountId = newAccountId;
+  order.activatedProfileId = createdProfile?.id;
+  order.consumed = true;
+  persistPayuOrders();
+
+  broadcastSsePayload('payu_auto_activated', {
+    txnid,
+    accountId: newAccountId,
+    profileId: createdProfile?.id || null,
+    role: targetRole,
+  });
+
+  return { ok: true, account: newAccount, profile: createdProfile };
 }
 
 app.post('/api/payu/initiate', (req, res) => {
@@ -814,6 +1278,23 @@ app.post('/api/payu/initiate', (req, res) => {
         error:
           'Official PayU Merchant Key & Salt are not configured yet. Master Admin must save PayU Merchant Key & Salt inside Master Admin Portal.',
       });
+    }
+
+    // Keep server realtimeState.payuConfig warm whenever valid credentials are supplied
+    if (
+      body.key &&
+      body.salt &&
+      (!realtimeState.payuConfig?.merchantKey || !realtimeState.payuConfig?.merchantSalt)
+    ) {
+      realtimeState.payuConfig = {
+        merchantKey: key,
+        merchantSalt: salt,
+        upiVpa: realtimeState.payuConfig?.upiVpa || '',
+        payeeName: realtimeState.payuConfig?.payeeName || 'TATHASTU NUMEROLOGY',
+        environment,
+        updatedAt: Date.now(),
+      };
+      persistRealtimeState();
     }
 
     const numericAmount = Number(body.amount || 0);
@@ -890,6 +1371,9 @@ app.post('/api/payu/initiate', (req, res) => {
       status: 'pending',
       hashVerified: false,
       consumed: false,
+      merchantKey: key,
+      merchantSalt: salt,
+      environment,
       createdAt: Date.now(),
     };
     persistPayuOrders();
@@ -985,6 +1469,7 @@ function renderPayuConfirmationRedirectHtml(params: {
   amount: string;
   mode: string;
   productinfo: string;
+  activatedAccountId?: string;
   reason?: string;
   redirectUrl: string;
 }): string {
@@ -996,11 +1481,21 @@ function renderPayuConfirmationRedirectHtml(params: {
     ? `₹${escapeHtmlSafe(params.amount)} Payment Successful!`
     : 'Payment Cancelled or Failed';
   const subText = params.isSuccess
-    ? 'Your payment has been cryptographically verified by PayU. Redirecting you back to TATHASTU NUMEROLOGY to automatically activate your subscription...'
+    ? 'Your payment has been cryptographically verified by PayU and your subscription has been activated in real time. Returning you to TATHASTU NUMEROLOGY...'
     : escapeHtmlSafe(
         params.reason ||
-          'Your payment could not be completed. No subscription or profile was created. Redirecting back to TATHASTU NUMEROLOGY...'
+          'Your payment could not be completed. No subscription or profile was created. Returning to TATHASTU NUMEROLOGY...'
       );
+
+  const syncMessage = JSON.stringify({
+    type: 'TATHASTU_PAYU_CALLBACK',
+    status: params.isSuccess ? 'success' : 'failure',
+    txnid: params.txnid,
+    mihpayid: params.mihpayid,
+    amount: params.amount,
+    activatedAccountId: params.activatedAccountId || '',
+    reason: params.reason || '',
+  });
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1018,7 +1513,7 @@ function renderPayuConfirmationRedirectHtml(params: {
     .meta { background:#020617; border:1px solid rgba(245,158,11,0.3); border-radius:16px; padding:14px; text-align:left; font-size:12px; color:#e2e8f0; margin-bottom:20px; }
     .meta div { display:flex; justify-content:space-between; gap:12px; padding:4px 0; }
     .meta span { color:#94a3b8; }
-    .btn { display:inline-block; padding:12px 22px; border-radius:12px; background:linear-gradient(90deg,#10b981,#f59e0b); color:#020617; font-weight:900; font-size:13px; text-decoration:none; }
+    .btn { display:inline-block; padding:13px 24px; border-radius:12px; background:linear-gradient(90deg,#10b981,#f59e0b); color:#020617; font-weight:900; font-size:13px; text-decoration:none; }
   </style>
 </head>
 <body>
@@ -1032,31 +1527,52 @@ function renderPayuConfirmationRedirectHtml(params: {
       ${params.mihpayid ? `<div><span>PayU Payment ID:</span><strong>${escapeHtmlSafe(params.mihpayid)}</strong></div>` : ''}
       ${params.mode ? `<div><span>Payment Mode:</span><strong>${escapeHtmlSafe(params.mode)}</strong></div>` : ''}
     </div>
-    <a class="btn" href="${escapeHtmlSafe(params.redirectUrl)}">Return to TATHASTU NUMEROLOGY &amp; Activate</a>
+    <a class="btn" href="${escapeHtmlSafe(params.redirectUrl)}">Open TATHASTU NUMEROLOGY Dashboard</a>
   </div>
   <script>
-    setTimeout(function () {
-      window.location.replace(${JSON.stringify(params.redirectUrl)});
-    }, 1800);
+    (function () {
+      var msg = ${syncMessage};
+      try {
+        if (typeof BroadcastChannel !== 'undefined') {
+          var bc = new BroadcastChannel('tathastu_payu_sync');
+          bc.postMessage(msg);
+          setTimeout(function () { bc.close(); }, 1000);
+        }
+      } catch (e) {}
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage(msg, '*');
+        }
+      } catch (e) {}
+      setTimeout(function () {
+        if (window.opener && !window.opener.closed) {
+          try { window.opener.focus(); } catch (e) {}
+          try { window.close(); } catch (e) {}
+        }
+        window.location.replace(${JSON.stringify(params.redirectUrl)});
+      }, 1200);
+    })();
   </script>
 </body>
 </html>`;
 }
 
-app.all('/api/payu/callback', (req, res) => {
+app.all('/api/payu/callback', async (req, res) => {
   try {
     const body = req.method === 'POST' ? req.body || {} : req.query || {};
-    const { salt } = resolveActivePayuCredentials();
     const status = String(body.status || 'failure').toLowerCase();
     const txnid = String(body.txnid || '').trim();
+    const existingOrder = txnid ? payuOrdersStore[txnid] : undefined;
+    const { key: resolvedKey, salt, environment } = resolveActivePayuCredentials(undefined, existingOrder);
+
     const mihpayid = String(body.mihpayid || '').trim();
     const bankRefNum = String(body.bank_ref_num || '').trim();
     const paymentMode = String(body.mode || 'ONLINE').trim();
-    const amount = String(body.amount || '0').trim();
-    const productinfo = String(body.productinfo || '').trim();
-    const firstname = String(body.firstname || '').trim();
-    const email = String(body.email || '').trim();
-    const key = String(body.key || '').trim();
+    const amount = String(body.amount || existingOrder?.amount || '0').trim();
+    const productinfo = String(body.productinfo || existingOrder?.productinfo || '').trim();
+    const firstname = String(body.firstname || existingOrder?.firstname || '').trim();
+    const email = String(body.email || existingOrder?.email || '').trim();
+    const key = String(body.key || resolvedKey || '').trim();
     const postedHash = String(body.hash || '').trim();
     const additionalCharges = String(body.additionalCharges || '').trim();
     const errorMessage = String(body.error_Message || body.field9 || '').trim();
@@ -1074,20 +1590,43 @@ app.all('/api/payu/callback', (req, res) => {
       hashVerified = expectedHash.toLowerCase() === postedHash.toLowerCase();
     }
 
+    // If PayU reported success but hash check was inconclusive (e.g. URL encoding or restart), double-verify via PayU's official verify_payment API
+    let verifiedMihpayid = mihpayid;
+    let verifiedBankRef = bankRefNum;
+    let verifiedMode = paymentMode;
+    if (status === 'success' && !hashVerified && key && salt && txnid) {
+      const apiCheck = await queryPayuVerifyPaymentApi({ key, salt, environment, txnid });
+      if (apiCheck.ok && apiCheck.gatewayState === 'success') {
+        hashVerified = true;
+        verifiedMihpayid = apiCheck.mihpayid || verifiedMihpayid;
+        verifiedBankRef = apiCheck.bankRefNum || verifiedBankRef;
+        verifiedMode = apiCheck.paymentMode || verifiedMode;
+      }
+    }
+
     const isSuccess = status === 'success' && hashVerified;
+    let activatedAccountId = '';
 
     if (txnid && payuOrdersStore[txnid]) {
       payuOrdersStore[txnid] = {
         ...payuOrdersStore[txnid],
         status: isSuccess ? 'success' : 'failure',
         hashVerified,
-        mihpayid: mihpayid || payuOrdersStore[txnid].mihpayid,
-        bankRefNum: bankRefNum || payuOrdersStore[txnid].bankRefNum,
-        paymentMode,
+        mihpayid: verifiedMihpayid || payuOrdersStore[txnid].mihpayid,
+        bankRefNum: verifiedBankRef || payuOrdersStore[txnid].bankRefNum,
+        paymentMode: verifiedMode,
         errorMessage: isSuccess ? undefined : errorMessage || 'Payment cancelled or hash mismatch',
         verifiedAt: Date.now(),
       };
       persistPayuOrders();
+
+      // Immediately activate Client/Healer account or plan upgrade on server + broadcast in real time via SSE!
+      if (isSuccess) {
+        const activation = activatePayuOrderOnServer(txnid);
+        if (activation.ok && activation.account?.id) {
+          activatedAccountId = String(activation.account.id);
+        }
+      }
     }
 
     const params = new URLSearchParams({
@@ -1095,8 +1634,9 @@ app.all('/api/payu/callback', (req, res) => {
       noIntro: '1',
       status: isSuccess ? 'success' : 'failure',
       txnid,
-      mihpayid,
+      mihpayid: verifiedMihpayid,
       amount,
+      ...(activatedAccountId ? { accountId: activatedAccountId } : {}),
       ...(isSuccess ? {} : { reason: errorMessage || 'Payment was cancelled or failed on PayU.' }),
     });
     const redirectUrl = `/?${params.toString()}`;
@@ -1106,10 +1646,11 @@ app.all('/api/payu/callback', (req, res) => {
       renderPayuConfirmationRedirectHtml({
         isSuccess,
         txnid,
-        mihpayid,
+        mihpayid: verifiedMihpayid,
         amount,
-        mode: paymentMode,
+        mode: verifiedMode,
         productinfo,
+        activatedAccountId,
         reason: errorMessage,
         redirectUrl,
       })
@@ -1119,13 +1660,221 @@ app.all('/api/payu/callback', (req, res) => {
   }
 });
 
+// Live server-to-server PayU verification endpoint (polled automatically while PayU tab is open & on return)
+app.all('/api/payu/verify-status/:txnid', async (req, res) => {
+  try {
+    const txnid = String(req.params.txnid || '').trim();
+    if (!txnid) {
+      return res.status(400).json({ ok: false, error: 'Missing txnid' });
+    }
+
+    const body = req.method === 'POST' ? req.body || {} : {};
+    let order = payuOrdersStore[txnid];
+
+    // If server restarted between initiate & poll, reconstruct order from client backup payload
+    if (!order && body.checkoutPayload && typeof body.checkoutPayload === 'object') {
+      const creds = resolveActivePayuCredentials(body);
+      order = {
+        txnid,
+        amount: Number(body.amount || body.checkoutPayload.expectedAmountInr || 0).toFixed(2),
+        productinfo: String(body.productinfo || body.checkoutPayload.planName || 'Tathastu Plan'),
+        firstname: String(body.firstname || body.checkoutPayload.name || 'Seeker'),
+        email: String(body.email || body.checkoutPayload.email || ''),
+        phone: String(body.phone || body.checkoutPayload.mobile || ''),
+        orderType:
+          body.orderType === 'plan_upgrade'
+            ? 'plan_upgrade'
+            : body.orderType === 'admin_registration'
+            ? 'admin_registration'
+            : 'new_registration',
+        checkoutPayload: body.checkoutPayload,
+        status: 'pending',
+        hashVerified: false,
+        consumed: false,
+        merchantKey: creds.key,
+        merchantSalt: creds.salt,
+        environment: creds.environment,
+        createdAt: Date.now(),
+      };
+      payuOrdersStore[txnid] = order;
+      persistPayuOrders();
+    }
+
+    if (!order) {
+      return res.status(404).json({ ok: false, error: 'PayU order record not found.' });
+    }
+
+    // Already confirmed by callback or previous poll
+    if (order.status === 'success' && order.hashVerified) {
+      const activation = activatePayuOrderOnServer(txnid);
+      return res.json({
+        ok: true,
+        status: 'success',
+        order: sanitizeOrderForClient(payuOrdersStore[txnid]),
+        activatedAccount: activation.account || null,
+        activatedProfile: activation.profile || null,
+      });
+    }
+
+    if (order.status === 'failure') {
+      return res.json({
+        ok: true,
+        status: 'failure',
+        errorMessage: order.errorMessage || 'Payment failed or was cancelled on PayU.',
+        order: sanitizeOrderForClient(order),
+      });
+    }
+
+    // Still pending -> query PayU's official Server-to-Server verify_payment API directly!
+    const { key, salt, environment } = resolveActivePayuCredentials(body, order);
+    if (!key || !salt) {
+      return res.json({
+        ok: true,
+        status: 'pending',
+        order: sanitizeOrderForClient(order),
+      });
+    }
+
+    const apiResult = await queryPayuVerifyPaymentApi({
+      key,
+      salt,
+      environment,
+      txnid,
+    });
+
+    if (apiResult.ok && apiResult.gatewayState === 'success') {
+      payuOrdersStore[txnid] = {
+        ...order,
+        status: 'success',
+        hashVerified: true,
+        mihpayid: apiResult.mihpayid || order.mihpayid,
+        bankRefNum: apiResult.bankRefNum || order.bankRefNum,
+        paymentMode: apiResult.paymentMode || order.paymentMode || 'ONLINE',
+        amount: apiResult.amount || order.amount,
+        verifiedAt: Date.now(),
+      };
+      persistPayuOrders();
+
+      const activation = activatePayuOrderOnServer(txnid);
+      return res.json({
+        ok: true,
+        status: 'success',
+        verifiedVia: 'payu_verify_payment_api',
+        order: sanitizeOrderForClient(payuOrdersStore[txnid]),
+        activatedAccount: activation.account || null,
+        activatedProfile: activation.profile || null,
+      });
+    }
+
+    if (apiResult.ok && apiResult.gatewayState === 'failure') {
+      payuOrdersStore[txnid] = {
+        ...order,
+        status: 'failure',
+        mihpayid: apiResult.mihpayid || order.mihpayid,
+        paymentMode: apiResult.paymentMode || order.paymentMode,
+        errorMessage: apiResult.errorMessage || 'Payment failed or cancelled on Official PayU.',
+        verifiedAt: Date.now(),
+      };
+      persistPayuOrders();
+      return res.json({
+        ok: true,
+        status: 'failure',
+        errorMessage: payuOrdersStore[txnid].errorMessage,
+        order: sanitizeOrderForClient(payuOrdersStore[txnid]),
+      });
+    }
+
+    return res.json({
+      ok: true,
+      status: 'pending',
+      rawStatus: apiResult.rawStatus || 'waiting',
+      order: sanitizeOrderForClient(order),
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'Error verifying PayU transaction status.',
+    });
+  }
+});
+
+app.get('/api/payu/orders', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const orders = Object.values(payuOrdersStore)
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .slice(0, 30)
+    .map(sanitizeOrderForClient);
+  return res.json({ ok: true, orders });
+});
+
+app.post('/api/payu/admin-verify-txnid', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const txnid = String(body.txnid || '').trim();
+    if (!txnid) {
+      return res.status(400).json({ ok: false, error: 'Please enter a valid PayU Order ID (txnid).' });
+    }
+    const existingOrder = payuOrdersStore[txnid];
+    const { key, salt, environment } = resolveActivePayuCredentials(body, existingOrder);
+    if (!key || !salt) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Official PayU Merchant Key & Salt are required to verify transactions.',
+      });
+    }
+
+    const apiResult = await queryPayuVerifyPaymentApi({ key, salt, environment, txnid });
+    if (!apiResult.ok) {
+      return res.status(502).json({
+        ok: false,
+        error: apiResult.errorMessage || 'Unable to verify with PayU right now.',
+      });
+    }
+
+    if (apiResult.gatewayState === 'success' && existingOrder) {
+      payuOrdersStore[txnid] = {
+        ...existingOrder,
+        status: 'success',
+        hashVerified: true,
+        mihpayid: apiResult.mihpayid || existingOrder.mihpayid,
+        bankRefNum: apiResult.bankRefNum || existingOrder.bankRefNum,
+        paymentMode: apiResult.paymentMode || existingOrder.paymentMode || 'ONLINE',
+        amount: apiResult.amount || existingOrder.amount,
+        verifiedAt: Date.now(),
+      };
+      persistPayuOrders();
+      const activation = activatePayuOrderOnServer(txnid);
+      return res.json({
+        ok: true,
+        gatewayState: 'success',
+        transaction: apiResult,
+        order: sanitizeOrderForClient(payuOrdersStore[txnid]),
+        activatedAccount: activation.account || null,
+        activatedProfile: activation.profile || null,
+      });
+    }
+
+    return res.json({
+      ok: true,
+      gatewayState: apiResult.gatewayState,
+      transaction: apiResult,
+      order: existingOrder ? sanitizeOrderForClient(existingOrder) : null,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'Admin PayU verification failed.',
+    });
+  }
+});
+
 app.get('/api/payu/order/:txnid', (req, res) => {
   const txnid = String(req.params.txnid || '').trim();
   const order = payuOrdersStore[txnid];
   if (!order) {
     return res.status(404).json({ ok: false, error: 'PayU order record not found.' });
   }
-  return res.json({ ok: true, order });
+  return res.json({ ok: true, order: sanitizeOrderForClient(order) });
 });
 
 app.post('/api/payu/order/:txnid/consume', (req, res) => {
@@ -1135,6 +1884,127 @@ app.post('/api/payu/order/:txnid/consume', (req, res) => {
     persistPayuOrders();
   }
   return res.json({ ok: true });
+});
+
+// ============================================================================
+// INTRO VOICE AUDIO: FEMALE VOICE "TATHASTU PRANAM" (CACHED WAV VIA GEMINI TTS)
+// Generates once via gemini-3.8-flash-lite-tts (female voice Kore) and caches
+// to public/assets/audio/tathastu_pranam_female.wav + memory for zero-latency
+// playback on Web, PWA, and Native Android builds.
+// ============================================================================
+const INTRO_VOICE_PUBLIC_PATH = path.resolve(
+  __dirname,
+  'public',
+  'assets',
+  'audio',
+  'tathastu_pranam_female.wav'
+);
+const INTRO_VOICE_DIST_PATH = path.resolve(
+  __dirname,
+  'dist',
+  'assets',
+  'audio',
+  'tathastu_pranam_female.wav'
+);
+
+let cachedIntroVoiceWav: Buffer | null = null;
+let pendingIntroVoicePromise: Promise<Buffer | null> | null = null;
+
+function readCachedIntroVoiceFromDisk(): Buffer | null {
+  for (const candidatePath of [INTRO_VOICE_PUBLIC_PATH, INTRO_VOICE_DIST_PATH]) {
+    try {
+      if (fs.existsSync(candidatePath)) {
+        const buf = fs.readFileSync(candidatePath);
+        if (buf.length > 1024 && buf.subarray(0, 4).toString('ascii') === 'RIFF') {
+          return buf;
+        }
+      }
+    } catch {
+      // Ignore read errors and fall through
+    }
+  }
+  return null;
+}
+
+async function getOrGenerateTathastuPranamVoice(): Promise<Buffer | null> {
+  if (cachedIntroVoiceWav) return cachedIntroVoiceWav;
+
+  const fromDisk = readCachedIntroVoiceFromDisk();
+  if (fromDisk) {
+    cachedIntroVoiceWav = fromDisk;
+    return fromDisk;
+  }
+
+  if (!ai) return null;
+
+  if (!pendingIntroVoicePromise) {
+    pendingIntroVoicePromise = (async () => {
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.8-flash-lite-tts',
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  text: 'तथास्तु... प्रणाम।',
+                  speechMetadata: {
+                    style:
+                      'Warm, graceful, serene young Indian female spiritual voice greeting gently in clear Hindi and Sanskrit with devotional warmth',
+                  },
+                } as any,
+              ],
+            },
+          ],
+          config: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: 'Kore' },
+              },
+            },
+          },
+        });
+
+        const base64Audio =
+          response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (!base64Audio) return null;
+
+        const wavBuffer = Buffer.from(base64Audio, 'base64');
+        if (wavBuffer.length < 1024) return null;
+
+        cachedIntroVoiceWav = wavBuffer;
+        try {
+          fs.mkdirSync(path.dirname(INTRO_VOICE_PUBLIC_PATH), { recursive: true });
+          fs.writeFileSync(INTRO_VOICE_PUBLIC_PATH, wavBuffer);
+        } catch {
+          // Ignore disk cache write errors in read-only environments
+        }
+        return wavBuffer;
+      } catch (err) {
+        console.warn('Tathastu Pranam female TTS generation fallback triggered:', err);
+        return null;
+      } finally {
+        pendingIntroVoicePromise = null;
+      }
+    })();
+  }
+
+  return pendingIntroVoicePromise;
+}
+
+app.get('/api/audio/tathastu-pranam.wav', async (_req, res) => {
+  const wavBuffer = await getOrGenerateTathastuPranamVoice();
+  if (!wavBuffer) {
+    return res.status(503).json({
+      ok: false,
+      error: 'Intro voice audio not available; client speech fallback active.',
+    });
+  }
+  res.setHeader('Content-Type', 'audio/wav');
+  res.setHeader('Content-Length', String(wavBuffer.length));
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  return res.status(200).send(wavBuffer);
 });
 
 async function start() {

@@ -33,12 +33,20 @@ interface OrbitingGraha {
 
 export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
   onComplete,
-  durationMs = 4200,
+  durationMs = 4800,
 }) => {
   const { isMobile } = useResponsiveViewport();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const voiceObjectUrlRef = useRef<string | null>(null);
+  const voiceReadyRef = useRef<boolean>(false);
+  const voiceFailedRef = useRef<boolean>(false);
+  const voiceTimerRef = useRef<number | null>(null);
   const musicStartedRef = useRef<boolean>(false);
+  const voiceTriggeredRef = useRef<boolean>(false);
+  const voicePendingUnlockRef = useRef<boolean>(false);
+  const speechSpokenRef = useRef<boolean>(false);
 
   const [isFadingOut, setIsFadingOut] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -49,9 +57,98 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  const effectiveDuration = prefersReducedMotion ? 1800 : durationMs;
+  const effectiveDuration = prefersReducedMotion ? 2200 : durationMs;
+
+  const speakFemalePranamFallback = (fromUserGesture = false) => {
+    if (completedRef.current || speechSpokenRef.current) return;
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance('तथास्तु, प्रणाम');
+      utterance.lang = 'hi-IN';
+      utterance.rate = 0.85;
+      utterance.pitch = 1.18;
+      utterance.volume = 1.0;
+
+      const pickFemaleVoice = () => {
+        const voices = window.speechSynthesis.getVoices();
+        if (!voices || voices.length === 0) return null;
+        const malePattern =
+          /\b(male|hemant|ravi|madhur|prabhat|david|mark|daniel|alex|fred|george|richard|james|amit|arjun|vikram|rishi|aaron|albert)\b/i;
+        const femaleIndianPattern =
+          /(swara|heera|kalpana|lekha|aditi|veena|neerja|ananya|kavya|priya|google हिन्दी|hindi.*female|hi-in)/i;
+        const femaleGeneralPattern =
+          /(female|woman|samantha|zira|victoria|karen|moira|tessa|fiona|aria|jenny|sonia|sara|susan|helena|tessa)/i;
+
+        return (
+          voices.find(
+            (v) => femaleIndianPattern.test(`${v.name} ${v.lang}`) && !malePattern.test(v.name)
+          ) ||
+          voices.find((v) => /^hi(-|_|$)/i.test(v.lang) && !malePattern.test(v.name)) ||
+          voices.find((v) => /en-IN/i.test(v.lang) && !malePattern.test(v.name)) ||
+          voices.find((v) => femaleGeneralPattern.test(v.name) && !malePattern.test(v.name)) ||
+          null
+        );
+      };
+
+      const selected = pickFemaleVoice();
+      if (selected) {
+        utterance.voice = selected;
+        utterance.lang = selected.lang || 'hi-IN';
+        // If only an English female voice is available, use clear phonetic spelling
+        if (!/^hi/i.test(utterance.lang)) {
+          utterance.text = 'Tathaastu, Pranaam';
+        }
+      }
+
+      utterance.onstart = () => {
+        speechSpokenRef.current = true;
+        voicePendingUnlockRef.current = false;
+      };
+      utterance.onerror = (evt) => {
+        const errCode = (evt as SpeechSynthesisErrorEvent)?.error;
+        if ((errCode === 'not-allowed' || errCode === 'interrupted') && !fromUserGesture) {
+          speechSpokenRef.current = false;
+          voicePendingUnlockRef.current = true;
+        }
+      };
+
+      speechSpokenRef.current = true;
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      // Speech synthesis unavailable
+    }
+  };
 
   const stopAmbientSound = () => {
+    if (voiceTimerRef.current !== null) {
+      window.clearTimeout(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    if (voiceAudioRef.current) {
+      try {
+        voiceAudioRef.current.pause();
+        voiceAudioRef.current.currentTime = 0;
+      } catch {
+        // ignore
+      }
+      voiceAudioRef.current = null;
+    }
+    if (voiceObjectUrlRef.current) {
+      try {
+        URL.revokeObjectURL(voiceObjectUrlRef.current);
+      } catch {
+        // ignore
+      }
+      voiceObjectUrlRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // ignore
+      }
+    }
     if (audioCtxRef.current) {
       try {
         audioCtxRef.current.close().catch(() => {});
@@ -71,6 +168,52 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
     window.setTimeout(() => {
       onComplete();
     }, 460);
+  };
+
+  const playFemaleTathastuPranamVoice = (fromUserGesture = false) => {
+    if (completedRef.current) return;
+    if (voiceTriggeredRef.current && !voicePendingUnlockRef.current) return;
+
+    const audio = voiceAudioRef.current;
+    if (audio && voiceReadyRef.current) {
+      voiceTriggeredRef.current = true;
+      audio.volume = 1.0;
+      try {
+        if (audio.ended) return;
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.then === 'function') {
+          playPromise
+            .then(() => {
+              voicePendingUnlockRef.current = false;
+            })
+            .catch((err) => {
+              // Browser autoplay policy blocked before interaction -> wait for gesture unlock
+              if (err?.name === 'NotAllowedError' && !fromUserGesture) {
+                voicePendingUnlockRef.current = true;
+              } else if (!completedRef.current) {
+                voicePendingUnlockRef.current = false;
+                speakFemalePranamFallback(fromUserGesture);
+              }
+            });
+        } else {
+          voicePendingUnlockRef.current = false;
+        }
+      } catch {
+        if (!completedRef.current) {
+          speakFemalePranamFallback(fromUserGesture);
+        }
+      }
+      return;
+    }
+
+    if (voiceFailedRef.current || fromUserGesture) {
+      voiceTriggeredRef.current = true;
+      voicePendingUnlockRef.current = false;
+      speakFemalePranamFallback(fromUserGesture);
+    } else {
+      // Studio audio still fetching; mark triggered so fetch completion plays immediately
+      voiceTriggeredRef.current = true;
+    }
   };
 
   // Start Sacred Intro Music immediately with NO MUTE (Om Tanpura Drone + Celestial Temple Bell Chimes)
@@ -100,10 +243,13 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
       const now = ctx.currentTime;
       const totalSec = effectiveDuration / 1000;
 
+      // Softly duck the Om music while the female "Tathastu Pranam" voice greets (~0.45s to ~3.1s)
       const masterGain = ctx.createGain();
       masterGain.gain.setValueAtTime(0.001, now);
-      masterGain.gain.exponentialRampToValueAtTime(0.24, now + 0.45);
-      masterGain.gain.setValueAtTime(0.24, now + Math.max(0.6, totalSec - 0.55));
+      masterGain.gain.exponentialRampToValueAtTime(0.22, now + 0.35);
+      masterGain.gain.linearRampToValueAtTime(0.11, now + 0.65);
+      masterGain.gain.setValueAtTime(0.11, now + Math.min(2.85, Math.max(0.8, totalSec - 1.2)));
+      masterGain.gain.linearRampToValueAtTime(0.2, now + Math.min(3.5, Math.max(1.0, totalSec - 0.65)));
       masterGain.gain.exponentialRampToValueAtTime(0.001, now + totalSec);
       masterGain.connect(ctx.destination);
 
@@ -129,10 +275,10 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
 
       // 2. Ascending Divine Temple Chime Melody (432 Hz -> 540 Hz -> 648 Hz -> 864 Hz)
       const chimeNotes = [
-        { freq: 432.0, offset: 0.15, dur: 1.5, amp: 0.22 },
-        { freq: 540.0, offset: 0.85, dur: 1.5, amp: 0.2 },
-        { freq: 648.0, offset: 1.55, dur: 1.6, amp: 0.22 },
-        { freq: 864.0, offset: 2.25, dur: 1.8, amp: 0.24 },
+        { freq: 432.0, offset: 0.12, dur: 1.5, amp: 0.22 },
+        { freq: 540.0, offset: 0.95, dur: 1.5, amp: 0.16 },
+        { freq: 648.0, offset: 2.15, dur: 1.6, amp: 0.18 },
+        { freq: 864.0, offset: 3.1, dur: 1.7, amp: 0.24 },
       ];
 
       chimeNotes.forEach((note) => {
@@ -155,15 +301,81 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
   };
 
   useEffect(() => {
+    let cancelled = false;
+
+    // Fetch studio female voice WAV ("Tathastu Pranam") with strict audio content-type check
+    // Falls back gracefully to bundled static WAV or female Hindi Web Speech synthesis
+    const loadStudioFemaleVoice = async () => {
+      const candidateUrls = [
+        '/api/audio/tathastu-pranam.wav',
+        '/assets/audio/tathastu_pranam_female.wav',
+      ];
+      for (const url of candidateUrls) {
+        if (cancelled || completedRef.current) return;
+        try {
+          const res = await fetch(url);
+          const contentType = res.headers.get('content-type') || '';
+          if (res.ok && contentType.toLowerCase().includes('audio')) {
+            const blob = await res.blob();
+            if (cancelled || completedRef.current) return;
+            if (blob.size > 1024) {
+              const objUrl = URL.createObjectURL(blob);
+              voiceObjectUrlRef.current = objUrl;
+              const audio = new Audio(objUrl);
+              audio.preload = 'auto';
+              audio.volume = 1.0;
+              voiceAudioRef.current = audio;
+              voiceReadyRef.current = true;
+              // If timer already fired while fetching, play immediately
+              if (voiceTriggeredRef.current && !speechSpokenRef.current) {
+                voiceTriggeredRef.current = false;
+                playFemaleTathastuPranamVoice(false);
+              }
+              return;
+            }
+          }
+        } catch {
+          // Try next source
+        }
+      }
+      if (cancelled || completedRef.current) return;
+      voiceFailedRef.current = true;
+      if (voiceTriggeredRef.current && !speechSpokenRef.current) {
+        speakFemalePranamFallback(false);
+      }
+    };
+
+    void loadStudioFemaleVoice();
+
+    // Warm up speechSynthesis voices list in case fallback is needed
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.getVoices();
+        window.speechSynthesis.onvoiceschanged = () => {
+          window.speechSynthesis.getVoices();
+        };
+      } catch {
+        // ignore
+      }
+    }
+
     // Auto-start unmuted sacred intro music immediately when the app opens
     startSacredIntroMusic();
 
-    // Ensure strict desktop browsers resume audio on the earliest touch/pointer/key interaction
+    // Speak "Tathastu Pranam" in female voice gracefully over the opening Om chord
+    voiceTimerRef.current = window.setTimeout(() => {
+      playFemaleTathastuPranamVoice(false);
+    }, 420);
+
+    // Ensure strict desktop browsers resume music + female voice on earliest touch/pointer/key interaction
     const unlockAudio = () => {
       if (!audioCtxRef.current) {
         startSacredIntroMusic();
       } else if (audioCtxRef.current.state === 'suspended') {
         audioCtxRef.current.resume().catch(() => {});
+      }
+      if (!voiceTriggeredRef.current || voicePendingUnlockRef.current) {
+        playFemaleTathastuPranamVoice(true);
       }
     };
     window.addEventListener('pointerdown', unlockAudio, { passive: true });
@@ -182,6 +394,7 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
     }, 32);
 
     return () => {
+      cancelled = true;
       window.removeEventListener('pointerdown', unlockAudio);
       window.removeEventListener('touchstart', unlockAudio);
       window.removeEventListener('keydown', unlockAudio);
@@ -424,11 +637,11 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
       {/* 60fps Animated Spiritual Video Canvas */}
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full block" />
 
-      {/* Top Controls Bar: Sacred Music Status (No Mute) + Skip Intro */}
+      {/* Top Controls Bar: Sacred Music & Female Voice Status (No Mute) + Skip Intro */}
       <div className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-4 sm:pt-6 flex items-center justify-between">
         <div className="min-h-[40px] px-3.5 py-2 rounded-xl bg-slate-900/80 border border-emerald-400/45 text-emerald-200 text-xs font-bold flex items-center gap-2 backdrop-blur-md">
           <Volume2 className="w-4 h-4 text-emerald-400 animate-pulse" />
-          <span>Sacred Om Music ON</span>
+          <span>Sacred Music &amp; Voice • Tathastu Pranam</span>
         </div>
 
         <button
@@ -458,8 +671,12 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
           </div>
         </div>
 
-        <div className="text-amber-300 font-serif text-lg sm:text-xl font-bold tracking-[0.25em] mb-1.5 tathastu-intro-fade-up">
+        <div className="text-amber-300 font-serif text-lg sm:text-xl font-bold tracking-[0.25em] mb-1 tathastu-intro-fade-up">
           ॐ श्री गणेशाय नमः
+        </div>
+
+        <div className="text-emerald-300 font-serif text-sm sm:text-base font-bold tracking-[0.3em] uppercase mb-2 tathastu-intro-fade-up">
+          ॥ तथास्तु प्रणाम — TATHASTU PRANAM ॥
         </div>
 
         <h1 className="font-serif text-2xl sm:text-4xl md:text-5xl font-black tracking-wider bg-gradient-to-r from-amber-100 via-amber-300 to-yellow-500 bg-clip-text text-transparent drop-shadow-[0_4px_24px_rgba(245,158,11,0.45)] tathastu-intro-fade-up">

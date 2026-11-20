@@ -100,6 +100,14 @@
           "type": "string",
           "maxLength": 1000
         },
+        "payuTransactionId": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "payuUtrNumber": {
+          "type": "string",
+          "maxLength": 120
+        },
         "createdAtIso": {
           "type": "string",
           "maxLength": 40

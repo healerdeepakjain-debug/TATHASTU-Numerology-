@@ -89,6 +89,8 @@ service cloud.firestore {
         'healerWebsite',
         'healerAddress',
         'notificationPrefsJson',
+        'payuTransactionId',
+        'payuUtrNumber',
         'createdAtIso'
       ]) &&
       isValidId(data.id) &&
@@ -114,7 +116,9 @@ service cloud.firestore {
       (!('healerYoutube' in data) || (data.healerYoutube is string && data.healerYoutube.size() <= 140)) &&
       (!('healerWebsite' in data) || (data.healerWebsite is string && data.healerWebsite.size() <= 240)) &&
       (!('healerAddress' in data) || (data.healerAddress is string && data.healerAddress.size() <= 300)) &&
-      (!('notificationPrefsJson' in data) || (data.notificationPrefsJson is string && data.notificationPrefsJson.size() <= 1000));
+      (!('notificationPrefsJson' in data) || (data.notificationPrefsJson is string && data.notificationPrefsJson.size() <= 1000)) &&
+      (!('payuTransactionId' in data) || (data.payuTransactionId is string && data.payuTransactionId.size() <= 120)) &&
+      (!('payuUtrNumber' in data) || (data.payuUtrNumber is string && data.payuUtrNumber.size() <= 120));
     }
 
     // Validation Blueprint: AstroProfileRecord
@@ -425,7 +429,9 @@ service cloud.firestore {
                   'maxProfiles',
                   'canDownloadShare',
                   'subscriptionStart',
-                  'subscriptionExpiry'
+                  'subscriptionExpiry',
+                  'payuTransactionId',
+                  'payuUtrNumber'
                 ])
               )
             )
