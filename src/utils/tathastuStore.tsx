@@ -9,13 +9,13 @@ import {
   query,
   where,
 } from 'firebase/firestore';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { onAuthStateChanged, signOut as firebaseSignOut, User as FirebaseUser } from 'firebase/auth';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { sendBrowserNotification } from './notifications';
 import { ParivarMemberRecord } from './parivarMilan';
 import healerPortraitImg from '../assets/images/healer_ddeepak_jain_portrait_opt.jpg';
 
-export const TATHASTU_LOGO_PATH = '/assets/aistudio/tathastu_logo_small_6cf3db26.jpg';
+export const TATHASTU_LOGO_PATH = '/assets/aistudio/pic_2_93a8f2dc.png';
 export const HEALER_DEEPAK_JAIN_IMAGE_PATH = healerPortraitImg;
 export const TATHASTU_ADMIN_PHONE = '8899444444';
 export const TATHASTU_ADMIN_EMAIL = 'healer.ddeepak.jain@gmail.com';
@@ -253,7 +253,18 @@ export interface AccountRecord {
   healerWebsite?: string;
   healerAddress?: string;
   notificationPrefsJson?: string;
+  payuTransactionId?: string;
+  payuUtrNumber?: string;
   createdAtIso: string;
+}
+
+export interface PayUMerchantSyncConfig {
+  merchantKey: string;
+  merchantSalt: string;
+  upiVpa: string;
+  payeeName: string;
+  environment: 'production' | 'test';
+  updatedAt?: number;
 }
 
 export interface AstroProfileRecord {
@@ -403,6 +414,46 @@ const FEEDBACKS_STORAGE_KEY = 'tathastu_feedbacks_v3';
 const SESSION_ACCOUNT_ID_KEY = 'tathastu_active_account_id_v3';
 const SESSION_PROFILE_ID_KEY = 'tathastu_active_profile_id_v3';
 const LAST_SEEN_BROADCAST_ID_KEY = 'tathastu_last_seen_bcast_id_v1';
+const PAYU_CONFIG_STORAGE_KEY = 'tathastu_payu_merchant_config_v1';
+
+export const DEFAULT_PAYU_MERCHANT_CONFIG: PayUMerchantSyncConfig = {
+  merchantKey: '',
+  merchantSalt: '',
+  upiVpa: '',
+  payeeName: 'TATHASTU NUMEROLOGY',
+  environment: 'production',
+  updatedAt: 0,
+};
+
+export function loadLocalPayuConfig(): PayUMerchantSyncConfig {
+  try {
+    const raw = localStorage.getItem(PAYU_CONFIG_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        const cleanVpa =
+          parsed.upiVpa === 'tathastulight@payu' ? '' : String(parsed.upiVpa || '').trim();
+        const cleanKey =
+          parsed.merchantKey === 'gtKFFx' ? '' : String(parsed.merchantKey || '').trim();
+        const cleanSalt =
+          parsed.merchantSalt === '4R38IvwiV57FwVpsgOvTXBdLE4tHUXFW'
+            ? ''
+            : String(parsed.merchantSalt || '').trim();
+        return {
+          merchantKey: cleanKey,
+          merchantSalt: cleanSalt,
+          upiVpa: cleanVpa,
+          payeeName: String(parsed.payeeName || 'TATHASTU NUMEROLOGY').trim(),
+          environment: parsed.environment === 'test' ? 'test' : 'production',
+          updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0,
+        };
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return { ...DEFAULT_PAYU_MERCHANT_CONFIG };
+}
 
 const INITIAL_ACCOUNTS: AccountRecord[] = [
   {
@@ -826,6 +877,7 @@ async function pushServerRealtimeSync(payload: {
   coupons?: DiscountCouponRecord[];
   broadcasts?: BroadcastNotificationRecord[];
   feedbacks?: FeedbackSuggestionRecord[];
+  payuConfig?: PayUMerchantSyncConfig;
   deleteIds?: string[];
   meta?: Record<string, any>;
 }): Promise<void> {
@@ -848,6 +900,8 @@ interface TathastuContextValue {
   coupons: DiscountCouponRecord[];
   broadcasts: BroadcastNotificationRecord[];
   feedbacks: FeedbackSuggestionRecord[];
+  payuConfig: PayUMerchantSyncConfig;
+  adminUpdatePayuConfig: (cfg: PayUMerchantSyncConfig) => void;
   latestLiveBroadcastAlert: BroadcastNotificationRecord | null;
   dismissLiveBroadcastAlert: () => void;
   currentAccount: AccountRecord | null;
@@ -864,8 +918,16 @@ interface TathastuContextValue {
   loginWithFirebaseGoogleUser: (
     user: FirebaseUser,
     preferredRole?: UserRole
-  ) => Promise<{ ok: boolean; role?: UserRole; error?: string }>;
+  ) => Promise<{
+    ok: boolean;
+    role?: UserRole;
+    error?: string;
+    requiresRegistration?: boolean;
+    googleEmail?: string;
+    googleName?: string;
+  }>;
   quickSwitchRoleAccount: (role: UserRole) => void;
+  restoreAccountSessionById: (accountId: string) => void;
   logout: () => void;
   registerAccountAndPrimaryProfile: (params: {
     role: 'client' | 'healer';
@@ -883,6 +945,12 @@ interface TathastuContextValue {
     isFoc: boolean;
     couponCode?: string;
     keepCurrentSession?: boolean;
+    paymentVerification?: {
+      transactionId: string;
+      utrNumber?: string;
+      paymentMethod: string;
+      verifiedAmountInr: number;
+    };
     healerBrandName?: string;
     healerLogoUrl?: string;
     healerInstagram?: string;
@@ -901,6 +969,12 @@ interface TathastuContextValue {
     mobile: string,
     newPassword: string
   ) => Promise<{ ok: boolean; error?: string; role?: UserRole }>;
+  changePasswordByCredentials: (params: {
+    role?: UserRole;
+    identifier: string;
+    currentPassword: string;
+    newPassword: string;
+  }) => Promise<{ ok: boolean; error?: string; role?: UserRole }>;
   selectActiveProfile: (profileId: string) => void;
   clearActiveProfile: () => void;
   addNewProfileUnderAccount: (params: {
@@ -972,17 +1046,26 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [coupons, setCoupons] = useState<DiscountCouponRecord[]>(loadLocalCoupons);
   const [broadcasts, setBroadcasts] = useState<BroadcastNotificationRecord[]>(loadLocalBroadcasts);
   const [feedbacks, setFeedbacks] = useState<FeedbackSuggestionRecord[]>(loadLocalFeedbacks);
+  const [payuConfig, setPayuConfig] = useState<PayUMerchantSyncConfig>(loadLocalPayuConfig);
   const [latestLiveBroadcastAlert, setLatestLiveBroadcastAlert] =
     useState<BroadcastNotificationRecord | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
 
-  // Start on the Spiritual Landing + 3 Login Portal page by default until logged in
+  // Start on the Login + Introduction page by default on every fresh app open, QR link, or Android launch.
+  // Keep login active within the current tab session via sessionStorage (clear legacy localStorage auto-login).
   const [currentAccountId, setCurrentAccountId] = useState<string | null>(() => {
-    return localStorage.getItem(SESSION_ACCOUNT_ID_KEY) || null;
+    try {
+      localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
+      localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+      return sessionStorage.getItem(SESSION_ACCOUNT_ID_KEY) || null;
+    } catch {
+      return null;
+    }
   });
 
   // Start with no active profile open after login; user selects from Saved Profiles or creates New Profile
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [publicQrSharedProfileId, setPublicQrSharedProfileId] = useState<string | null>(null);
 
   const [restrictionModal, setRestrictionModal] = useState<AdminRestrictionModalState>({
     isOpen: false,
@@ -1146,6 +1229,31 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           return merged;
         });
       }
+
+      if (remoteState.payuConfig && typeof remoteState.payuConfig === 'object') {
+        setPayuConfig((prev) => {
+          const incoming = remoteState.payuConfig as PayUMerchantSyncConfig;
+          const incomingTs = typeof incoming.updatedAt === 'number' ? incoming.updatedAt : 0;
+          const prevTs = typeof prev.updatedAt === 'number' ? prev.updatedAt : 0;
+          if (incomingTs >= prevTs || (!prev.upiVpa && incoming.upiVpa)) {
+            const nextCfg: PayUMerchantSyncConfig = {
+              merchantKey: String(incoming.merchantKey || '').trim(),
+              merchantSalt: String(incoming.merchantSalt || '').trim(),
+              upiVpa: String(incoming.upiVpa || '').trim(),
+              payeeName: String(incoming.payeeName || 'TATHASTU NUMEROLOGY').trim(),
+              environment: incoming.environment === 'test' ? 'test' : 'production',
+              updatedAt: incomingTs || Date.now(),
+            };
+            try {
+              localStorage.setItem(PAYU_CONFIG_STORAGE_KEY, JSON.stringify(nextCfg));
+            } catch {
+              // ignore
+            }
+            return nextCfg;
+          }
+          return prev;
+        });
+      }
     },
     []
   );
@@ -1163,6 +1271,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setPlans(loadLocalPlans());
       setCoupons(loadLocalCoupons());
       setFeedbacks(loadLocalFeedbacks());
+      setPayuConfig(loadLocalPayuConfig());
       const latestBroadcasts = loadLocalBroadcasts();
       setBroadcasts((prev) => {
         if (latestBroadcasts.length > 0 && latestBroadcasts[0]?.id !== prev[0]?.id) {
@@ -1183,6 +1292,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     window.addEventListener('storage', handleStorageOrBroadcast);
 
     // 1. Seed server with current device's initial data so server has complete baseline
+    const localPayu = loadLocalPayuConfig();
     pushServerRealtimeSync({
       action: 'boot_seed',
       accounts: loadLocalAccounts(),
@@ -1191,6 +1301,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       coupons: loadLocalCoupons(),
       broadcasts: loadLocalBroadcasts(),
       feedbacks: loadLocalFeedbacks(),
+      ...(localPayu.upiVpa || localPayu.merchantKey ? { payuConfig: localPayu } : {}),
     });
 
     // 2. Connect to real-time Server-Sent Events (/api/realtime/stream)
@@ -1296,11 +1407,17 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const urlLat = Number(params.get('lat'));
       const urlLng = Number(params.get('lng'));
 
-      // Ensure external mobile browser has an active viewer session so it never hits the login wall
+      setPublicQrSharedProfileId(fallbackId);
+
+      // Ensure external mobile browser scanning a specific report QR has an active viewer session (tab-scoped only)
       setCurrentAccountId((prevAccId) => {
         if (prevAccId) return prevAccId;
         const guestAccId = 'client_deepak_jain';
-        localStorage.setItem(SESSION_ACCOUNT_ID_KEY, guestAccId);
+        try {
+          sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, guestAccId);
+        } catch {
+          // ignore
+        }
         return guestAccId;
       });
 
@@ -1551,7 +1668,10 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const currentAccount = accounts.find((a) => a.id === currentAccountId) || null;
 
-  // Ensure activeProfile belongs to currentAccount (or any profile if Admin, or fallback if Healer has 0 profiles yet)
+  // Strict Role-Based Profile Isolation:
+  // - Admin: full visibility of all profiles across Admin, Client Portal, and Healer Portal
+  // - Client: ONLY profiles created under their own accountId
+  // - Healer: ONLY client profiles created under their own accountId
   const visibleProfiles = React.useMemo(() => {
     if (!currentAccount) return [];
     if (currentAccount.role === 'admin') return profiles;
@@ -1560,8 +1680,9 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const activeProfile = activeProfileId
     ? visibleProfiles.find((p) => p.id === activeProfileId) ||
-      profiles.find((p) => p.id === activeProfileId) ||
-      null
+      (publicQrSharedProfileId && activeProfileId === publicQrSharedProfileId
+        ? profiles.find((p) => p.id === activeProfileId) || null
+        : null)
     : null;
 
   const closeRestrictionModal = () => {
@@ -1662,10 +1783,17 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     setCurrentAccountId(matched.id);
-    localStorage.setItem(SESSION_ACCOUNT_ID_KEY, matched.id);
+    try {
+      sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, matched.id);
+      localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
+      localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+      sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
+    } catch {
+      // ignore
+    }
     // Do NOT auto-open an active profile on login; show Saved Profiles / New Profile / Portal first
     setActiveProfileId(null);
-    localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+    setPublicQrSharedProfileId(null);
 
     return { ok: true, role: matched.role };
   };
@@ -1673,7 +1801,14 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const loginWithFirebaseGoogleUser = async (
     user: FirebaseUser,
     preferredRole: UserRole = 'client'
-  ): Promise<{ ok: boolean; role?: UserRole; error?: string }> => {
+  ): Promise<{
+    ok: boolean;
+    role?: UserRole;
+    error?: string;
+    requiresRegistration?: boolean;
+    googleEmail?: string;
+    googleName?: string;
+  }> => {
     const emailLower = (user.email || '').trim().toLowerCase();
     if (!emailLower) {
       return {
@@ -1684,54 +1819,35 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const isOwnerAdmin = emailLower === 'healer.ddeepak.jain@gmail.com';
 
-    let matched = isOwnerAdmin
+    const matched = isOwnerAdmin
       ? accounts.find((a) => a.role === 'admin') || INITIAL_ACCOUNTS[0]
       : accounts.find((a) => a.email.trim().toLowerCase() === emailLower);
 
+    // NEVER auto-create a brand-new unpaid Client or Healer account without PayU Payment Confirmation!
     if (!matched) {
-      const targetRole: 'client' | 'healer' =
-        preferredRole === 'healer' ? 'healer' : 'client';
-      const defaultPlan =
-        plans.find((p) => p.role === targetRole && p.priceInr === 0) ||
-        plans.find((p) => p.role === targetRole) ||
-        CLIENT_PLANS[0];
-      const nowIso = new Date().toISOString();
-      const expiry = new Date();
-      expiry.setMonth(expiry.getMonth() + (defaultPlan?.durationMonths || 1));
-
-      matched = {
-        id: `acc_google_${user.uid.slice(0, 10)}_${Date.now()}`,
-        ownerUid: user.uid,
-        role: targetRole,
-        name: user.displayName || emailLower.split('@')[0] || 'Divine Seeker',
-        email: emailLower,
-        mobile: TATHASTU_ADMIN_PHONE,
-        passwordHash: user.uid,
-        planId: defaultPlan?.id || 'client_free_1m',
-        planName: defaultPlan?.name || 'Plan 1: Free Trial (1 Month)',
-        planPrice: defaultPlan?.priceInr || 0,
-        isFoc: false,
-        maxProfiles: defaultPlan?.maxProfiles || 2,
-        canDownloadShare: defaultPlan?.canDownloadShare || false,
-        subscriptionStart: nowIso,
-        subscriptionExpiry: expiry.toISOString(),
-        createdAtIso: nowIso,
+      return {
+        ok: false,
+        requiresRegistration: preferredRole !== 'admin',
+        googleEmail: emailLower,
+        googleName: user.displayName || '',
+        error:
+          preferredRole === 'admin'
+            ? 'This Google email is not authorized for Master Admin access.'
+            : `No paid ${preferredRole.toUpperCase()} account exists for "${emailLower}". Please complete Sign-Up and PayU Payment Confirmation first — accounts cannot be activated without payment verification.`,
       };
-
-      const nextAccounts = [matched, ...accounts];
-      setAccounts(nextAccounts);
-      broadcastSync(nextAccounts, profiles);
-      try {
-        await setDoc(doc(db, 'tathastu_accounts', matched.id), matched);
-      } catch {
-        // Local & server persistence already updated
-      }
     }
 
     setCurrentAccountId(matched.id);
-    localStorage.setItem(SESSION_ACCOUNT_ID_KEY, matched.id);
+    try {
+      sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, matched.id);
+      localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
+      localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+      sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
+    } catch {
+      // ignore
+    }
     setActiveProfileId(null);
-    localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+    setPublicQrSharedProfileId(null);
     return { ok: true, role: matched.role };
   };
 
@@ -1742,17 +1858,48 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       INITIAL_ACCOUNTS[0];
 
     setCurrentAccountId(target.id);
-    localStorage.setItem(SESSION_ACCOUNT_ID_KEY, target.id);
+    try {
+      sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, target.id);
+      localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
+      localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+      sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
+    } catch {
+      // ignore
+    }
     // Do NOT auto-open an active profile on login; show Saved Profiles / New Profile / Portal first
     setActiveProfileId(null);
-    localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+    setPublicQrSharedProfileId(null);
+  };
+
+  const restoreAccountSessionById = (accountId: string) => {
+    const target = accounts.find((a) => a.id === accountId);
+    if (!target) return;
+    setCurrentAccountId(target.id);
+    try {
+      sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, target.id);
+      localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
+      localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+      sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
+    } catch {
+      // ignore
+    }
+    setActiveProfileId(null);
+    setPublicQrSharedProfileId(null);
   };
 
   const logout = () => {
     setCurrentAccountId(null);
     setActiveProfileId(null);
-    localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
-    localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+    setPublicQrSharedProfileId(null);
+    try {
+      sessionStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
+      sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
+      localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
+      localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+    } catch {
+      // ignore
+    }
+    firebaseSignOut(auth).catch(() => {});
   };
 
   const registerAccountAndPrimaryProfile: TathastuContextValue['registerAccountAndPrimaryProfile'] = async (
@@ -1833,6 +1980,25 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
+    if (!effectiveIsFoc) {
+      const txnId = (params.paymentVerification?.transactionId || '').trim();
+      const verifiedAmt = Number(params.paymentVerification?.verifiedAmountInr ?? -1);
+      if (!txnId) {
+        return {
+          ok: false,
+          error:
+            'PayU Payment Confirmation is mandatory before activating any Client or Healer account. Please complete payment verification first.',
+        };
+      }
+      if (finalPrice > 0 && verifiedAmt < finalPrice) {
+        return {
+          ok: false,
+          error:
+            'Verified PayU payment amount does not match the selected subscription plan. Please complete PayU payment confirmation.',
+        };
+      }
+    }
+
     const now = new Date();
     const expiry = new Date(now);
     expiry.setMonth(expiry.getMonth() + selectedPlan.durationMonths);
@@ -1864,6 +2030,8 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       healerWebsite: params.healerWebsite?.trim() || '',
       healerAddress: params.healerAddress?.trim() || '',
       notificationPrefsJson: JSON.stringify(DEFAULT_SIX_NOTIFICATION_CHANNELS),
+      payuTransactionId: params.paymentVerification?.transactionId || undefined,
+      payuUtrNumber: params.paymentVerification?.utrNumber || undefined,
       createdAtIso: now.toISOString(),
     };
 
@@ -1929,10 +2097,20 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (!params.keepCurrentSession) {
       setCurrentAccountId(newAccountId);
-      localStorage.setItem(SESSION_ACCOUNT_ID_KEY, newAccountId);
-      if (createdProfileId) {
-        setActiveProfileId(createdProfileId);
-        localStorage.setItem(SESSION_PROFILE_ID_KEY, createdProfileId);
+      try {
+        sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, newAccountId);
+        localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
+        localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+      } catch {
+        // ignore
+      }
+      // After registration, land cleanly on the user's personal dashboard (Saved Profiles)
+      setActiveProfileId(null);
+      setPublicQrSharedProfileId(null);
+      try {
+        sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
+      } catch {
+        // ignore
       }
     }
 
@@ -2086,14 +2264,123 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return { ok: true, role: target.role };
   };
 
+  const changePasswordByCredentials: TathastuContextValue['changePasswordByCredentials'] = async ({
+    role,
+    identifier,
+    currentPassword,
+    newPassword,
+  }) => {
+    const cleanId = identifier.trim().toLowerCase();
+    const cleanDigits = identifier.replace(/\D/g, '').slice(-10);
+
+    if (!cleanId) {
+      return { ok: false, error: 'Please enter your registered Email Address or 10-digit Mobile Number.' };
+    }
+    if (!currentPassword) {
+      return { ok: false, error: 'Please enter your Current Password.' };
+    }
+    if (!newPassword || newPassword.trim().length < 6) {
+      return { ok: false, error: 'New Password must be at least 6 characters long.' };
+    }
+    if (newPassword === currentPassword) {
+      return { ok: false, error: 'New Password must be different from your Current Password.' };
+    }
+
+    const matchesIdentifier = (a: AccountRecord) =>
+      a.email.trim().toLowerCase() === cleanId ||
+      (cleanDigits.length >= 10 && a.mobile.replace(/\D/g, '').slice(-10) === cleanDigits);
+
+    const target =
+      (role ? accounts.find((a) => a.role === role && matchesIdentifier(a)) : undefined) ||
+      accounts.find((a) => matchesIdentifier(a));
+
+    if (!target) {
+      return {
+        ok: false,
+        error: 'No registered account found with that Email Address or 10-digit Mobile Number.',
+      };
+    }
+
+    if (target.passwordHash !== currentPassword) {
+      return {
+        ok: false,
+        error: 'Current Password is incorrect. Please check and try again, or use Forgot Password.',
+      };
+    }
+
+    const updatedAccount: AccountRecord = {
+      ...target,
+      passwordHash: newPassword,
+    };
+
+    const nextAccounts = accounts.map((a) => (a.id === target.id ? updatedAccount : a));
+    setAccounts(nextAccounts);
+    broadcastSync(nextAccounts, profiles);
+
+    if (firebaseUser) {
+      try {
+        await setDoc(doc(db, 'tathastu_accounts', updatedAccount.id), updatedAccount);
+      } catch (error) {
+        try {
+          handleFirestoreError(error, OperationType.UPDATE, `tathastu_accounts/${updatedAccount.id}`);
+        } catch {
+          // Handled
+        }
+      }
+    }
+
+    return { ok: true, role: target.role };
+  };
+
+  const adminUpdatePayuConfig = (cfg: PayUMerchantSyncConfig) => {
+    if (currentAccount?.role !== 'admin') return;
+    const nextCfg: PayUMerchantSyncConfig = {
+      merchantKey: cfg.merchantKey.trim(),
+      merchantSalt: cfg.merchantSalt.trim(),
+      upiVpa: cfg.upiVpa.trim(),
+      payeeName: (cfg.payeeName || 'TATHASTU NUMEROLOGY').trim(),
+      environment: cfg.environment === 'test' ? 'test' : 'production',
+      updatedAt: Date.now(),
+    };
+    setPayuConfig(nextCfg);
+    try {
+      localStorage.setItem(PAYU_CONFIG_STORAGE_KEY, JSON.stringify(nextCfg));
+    } catch {
+      // ignore
+    }
+    notifyRealtimeChannel();
+    pushServerRealtimeSync({
+      action: 'payu_config_sync',
+      payuConfig: nextCfg,
+    });
+  };
+
   const selectActiveProfile = (profileId: string) => {
+    if (currentAccount && currentAccount.role !== 'admin') {
+      const ownsProfile = profiles.some(
+        (p) => p.id === profileId && p.accountId === currentAccount.id
+      );
+      if (!ownsProfile && publicQrSharedProfileId !== profileId) {
+        return;
+      }
+    }
     setActiveProfileId(profileId);
-    localStorage.setItem(SESSION_PROFILE_ID_KEY, profileId);
+    try {
+      sessionStorage.setItem(SESSION_PROFILE_ID_KEY, profileId);
+      localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+    } catch {
+      // ignore
+    }
   };
 
   const clearActiveProfile = () => {
     setActiveProfileId(null);
-    localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+    try {
+      sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
+      localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+    } catch {
+      // ignore
+    }
   };
 
   const addNewProfileUnderAccount: TathastuContextValue['addNewProfileUnderAccount'] = async (
@@ -2709,6 +2996,8 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         coupons,
         broadcasts,
         feedbacks,
+        payuConfig,
+        adminUpdatePayuConfig,
         latestLiveBroadcastAlert,
         dismissLiveBroadcastAlert,
         currentAccount,
@@ -2720,10 +3009,12 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         loginWithCredentials,
         loginWithFirebaseGoogleUser,
         quickSwitchRoleAccount,
+        restoreAccountSessionById,
         logout,
         registerAccountAndPrimaryProfile,
         upgradeAccountPlan,
         resetPasswordByEmailAndMobile,
+        changePasswordByCredentials,
         selectActiveProfile,
         clearActiveProfile,
         addNewProfileUnderAccount,

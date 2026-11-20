@@ -135,25 +135,21 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
 
   const generateStandaloneMobileAppHtml = async (): Promise<{ blob: Blob; fileName: string }> => {
     const absLogo = await getLogoBase64DataUrl(TATHASTU_LOGO_PATH);
-    let savedProfilesJson = '[]';
-    try {
-      const raw = localStorage.getItem('tathastu_profiles_v3');
-      if (raw) savedProfilesJson = raw;
-    } catch {
-      // Fallback
-    }
 
     const standaloneHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#030712" />
+  <meta name="theme-color" content="#020617" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Tathastu" />
-  <title>${TATHASTU_APP_NAME} — ${TATHASTU_BRAND_NAME} (${TATHASTU_TAGLINE})</title>
+  <meta name="application-name" content="${TATHASTU_APP_NAME}" />
+  <meta name="apple-mobile-web-app-title" content="${TATHASTU_APP_NAME}" />
+  <link rel="icon" type="image/png" href="${absLogo}" />
+  <link rel="apple-touch-icon" href="${absLogo}" />
+  <title>${TATHASTU_APP_NAME}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -269,31 +265,96 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
       <div class="badge">✓ 100% READY<br/>NO 403 / OFFLINE OK</div>
     </div>
 
+    <!-- DEFAULT SCREEN: LOGIN + INTRODUCTION PAGE (Client / Healer / Admin) -->
+    <div id="loginIntroView">
+      <div class="card">
+        <div class="card-title">
+          <span>🕉️ WELCOME TO ${TATHASTU_APP_NAME}</span>
+          <span style="font-size:10px; color:#6ee7b7;">Introduction &amp; Login Portal</span>
+        </div>
+        <p style="font-size:12px; color:#e2e8f0; line-height:1.55; margin-bottom:10px;">
+          <strong style="color:#fde68a;">Healer Ddeepak Jain</strong> (Founder &amp; Master Admin — <strong>${TATHASTU_BRAND_NAME}</strong>) welcomes you to our authentic, fraud-free Vedic &amp; Chaldean Numerology, 9-Chakra Aura Healing, Partner Milan, Parivar Milan, and Daily Muhurat platform.
+        </p>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; color:#cbd5e1; margin-bottom:10px;">
+          <div style="background:#090d16; border:1px solid rgba(245,158,11,0.3); border-radius:10px; padding:8px;">
+            <strong style="color:#fcd34d;">✦ Client Personal Portal</strong><br/>Access only your own created profiles, Name/Mobile harmony, Maha Dasha &amp; daily alerts.
+          </div>
+          <div style="background:#090d16; border:1px solid rgba(16,185,129,0.35); border-radius:10px; padding:8px;">
+            <strong style="color:#6ee7b7;">✦ Healer &amp; Admin Portals</strong><br/>Healers view only their own created client profiles; Master Admin has complete portal control.
+          </div>
+        </div>
+        <div class="btn-row" style="margin-bottom:6px;">
+          <a href="${TATHASTU_OFFICIAL_APP_URL}" target="_blank" rel="noopener noreferrer" class="btn btn-emerald" style="text-decoration:none;">
+            🌐 Open Live Cloud Login &amp; Introduction Portal
+          </a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>🔐 SIGN IN TO PERSONAL OFFLINE DASHBOARD</span>
+          <span style="font-size:10px; color:#fcd34d;">Client • Healer • Admin</span>
+        </div>
+        <div class="form-grid">
+          <div>
+            <label>Select Account Role</label>
+            <select id="loginRole">
+              <option value="client">1. Client Personal Login</option>
+              <option value="healer">2. Healer Portal Login</option>
+              <option value="admin">3. Master Admin Login</option>
+            </select>
+          </div>
+          <div>
+            <label>Registered Email or 10-Digit Mobile *</label>
+            <input id="loginId" type="text" placeholder="Enter your Email or Mobile" />
+          </div>
+          <div style="grid-column: 1 / -1;">
+            <label>Your Name (for Personal Offline Dashboard)</label>
+            <input id="loginDisplayName" type="text" placeholder="Enter your Full Name" />
+          </div>
+        </div>
+        <div id="loginErr" style="color:#fda4af; font-size:11px; font-weight:700; margin-top:6px; display:none;"></div>
+        <div class="btn-row">
+          <button class="btn" onclick="handleOfflineLogin()">🔓 Login to Personal Dashboard</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST-LOGIN PERSONAL DASHBOARD (Hidden until user signs in; shows ONLY logged-in user's own profiles + Logout) -->
+    <div id="dashboardView" style="display:none;">
+      <div class="card no-print" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px;">
+        <div style="font-size:12px;">
+          <strong id="activeUserBanner" style="color:#fde68a;"></strong><br/>
+          <span id="activeUserSub" style="font-size:10.5px; color:#6ee7b7;"></span>
+        </div>
+        <button class="btn btn-outline" style="flex:0 0 auto; min-width:110px; border-color:rgba(244,63,94,0.65); color:#fda4af;" onclick="handleOfflineLogout()">🚪 Logout</button>
+      </div>
+
     <!-- Profile Selector & Live Editor -->
     <div class="card no-print">
       <div class="card-title">
-        <span>1. ACTIVE CLIENT PROFILE &amp; INSTANT CALCULATOR</span>
+        <span>1. MY SAVED PROFILES &amp; INSTANT CALCULATOR</span>
         <select id="profileSelector" style="width:auto; max-width:210px; padding:4px 8px; font-size:11px;" onchange="onSelectSavedProfile(this.value)">
-          <option value="">-- Select Saved Profile --</option>
+          <option value="">-- My Saved Profiles (0) --</option>
         </select>
       </div>
       <div class="form-grid">
         <div>
           <label>Client Full Name (Chaldean)</label>
-          <input id="inpName" type="text" value="DEEPAK JAIN" oninput="recalcAll()" />
+          <input id="inpName" type="text" placeholder="Enter Full Name" oninput="recalcAll()" />
         </div>
         <div>
           <label>Date of Birth (YYYY-MM-DD)</label>
-          <input id="inpDob" type="date" value="1983-02-16" onchange="recalcAll()" />
+          <input id="inpDob" type="date" value="1990-01-01" onchange="recalcAll()" />
         </div>
         <div>
           <label>10-Digit Mobile Number</label>
-          <input id="inpMobile" type="tel" maxlength="10" value="8899444444" oninput="recalcAll()" />
+          <input id="inpMobile" type="tel" maxlength="10" placeholder="10-Digit Mobile" oninput="recalcAll()" />
         </div>
         <div>
           <label>Birth Time &amp; Gender</label>
           <div style="display:flex; gap:6px;">
-            <input id="inpTob" type="time" value="16:15" onchange="recalcAll()" />
+            <input id="inpTob" type="time" value="09:30" onchange="recalcAll()" />
             <select id="inpGender" onchange="recalcAll()">
               <option value="male">Male</option>
               <option value="female">Female</option>
@@ -302,7 +363,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         </div>
       </div>
       <div class="btn-row">
-        <button class="btn" onclick="saveCurrentProfileLocal()">💾 Save Profile on Phone</button>
+        <button class="btn" onclick="saveCurrentProfileLocal()">💾 Save Profile Under My Account</button>
         <button class="btn btn-emerald" onclick="window.print()">🖨️ Print / Save Full PDF</button>
         <button class="btn btn-outline" onclick="shareOnWhatsApp()">💬 Share on WhatsApp</button>
       </div>
@@ -381,19 +442,21 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
       <div id="panchangResultWrap" style="margin-top:10px;"></div>
     </div>
 
+    </div><!-- end dashboardView -->
+
     <div class="card" style="text-align:center; font-size:11px; color:#cbd5e1;">
       <strong style="color:#fde68a;">${TATHASTU_APP_NAME} (${TATHASTU_BRAND_NAME})</strong><br/>
       App Creator &amp; Admin: Healer Ddeepak Jain • <strong>${TATHASTU_ADMIN_EMAIL}</strong> • WhatsApp: <strong>+91 ${TATHASTU_ADMIN_PHONE}</strong>
     </div>
   </div>
 
-  <!-- Mobile Bottom Navigation -->
-  <div class="bottom-nav no-print">
+  <!-- Mobile Bottom Navigation (Shown after login) -->
+  <div id="bottomNavBar" class="bottom-nav no-print" style="display:none;">
     <button class="nav-btn active" onclick="scrollToSec('secChart', this)"><span>🕉️</span><span>Birth &amp; Grid</span></button>
     <button class="nav-btn" onclick="scrollToSec('secNameMobile', this)"><span>✨</span><span>Name &amp; Mobile</span></button>
     <button class="nav-btn" onclick="scrollToSec('secDasha', this)"><span>⏳</span><span>Maha Dasha</span></button>
     <button class="nav-btn" onclick="scrollToSec('secVerifier', this)"><span>🚗</span><span>Verifier</span></button>
-    <button class="nav-btn" onclick="window.print()"><span>📄</span><span>Save PDF</span></button>
+    <button class="nav-btn" onclick="handleOfflineLogout()"><span>🚪</span><span>Logout</span></button>
   </div>
 
   <script>
@@ -420,14 +483,65 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
       F:8, P:8
     };
 
-    let savedProfiles = ${savedProfilesJson};
-    try {
-      const localProfs = localStorage.getItem('tathastu_standalone_profiles_v1');
-      if (localProfs) {
-        const parsed = JSON.parse(localProfs);
-        if (Array.isArray(parsed) && parsed.length > 0) savedProfiles = parsed;
+    let activeSessionUser = null;
+    let savedProfiles = [];
+
+    function getUserProfilesStorageKey() {
+      if (!activeSessionUser) return 'tathastu_standalone_profiles_guest';
+      return 'tathastu_standalone_profiles_' + activeSessionUser.role + '_' + activeSessionUser.idKey;
+    }
+
+    function loadUserProfiles() {
+      savedProfiles = [];
+      try {
+        const localProfs = localStorage.getItem(getUserProfilesStorageKey());
+        if (localProfs) {
+          const parsed = JSON.parse(localProfs);
+          if (Array.isArray(parsed)) savedProfiles = parsed;
+        }
+      } catch(e) {}
+    }
+
+    function handleOfflineLogin() {
+      const role = document.getElementById('loginRole').value;
+      const rawId = document.getElementById('loginId').value.trim();
+      const displayName = document.getElementById('loginDisplayName').value.trim();
+      const errEl = document.getElementById('loginErr');
+      if (!rawId) {
+        errEl.textContent = 'Please enter your registered Email Address or 10-Digit Mobile Number.';
+        errEl.style.display = 'block';
+        return;
       }
-    } catch(e) {}
+      errEl.style.display = 'none';
+      const idKey = rawId.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      activeSessionUser = {
+        role,
+        identifier: rawId,
+        idKey,
+        name: displayName || rawId
+      };
+      document.getElementById('activeUserBanner').textContent = activeSessionUser.name + ' (' + role.toUpperCase() + ' PORTAL)';
+      document.getElementById('activeUserSub').textContent = role === 'admin'
+        ? 'Master Admin Mode — Full Portal Control'
+        : 'Showing ONLY profiles created under your ' + role.toUpperCase() + ' account (' + rawId + ')';
+      document.getElementById('loginIntroView').style.display = 'none';
+      document.getElementById('dashboardView').style.display = 'block';
+      document.getElementById('bottomNavBar').style.display = 'flex';
+      document.getElementById('inpName').value = displayName || '';
+      loadUserProfiles();
+      populateProfileSelector();
+    }
+
+    function handleOfflineLogout() {
+      activeSessionUser = null;
+      savedProfiles = [];
+      document.getElementById('dashboardView').style.display = 'none';
+      document.getElementById('bottomNavBar').style.display = 'none';
+      document.getElementById('loginIntroView').style.display = 'block';
+      document.getElementById('loginId').value = '';
+      document.getElementById('loginDisplayName').value = '';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 
     function reduceSingle(n) {
       let v = Math.abs(parseInt(n, 10) || 0);
@@ -488,10 +602,10 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
       if (idxStr === '') return;
       const p = savedProfiles[parseInt(idxStr, 10)];
       if (!p) return;
-      document.getElementById('inpName').value = p.name || 'DEEPAK JAIN';
-      document.getElementById('inpDob').value = p.dob || '1983-02-16';
-      document.getElementById('inpMobile').value = p.mobile || '8899444444';
-      document.getElementById('inpTob').value = p.tob || '16:15';
+      document.getElementById('inpName').value = p.name || '';
+      document.getElementById('inpDob').value = p.dob || '1990-01-01';
+      document.getElementById('inpMobile').value = p.mobile || '';
+      document.getElementById('inpTob').value = p.tob || '09:30';
       document.getElementById('inpGender').value = p.gender || 'male';
       recalcAll();
     }
@@ -499,22 +613,22 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
     function saveCurrentProfileLocal() {
       const p = {
         name: document.getElementById('inpName').value.trim() || 'CLIENT',
-        dob: document.getElementById('inpDob').value || '1983-02-16',
-        mobile: document.getElementById('inpMobile').value.trim() || '8899444444',
-        tob: document.getElementById('inpTob').value || '16:15',
+        dob: document.getElementById('inpDob').value || '1990-01-01',
+        mobile: document.getElementById('inpMobile').value.trim() || '',
+        tob: document.getElementById('inpTob').value || '09:30',
         gender: document.getElementById('inpGender').value || 'male'
       };
       const existingIdx = savedProfiles.findIndex(x => x.name.toUpperCase() === p.name.toUpperCase() && x.dob === p.dob);
       if (existingIdx >= 0) savedProfiles[existingIdx] = p;
       else savedProfiles.unshift(p);
-      try { localStorage.setItem('tathastu_standalone_profiles_v1', JSON.stringify(savedProfiles)); } catch(e) {}
+      try { localStorage.setItem(getUserProfilesStorageKey(), JSON.stringify(savedProfiles)); } catch(e) {}
       populateProfileSelector();
     }
 
     function recalcAll() {
-      const name = document.getElementById('inpName').value.trim() || 'DEEPAK JAIN';
-      const dob = document.getElementById('inpDob').value || '1983-02-16';
-      const mobile = document.getElementById('inpMobile').value.replace(/\\D/g, '').slice(-10) || '8899444444';
+      const name = document.getElementById('inpName').value.trim() || 'CLIENT';
+      const dob = document.getElementById('inpDob').value || '1990-01-01';
+      const mobile = document.getElementById('inpMobile').value.replace(/\\D/g, '').slice(-10) || '9999999999';
       const gender = document.getElementById('inpGender').value || 'male';
 
       const parts = dob.split('-');
@@ -705,7 +819,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
       window.open('https://wa.me/' + waPhone + '?text=' + encodeURIComponent(msg), '_blank');
     }
 
-    populateProfileSelector();
+    // Starts on Login + Introduction screen by default until user signs in.
   </script>
 </body>
 </html>`;

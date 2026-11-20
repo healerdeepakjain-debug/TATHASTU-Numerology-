@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import QRCode from 'qrcode';
 import {
   ShieldCheck,
   User,
@@ -10,7 +9,6 @@ import {
   Phone,
   Calendar,
   Clock,
-  MapPin,
   KeyRound,
   CheckCircle2,
   AlertTriangle,
@@ -25,11 +23,9 @@ import {
   Bell,
   Sun,
   Volume2,
-  ArrowRight,
   Tag,
   Eye,
   EyeOff,
-  Play,
 } from 'lucide-react';
 import {
   useTathastu,
@@ -40,20 +36,13 @@ import {
   TATHASTU_TAGLINE,
   TATHASTU_ADMIN_PHONE,
   TATHASTU_ADMIN_EMAIL,
-  TATHASTU_OFFICIAL_APP_URL,
 } from '../utils/tathastuStore';
 import { getDailyPanchang } from '../utils/numerology';
 import { signInWithGooglePopup } from '../firebase';
-import { getPublicAppOriginUrl } from '../utils/whatsappAndQrService';
-import {
-  getCurrentLanguage,
-  translateMultilineBlock,
-  validateAndNormalizeLocaleText,
-} from '../utils/i18n';
-import { PWAInstallButton } from './PWAInstallButton';
 import { PayUPaymentModal } from './PayUPaymentModal';
 import { CityAutocompleteInput } from './CityAutocompleteInput';
 import { BirthTimeAmPmInput, formatTime12HourAmPm } from './BirthTimeAmPmInput';
+import { HealerDeepakJainMissionShowcase } from './HealerDeepakJainMissionShowcase';
 import a4DivineEnergyBg from '../assets/images/a4_divine_energy_watermark_1794229222633.jpg';
 import chakraHealingArt from '../assets/images/chakra_healing_meditation_art_1794229223170.jpg';
 import spiritualReportBanner from '../assets/images/spiritual_energy_report_banner_1794229220638.jpg';
@@ -74,9 +63,9 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
     coupons,
     loginWithCredentials,
     loginWithFirebaseGoogleUser,
-    quickSwitchRoleAccount,
     registerAccountAndPrimaryProfile,
     resetPasswordByEmailAndMobile,
+    changePasswordByCredentials,
   } = useTathastu();
 
   const [nowDate, setNowDate] = useState<Date>(() => new Date());
@@ -105,7 +94,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
 
   const [showAuthWindow, setShowAuthWindow] = useState<boolean>(true);
   const [selectedRole, setSelectedRole] = useState<UserRole>('client');
-  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot' | 'change-password'>('login');
   const authWindowRef = useRef<HTMLDivElement | null>(null);
   const loginIdentifierInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -143,60 +132,17 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
   const [forgotMobile, setForgotMobile] = useState('');
   const [forgotNewPassword, setForgotNewPassword] = useState('');
 
+  // Change Password state (available for Client, Healer & Master Admin)
+  const [changeIdentifier, setChangeIdentifier] = useState('');
+  const [changeCurrentPassword, setChangeCurrentPassword] = useState('');
+  const [changeNewPassword, setChangeNewPassword] = useState('');
+  const [changeConfirmPassword, setChangeConfirmPassword] = useState('');
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const clientPlans = plans.filter((p) => p.role === 'client' && p.priceInr > 0);
   const healerPlans = plans.filter((p) => p.role === 'healer' && p.priceInr > 0);
-
-  const [copiedAppLink, setCopiedAppLink] = useState(false);
-  const [appQrDataUrl, setAppQrDataUrl] = useState<string>('');
-  const appShareUrl = getPublicAppOriginUrl() || TATHASTU_OFFICIAL_APP_URL;
-
-  useEffect(() => {
-    QRCode.toDataURL(appShareUrl, {
-      errorCorrectionLevel: 'M',
-      margin: 1,
-      width: 220,
-      color: {
-        dark: '#0f172a',
-        light: '#ffffff',
-      },
-    })
-      .then((dataUrl) => setAppQrDataUrl(dataUrl))
-      .catch(() => {});
-  }, [appShareUrl]);
-
-  const handleCopyAppPortalLink = async () => {
-    try {
-      await navigator.clipboard.writeText(appShareUrl);
-      setCopiedAppLink(true);
-      setTimeout(() => setCopiedAppLink(false), 2500);
-    } catch {
-      setCopiedAppLink(false);
-    }
-  };
-
-  const handleShareAppOnWhatsApp = () => {
-    const activeLang = getCurrentLanguage();
-    const rawText =
-      `*${TATHASTU_BRAND_NAME}* (${TATHASTU_APP_NAME})\n` +
-      `_${TATHASTU_TAGLINE}_\n\n` +
-      `Access your personalized Vedic & Chaldean Numerology Report, Name & Mobile Frequency Verifier, 9-Chakra Aura Remedies, Yoga Sadhana & Daily Good/Bad Time Muhurat App:\n` +
-      `${appShareUrl}`;
-    const text = validateAndNormalizeLocaleText(
-      translateMultilineBlock(rawText, activeLang),
-      activeLang,
-      { context: 'whatsapp' }
-    ).sanitizedText;
-    const link = document.createElement('a');
-    link.href = `https://wa.me/?text=${encodeURIComponent(text)}`;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const handleOpenRoleLogin = (
     role: UserRole,
@@ -276,6 +222,14 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
       }
       const res = await loginWithFirebaseGoogleUser(credential.user, selectedRole);
       if (!res.ok) {
+        if (res.requiresRegistration && selectedRole !== 'admin') {
+          if (res.googleEmail) setRegEmail(res.googleEmail);
+          if (res.googleName) setRegName(res.googleName);
+          const rolePlans = selectedRole === 'client' ? clientPlans : healerPlans;
+          const paidPlan = rolePlans.find((p) => p.priceInr > 0) || rolePlans[0];
+          if (paidPlan) setRegPlanId(paidPlan.id);
+          setAuthMode('register');
+        }
         setErrorMessage(res.error || 'Unable to sign in with Google.');
         return;
       }
@@ -297,11 +251,6 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
     }
   };
 
-  const handleQuickEnterPortal = (role: UserRole) => {
-    quickSwitchRoleAccount(role);
-    onAuthenticated?.(role);
-  };
-
   const [isPayUModalOpen, setIsPayUModalOpen] = useState(false);
   const [isAwaitingPayUConfirmation, setIsAwaitingPayUConfirmation] = useState(false);
 
@@ -309,6 +258,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
     finalCouponCode?: string,
     payuVerificationDetails?: {
       transactionId: string;
+      utrNumber?: string;
       paymentMethod: string;
       finalAmountInr: number;
     }
@@ -340,6 +290,12 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
       planId: regPlanId,
       isFoc: false,
       couponCode: finalCouponCode ?? regCouponCode,
+      paymentVerification: {
+        transactionId: payuVerificationDetails.transactionId,
+        utrNumber: payuVerificationDetails.utrNumber,
+        paymentMethod: payuVerificationDetails.paymentMethod,
+        verifiedAmountInr: payuVerificationDetails.finalAmountInr,
+      },
       healerBrandName,
       healerLogoUrl: healerLogoUrl || TATHASTU_LOGO_PATH,
       healerInstagram,
@@ -452,6 +408,44 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
     }, 900);
   };
 
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    if (changeNewPassword !== changeConfirmPassword) {
+      setErrorMessage('New Password and Confirm New Password do not match.');
+      return;
+    }
+
+    const res = await changePasswordByCredentials({
+      role: selectedRole,
+      identifier: changeIdentifier,
+      currentPassword: changeCurrentPassword,
+      newPassword: changeNewPassword,
+    });
+    if (!res.ok) {
+      setErrorMessage(res.error || 'Could not change password.');
+      return;
+    }
+
+    const updatedRole = res.role || selectedRole;
+    setSelectedRole(updatedRole);
+    setSuccessMessage(
+      `✓ Password changed successfully for your ${updatedRole.toUpperCase()} account! Redirecting to Login...`
+    );
+    const savedId = changeIdentifier.trim();
+    const savedPass = changeNewPassword;
+    setChangeCurrentPassword('');
+    setChangeNewPassword('');
+    setChangeConfirmPassword('');
+    setTimeout(() => {
+      setAuthMode('login');
+      setLoginIdentifier(savedId);
+      setLoginPassword(savedPass);
+    }, 900);
+  };
+
   const activePlans = selectedRole === 'client' ? clientPlans : healerPlans;
 
   const matchedCoupon = regCouponCode.trim()
@@ -543,7 +537,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
         </div>
       </div>
 
-      {/* TOP SPIRITUAL HERO & COMPLETE APP INTRODUCTION */}
+      {/* TOP SPIRITUAL HERO — CLEAN WELCOME MESSAGE & SPIRITUAL IMAGES ONLY */}
       <div className="relative overflow-hidden rounded-3xl border border-amber-500/40 bg-slate-900 shadow-2xl">
         <div
           className="absolute inset-0 opacity-35 bg-cover bg-center pointer-events-none"
@@ -563,7 +557,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                 <div>
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[11px] font-bold uppercase tracking-widest">
                     <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Vedic • Chaldean • Pranic Energy • Aura & Chakra Science</span>
+                    <span>Vedic • Chaldean • Pranic Energy • Aura &amp; Chakra Science</span>
                   </span>
                   <h1 className="font-serif text-2xl sm:text-4xl font-black tracking-wide bg-gradient-to-r from-amber-100 via-amber-300 to-amber-500 bg-clip-text text-transparent mt-1">
                     {TATHASTU_APP_NAME}
@@ -577,35 +571,6 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
               <p className="text-xs sm:text-sm text-amber-100/90 leading-relaxed">
                 Welcome to <strong>{TATHASTU_APP_NAME}</strong> — the complete Spiritual &amp; Data-Driven Mystical Alignment Platform created by <strong>Healer Ddeepak Jain</strong>. Synchronize your Name, Mobile Number, Career Path, Marriage Compatibility, Parivar Milan, 9-Chakra Energy Centres, and Daily Auspicious Muhurat Timing through authentic Vedic Jyotish &amp; Chaldean Numerology.
               </p>
-
-              <div className="flex flex-wrap items-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => handleOpenRoleLogin(selectedRole, 'login', true)}
-                  className="min-h-[44px] px-5 sm:px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 shadow-xl shadow-amber-500/25 cursor-pointer transition-all"
-                >
-                  <KeyRound className="w-4 h-4" />
-                  <span>Login / Sign-Up (Client • Healer • Admin)</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-
-                <PWAInstallButton />
-
-                {onReplayIntro && (
-                  <button
-                    type="button"
-                    onClick={onReplayIntro}
-                    className="min-h-[44px] px-4 py-2.5 rounded-xl bg-slate-950/90 border border-amber-400/50 hover:border-amber-300 text-amber-200 hover:text-amber-100 font-bold text-xs flex items-center gap-2 shadow-lg cursor-pointer transition-all"
-                  >
-                    <Play className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                    <span>Brand Intro Video</span>
-                  </button>
-                )}
-
-                <div className="px-4 py-2.5 rounded-xl bg-slate-950/90 border border-amber-500/30 text-xs text-amber-200 font-mono max-w-full break-words">
-                  App: <strong>{TATHASTU_APP_NAME}</strong> • App Creator &amp; Admin: <strong>{TATHASTU_ADMIN_EMAIL}</strong> • Helpline: <strong>{TATHASTU_ADMIN_PHONE}</strong>
-                </div>
-              </div>
             </div>
 
             {/* Right Spiritual Visual Showcase */}
@@ -617,9 +582,9 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                   className="w-full h-36 sm:h-44 object-cover"
                 />
                 <div className="p-3">
-                  <div className="text-xs font-bold text-amber-200">9-Chakra & Aura Alignment</div>
+                  <div className="text-xs font-bold text-amber-200">9-Chakra &amp; Aura Alignment</div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Post-marriage chakra challenges, pranic energy scan & exact remedies.
+                    Post-marriage chakra challenges, pranic energy scan &amp; exact remedies.
                   </p>
                 </div>
               </div>
@@ -633,7 +598,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                 <div className="p-3">
                   <div className="text-xs font-bold text-amber-200">A4 Spiritual Dossiers</div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Download, print, share & send direct WhatsApp reports across all devices.
+                    Download, print, share &amp; send direct WhatsApp reports across all devices.
                   </p>
                 </div>
               </div>
@@ -642,219 +607,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
         </div>
       </div>
 
-      {/* CENTERED APP LINK, QR CODE, WHATSAPP SHARE & DIRECT APP DOWNLOAD HUB BOX */}
-      <div className="max-w-4xl mx-auto w-full rounded-3xl border-2 border-amber-400/60 bg-gradient-to-br from-slate-900 via-amber-950/30 to-slate-950 p-6 sm:p-8 shadow-2xl shadow-amber-500/15 text-center space-y-5">
-        <div className="flex flex-col items-center justify-center gap-3">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-xs font-black uppercase tracking-widest">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Official App Download, Direct Link &amp; QR Share Hub</span>
-          </div>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <img
-              src={TATHASTU_LOGO_PATH}
-              alt={TATHASTU_BRAND_NAME}
-              className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-amber-400 shadow-lg"
-            />
-            <div className="text-center sm:text-left">
-              <h2 className="font-serif text-xl sm:text-2xl font-black text-amber-100">
-                Download &amp; Share {TATHASTU_APP_NAME} App
-              </h2>
-              <p className="text-xs sm:text-sm text-amber-200/85 mt-0.5 max-w-xl">
-                Install directly on Android, iOS (iPhone/iPad), Laptop, or Desktop, copy the official app link, or share via WhatsApp &amp; QR Code with your clients and family.
-              </p>
-            </div>
-          </div>
-        </div>
 
-        {/* Centered App Link Box + Copy + WhatsApp + Direct Install */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center bg-slate-950/90 border border-amber-500/35 rounded-2xl p-4 sm:p-5">
-          <div className="md:col-span-8 space-y-3 text-center md:text-left">
-            <div>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-amber-400 block mb-1.5">
-                Direct Official App Link (Click to Copy or Share)
-              </label>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={appShareUrl}
-                  className="flex-1 bg-slate-900 border border-amber-500/40 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-amber-100 font-mono text-center sm:text-left focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={handleCopyAppPortalLink}
-                  className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs cursor-pointer transition-all shrink-0"
-                >
-                  {copiedAppLink ? '✓ Link Copied!' : 'Copy App Link'}
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 pt-1">
-              <PWAInstallButton />
-              <button
-                type="button"
-                onClick={handleShareAppOnWhatsApp}
-                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg cursor-pointer transition-all"
-              >
-                <Globe className="w-4 h-4" />
-                <span>Share App Link on WhatsApp</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="md:col-span-4 flex flex-col items-center justify-center border-t md:border-t-0 md:border-l border-amber-500/20 pt-4 md:pt-0 md:pl-4">
-            <div className="bg-white p-2.5 rounded-2xl border-2 border-amber-400 shadow-md">
-              {appQrDataUrl ? (
-                <img
-                  src={appQrDataUrl}
-                  alt="Scan QR to Open & Download Tathastu App"
-                  className="w-24 h-24 sm:w-28 sm:h-28 object-contain"
-                />
-              ) : (
-                <div className="w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center text-[10px] font-bold text-slate-700">
-                  QR Loading...
-                </div>
-              )}
-            </div>
-            <span className="text-[11px] font-bold text-amber-300 mt-1.5">
-              Scan QR to Open / Install App
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* 3 LOGIN PORTALS SELECTOR CARDS (1: CLIENT PERSONAL, 2: HEALERS, 3: ADMIN) */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h2 className="font-serif text-xl sm:text-2xl font-bold text-amber-100">
-              Select Your Login or Registration Portal
-            </h2>
-            <p className="text-xs text-amber-300/75">
-              Choose between 1) Client Personal Login, 2) Healers Practice Login, or 3) Master Admin Portal. Enter your registered Email or Mobile Number and Password to sign in.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* 1. CLIENT PERSONAL LOGIN CARD */}
-          <div className="rounded-3xl border border-amber-500/35 bg-slate-900/95 p-6 flex flex-col justify-between shadow-xl hover:border-amber-400 transition-all">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300">
-                  <User className="w-6 h-6" />
-                </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-amber-950 text-amber-300 border border-amber-500/30">
-                  1. Client Personal
-                </span>
-              </div>
-              <h3 className="font-serif text-lg font-bold text-amber-100">
-                1) Client Personal Portal (Max 2 Profiles)
-              </h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Register 1 Self + 1 Family Member profile. Receive 6 daily Good/Bad time notifications, personalized Name &amp; Mobile corrections, Partner Milan, and Festival Muhurats.
-              </p>
-              <div className="text-[11px] text-amber-300/80 space-y-1 pt-1">
-                <div>• Free Plan (1 Month) • 3M (₹999) • 6M (₹1,555) • 12M (₹2,999)</div>
-                <div>• Login with your Registered Email/Mobile &amp; Password</div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5 pt-5 mt-4 border-t border-amber-500/15">
-              <button
-                type="button"
-                onClick={() => handleOpenRoleLogin('client', 'login')}
-                className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs cursor-pointer transition-all"
-              >
-                Client Login
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOpenRoleLogin('client', 'register')}
-                className="py-2.5 px-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-xs cursor-pointer transition-all"
-              >
-                Client Sign-Up
-              </button>
-            </div>
-          </div>
-
-          {/* 2. HEALERS LOGIN CARD */}
-          <div className="rounded-3xl border border-emerald-500/35 bg-slate-900/95 p-6 flex flex-col justify-between shadow-xl hover:border-emerald-400 transition-all">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300">
-                  <Users className="w-6 h-6" />
-                </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-emerald-950 text-emerald-300 border border-emerald-500/30">
-                  2. Healers Portal
-                </span>
-              </div>
-              <h3 className="font-serif text-lg font-bold text-amber-100">
-                2) Spiritual Healers &amp; Consultants Portal
-              </h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Register with your Clinic/Brand Name, Logo, and Social Media Handles. Generate A4 spiritual reports for your clients and send daily WhatsApp Good/Bad time alerts.
-              </p>
-              <div className="text-[11px] text-emerald-300/80 space-y-1 pt-1">
-                <div>• Free (1 Profile) • 10 (₹3,333) • 25 (₹6,999) • 50 (₹11,111)</div>
-                <div>• Cumulative Plan Upgrade (New plan adds to existing profiles)</div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5 pt-5 mt-4 border-t border-emerald-500/15">
-              <button
-                type="button"
-                onClick={() => handleOpenRoleLogin('healer', 'login')}
-                className="py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs cursor-pointer transition-all"
-              >
-                Healer Login
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOpenRoleLogin('healer', 'register')}
-                className="py-2.5 px-3 rounded-xl bg-slate-950 hover:bg-slate-800 border border-emerald-500/40 text-emerald-200 font-bold text-xs cursor-pointer transition-all"
-              >
-                Healer Sign-Up
-              </button>
-            </div>
-          </div>
-
-          {/* 3. ADMIN PORTAL LOGIN CARD */}
-          <div className="rounded-3xl border border-amber-400/50 bg-slate-900/95 p-6 flex flex-col justify-between shadow-xl hover:border-amber-300 transition-all">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/25 border border-amber-400/50 flex items-center justify-center text-amber-300">
-                  <Crown className="w-6 h-6" />
-                </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-400/40">
-                  3. Master Admin
-                </span>
-              </div>
-              <h3 className="font-serif text-lg font-bold text-amber-100">
-                3) Master Admin Portal
-              </h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Complete real-time control over Client Portal, Healer Portal, and Master Admin Portal. Edit/delete any profile or report, manage plans, generate discount coupons, and broadcast notifications.
-              </p>
-              <div className="text-[11px] text-amber-300 font-mono space-y-1 pt-1">
-                <div>• Authorized Master Admin Access Only</div>
-                <div>• Helpline: {TATHASTU_ADMIN_PHONE}</div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2.5 pt-5 mt-4 border-t border-amber-500/15">
-              <button
-                type="button"
-                onClick={() => handleOpenRoleLogin('admin', 'login')}
-                className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs cursor-pointer transition-all"
-              >
-                Admin Login
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* LOGIN & SIGN-UP INTERACTIVE WINDOW */}
       {showAuthWindow && (
@@ -980,6 +733,26 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
               >
                 Forgot Password?
               </button>
+
+              <button
+                type="button"
+                aria-pressed={authMode === 'change-password'}
+                onClick={() => {
+                  setAuthMode('change-password');
+                  setErrorMessage(null);
+                  setSuccessMessage(null);
+                  if (loginIdentifier && !changeIdentifier) {
+                    setChangeIdentifier(loginIdentifier);
+                  }
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  authMode === 'change-password'
+                    ? 'bg-amber-500 text-slate-950 shadow-md ring-2 ring-amber-300/60'
+                    : 'bg-slate-950 text-amber-200 border border-amber-500/30 hover:border-amber-400'
+                }`}
+              >
+                Change Password
+              </button>
             </div>
 
             <button
@@ -1067,14 +840,33 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={() => setAuthMode('forgot')}
-                  className="text-xs text-amber-400 hover:underline font-medium cursor-pointer"
-                >
-                  Forgot Password?
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('forgot');
+                      setErrorMessage(null);
+                      setSuccessMessage(null);
+                    }}
+                    className="text-xs text-amber-400 hover:underline font-medium cursor-pointer"
+                  >
+                    Forgot Password?
+                  </button>
+                  <span className="text-amber-500/40 text-xs">|</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('change-password');
+                      setErrorMessage(null);
+                      setSuccessMessage(null);
+                      if (loginIdentifier) setChangeIdentifier(loginIdentifier);
+                    }}
+                    className="text-xs text-emerald-300 hover:underline font-medium cursor-pointer"
+                  >
+                    Change Password
+                  </button>
+                </div>
 
                 <button
                   type="submit"
@@ -1551,8 +1343,96 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
               </button>
             </form>
           )}
+
+          {/* 4. CHANGE PASSWORD FORM (FOR CLIENT, HEALER & MASTER ADMIN LOGINS) */}
+          {authMode === 'change-password' && (
+            <form onSubmit={handleChangePasswordSubmit} className="space-y-4 max-w-xl mx-auto">
+              <div className="p-4 rounded-2xl bg-slate-950 border border-emerald-500/30 text-xs text-emerald-200/90">
+                Change the password for your <strong>{selectedRole.toUpperCase()}</strong> account by verifying your registered <strong>Email / 10-Digit Mobile</strong> and <strong>Current Password</strong>.
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-amber-300 block mb-1">
+                  Registered Email Address or 10-Digit Mobile Number *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={changeIdentifier}
+                  onChange={(e) => setChangeIdentifier(e.target.value)}
+                  placeholder="Enter registered Email or 10-Digit Mobile"
+                  className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-4 py-2.5 text-sm text-amber-100"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-amber-300 block mb-1">
+                  Current Password *
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={changeCurrentPassword}
+                    onChange={(e) => setChangeCurrentPassword(e.target.value)}
+                    placeholder="Enter your current password"
+                    className="w-full bg-slate-950 border border-amber-500/35 rounded-xl pl-4 pr-24 py-2.5 text-sm text-amber-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-2.5 px-2 py-0.5 rounded-lg bg-slate-900 border border-amber-500/30 text-[11px] font-bold text-amber-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showPassword ? 'Hide' : 'Show'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="text-xs font-semibold text-emerald-300 block mb-1">
+                    New Password (Min 6 Characters) *
+                  </label>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={changeNewPassword}
+                    onChange={(e) => setChangeNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    className="w-full bg-slate-950 border border-emerald-500/35 rounded-xl px-4 py-2.5 text-sm text-amber-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-emerald-300 block mb-1">
+                    Confirm New Password *
+                  </label>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={changeConfirmPassword}
+                    onChange={(e) => setChangeConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    className="w-full bg-slate-950 border border-emerald-500/35 rounded-xl px-4 py-2.5 text-sm text-amber-100"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-amber-500 hover:from-emerald-400 hover:to-amber-400 text-slate-950 font-black text-xs sm:text-sm cursor-pointer shadow-lg"
+              >
+                Verify Current Password &amp; Change Password
+              </button>
+            </form>
+          )}
         </div>
       )}
+
+      {/* HEALER DDEEPAK JAIN INTRODUCTION, 6 CORE MISSION PILLARS & FAMILY BENEFITS (PUBLIC LOGIN + INTRO PAGE) */}
+      <HealerDeepakJainMissionShowcase isPublicLanding />
 
       {/* 1. WHAT YOU WILL GET IN THIS APP (COMPLETE USES & 18-CHAPTER SPIRITUAL MODULES) */}
       <div className="space-y-4">
@@ -1731,8 +1611,8 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
               a: 'The Universal Numeric Verifier includes a complete step-by-step Chaldean Letter-to-Number Chart (1 to 8) and digit reduction guide. Clients can see the exact letter + digit addition formula and test unlimited vehicle plates, house/flat numbers, bank account numbers, and business/brand names.',
             },
             {
-              q: 'Q6. Can I install this app on my Android phone, iPhone, or Laptop?',
-              a: 'Yes! Use the centered "Download & Share App" box above to install the app directly on Android, iOS (Safari Share → Add to Home Screen), Windows, or Mac, or scan the QR code / share the official link on WhatsApp.',
+              q: 'Q6. How do I get the official TATHASTU NUMEROLOGY App Download Link or QR Code?',
+              a: `The official TATHASTU NUMEROLOGY App Download Link, QR Code & Android/iOS install kit are managed exclusively by Master Admin. Contact Healer Ddeepak Jain on +91 ${TATHASTU_ADMIN_PHONE} (${TATHASTU_ADMIN_EMAIL}) for the official app invite link.`,
             },
           ].map((faq, idx) => (
             <div
@@ -1746,7 +1626,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
         </div>
       </div>
 
-      {/* PayU Payment Gateway Modal — Mandatory Payment Confirmation Before Dashboard Access */}
+      {/* Official PayU Hosted Payment Gateway — Auto-Redirect & Automatic Subscription Activation */}
       {isPayUModalOpen && (activePlans.find((p) => p.id === regPlanId) || activePlans[0]) && (
         <PayUPaymentModal
           isOpen={isPayUModalOpen}
@@ -1757,9 +1637,35 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
           customerMobile={regMobile}
           coupons={coupons}
           initialCouponCode={regCouponCode}
-          onPaymentSuccess={async ({ transactionId, paymentMethod, finalAmountInr, couponCode }) => {
+          checkoutContext={{
+            orderType: 'new_registration',
+            payload: {
+              role: selectedRole === 'healer' ? 'healer' : 'client',
+              name: regName,
+              dob: selectedRole === 'client' ? regDob : undefined,
+              tob: selectedRole === 'client' ? regTob : undefined,
+              pob: selectedRole === 'client' ? regPob : undefined,
+              lat: regLat,
+              lng: regLng,
+              gender: regGender,
+              email: regEmail,
+              mobile: regMobile,
+              password: regPassword,
+              planId: regPlanId,
+              couponCode: regCouponCode,
+              healerBrandName,
+              healerLogoUrl: healerLogoUrl || TATHASTU_LOGO_PATH,
+              healerInstagram,
+              healerFacebook,
+              healerYoutube,
+              healerWebsite,
+              healerAddress,
+            },
+          }}
+          onPaymentSuccess={async ({ transactionId, utrNumber, paymentMethod, finalAmountInr, couponCode }) => {
             await executeRegistration(couponCode, {
               transactionId,
+              utrNumber,
               paymentMethod,
               finalAmountInr,
             });

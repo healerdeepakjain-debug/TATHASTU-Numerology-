@@ -14,16 +14,17 @@ export default defineConfig(() => {
         injectRegister: 'auto',
         manifestFilename: 'manifest.json',
         includeAssets: [
+          'favicon.ico',
           'apple-touch-icon.png',
           'pwa-192x192.png',
           'pwa-512x512.png',
           'pwa-maskable-512x512.png',
-          'assets/aistudio/tathastu_logo_small_6cf3db26.jpg',
+          'assets/aistudio/pic_2_93a8f2dc.png',
         ],
         manifest: {
           id: '/',
           name: 'TATHASTU NUMEROLOGY',
-          short_name: 'TATHASTU',
+          short_name: 'TATHASTU NUMEROLOGY',
           description:
             'TATHASTU NUMEROLOGY (TATHASTU THE DIVINE LIGHT) — One place . EVERY SOLUTION. Vedic, Chaldean, Islamic-Vedic & Pranic Energy Alignment Portal.',
           theme_color: '#020617',
@@ -34,19 +35,19 @@ export default defineConfig(() => {
           scope: '/',
           icons: [
             {
-              src: '/pwa-192x192.png',
+              src: '/pwa-192x192.png?v=3',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-512x512.png',
+              src: '/pwa-512x512.png?v=3',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-maskable-512x512.png',
+              src: '/pwa-maskable-512x512.png?v=3',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',

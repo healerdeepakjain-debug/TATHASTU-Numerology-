@@ -25,7 +25,6 @@ import {
   HeartPulse,
   Play,
 } from 'lucide-react';
-import { PWAInstallButton } from './PWAInstallButton';
 import { BirthProfile } from '../types';
 import { calculateMulank, calculateBhagyank, getDailyPanchang, PLANETARY_PROFILES } from '../utils/numerology';
 import { requestNotificationPermission, sendBrowserNotification } from '../utils/notifications';
@@ -46,7 +45,7 @@ interface HeaderProps {
   setActiveTab: (tab: string) => void;
   profile: BirthProfile;
   onOpenProfileModal: () => void;
-  onOpenAuthPortal: () => void;
+  onLogout: () => void;
   onReplayIntro?: () => void;
 }
 
@@ -55,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   profile,
   onOpenProfileModal,
-  onOpenAuthPortal,
+  onLogout,
   onReplayIntro,
 }) => {
   const { language, setLanguage, t } = useLanguage();
@@ -322,9 +321,6 @@ export const Header: React.FC<HeaderProps> = ({
             </>
           )}
 
-          {/* Download App (Android / iOS / Windows) Button */}
-          <PWAInstallButton compact />
-
           {onReplayIntro && (
             <button
               type="button"
@@ -337,14 +333,15 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Switch Login / Sign-Up Landing Page Button */}
+          {/* Logout Button — Signs out completely and returns to Login + Introduction Page */}
           <button
-            onClick={onOpenAuthPortal}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-xs transition-all cursor-pointer"
-            title="Switch Account or Open 3-Role Login Portal"
+            type="button"
+            onClick={onLogout}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/35 border border-rose-400/60 text-rose-200 hover:text-white font-bold text-xs transition-all cursor-pointer shadow-sm"
+            title="Logout and return to Login & Introduction Page"
           >
-            <LogOut className="w-3.5 h-3.5 text-amber-400" />
-            <span>{isMobile ? 'Login' : 'Switch Login'}</span>
+            <LogOut className="w-3.5 h-3.5 text-rose-300" />
+            <span>Logout</span>
           </button>
         </div>
       </div>

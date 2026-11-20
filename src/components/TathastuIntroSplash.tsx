@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Volume2, VolumeX, SkipForward } from 'lucide-react';
+import { Volume2, SkipForward } from 'lucide-react';
 import {
   TATHASTU_APP_NAME,
   TATHASTU_BRAND_NAME,
@@ -33,15 +33,15 @@ interface OrbitingGraha {
 
 export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
   onComplete,
-  durationMs = 3800,
+  durationMs = 4200,
 }) => {
   const { isMobile } = useResponsiveViewport();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const musicStartedRef = useRef<boolean>(false);
 
   const [isFadingOut, setIsFadingOut] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [soundEnabled, setSoundEnabled] = useState(false);
   const completedRef = useRef(false);
 
   const prefersReducedMotion =
@@ -49,13 +49,18 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  const effectiveDuration = prefersReducedMotion ? 1300 : durationMs;
+  const effectiveDuration = prefersReducedMotion ? 1800 : durationMs;
 
   const stopAmbientSound = () => {
     if (audioCtxRef.current) {
-      audioCtxRef.current.close().catch(() => {});
+      try {
+        audioCtxRef.current.close().catch(() => {});
+      } catch {
+        // ignore
+      }
       audioCtxRef.current = null;
     }
+    musicStartedRef.current = false;
   };
 
   const finishIntro = () => {
@@ -68,46 +73,103 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
     }, 460);
   };
 
-  const handleToggleSacredSound = () => {
-    if (soundEnabled) {
-      stopAmbientSound();
-      setSoundEnabled(false);
-      return;
-    }
-
+  // Start Sacred Intro Music immediately with NO MUTE (Om Tanpura Drone + Celestial Temple Bell Chimes)
+  const startSacredIntroMusic = () => {
+    if (completedRef.current) return;
     try {
       const AudioCtx =
         window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtx) return;
+
+      if (audioCtxRef.current) {
+        if (audioCtxRef.current.state === 'suspended') {
+          audioCtxRef.current.resume().catch(() => {});
+        }
+        return;
+      }
+
       const ctx = new AudioCtx();
       audioCtxRef.current = ctx;
+      musicStartedRef.current = true;
+
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+
+      const now = ctx.currentTime;
+      const totalSec = effectiveDuration / 1000;
 
       const masterGain = ctx.createGain();
-      masterGain.gain.setValueAtTime(0.001, ctx.currentTime);
-      masterGain.gain.exponentialRampToValueAtTime(0.11, ctx.currentTime + 0.5);
+      masterGain.gain.setValueAtTime(0.001, now);
+      masterGain.gain.exponentialRampToValueAtTime(0.24, now + 0.45);
+      masterGain.gain.setValueAtTime(0.24, now + Math.max(0.6, totalSec - 0.55));
+      masterGain.gain.exponentialRampToValueAtTime(0.001, now + totalSec);
       masterGain.connect(ctx.destination);
 
-      // Sacred 136.1 Hz Om Earth-Year frequency + 432 Hz celestial harmonic shimmer
-      const freqs = [136.1, 272.2, 432];
-      freqs.forEach((f, idx) => {
+      // 1. Sacred 136.1 Hz Om Earth-Year Tanpura Pad (Root + Fifth + Octave + 432 Hz Shimmer)
+      const droneLayers: Array<{ freq: number; type: OscillatorType; gain: number }> = [
+        { freq: 136.1, type: 'triangle', gain: 0.42 },
+        { freq: 204.15, type: 'sine', gain: 0.22 },
+        { freq: 272.2, type: 'sine', gain: 0.18 },
+        { freq: 432.0, type: 'sine', gain: 0.12 },
+      ];
+
+      droneLayers.forEach((layer) => {
         const osc = ctx.createOscillator();
-        const oscGain = ctx.createGain();
-        osc.type = idx === 2 ? 'sine' : 'triangle';
-        osc.frequency.setValueAtTime(f, ctx.currentTime);
-        oscGain.gain.setValueAtTime(idx === 0 ? 0.55 : idx === 1 ? 0.25 : 0.14, ctx.currentTime);
-        osc.connect(oscGain);
-        oscGain.connect(masterGain);
-        osc.start();
+        const g = ctx.createGain();
+        osc.type = layer.type;
+        osc.frequency.setValueAtTime(layer.freq, now);
+        g.gain.setValueAtTime(layer.gain, now);
+        osc.connect(g);
+        g.connect(masterGain);
+        osc.start(now);
+        osc.stop(now + totalSec + 0.1);
       });
 
-      setSoundEnabled(true);
+      // 2. Ascending Divine Temple Chime Melody (432 Hz -> 540 Hz -> 648 Hz -> 864 Hz)
+      const chimeNotes = [
+        { freq: 432.0, offset: 0.15, dur: 1.5, amp: 0.22 },
+        { freq: 540.0, offset: 0.85, dur: 1.5, amp: 0.2 },
+        { freq: 648.0, offset: 1.55, dur: 1.6, amp: 0.22 },
+        { freq: 864.0, offset: 2.25, dur: 1.8, amp: 0.24 },
+      ];
+
+      chimeNotes.forEach((note) => {
+        if (note.offset >= totalSec) return;
+        const osc = ctx.createOscillator();
+        const env = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(note.freq, now + note.offset);
+        env.gain.setValueAtTime(0.0001, now + note.offset);
+        env.gain.exponentialRampToValueAtTime(note.amp, now + note.offset + 0.08);
+        env.gain.exponentialRampToValueAtTime(0.0008, now + note.offset + note.dur);
+        osc.connect(env);
+        env.connect(masterGain);
+        osc.start(now + note.offset);
+        osc.stop(now + note.offset + note.dur + 0.05);
+      });
     } catch {
-      setSoundEnabled(false);
+      // Audio playback blocked by environment
     }
   };
 
   useEffect(() => {
+    // Auto-start unmuted sacred intro music immediately when the app opens
+    startSacredIntroMusic();
+
+    // Ensure strict desktop browsers resume audio on the earliest touch/pointer/key interaction
+    const unlockAudio = () => {
+      if (!audioCtxRef.current) {
+        startSacredIntroMusic();
+      } else if (audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+    };
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    window.addEventListener('touchstart', unlockAudio, { passive: true });
+    window.addEventListener('keydown', unlockAudio, { passive: true });
+
     const startTime = performance.now();
     const progressTimer = window.setInterval(() => {
       const elapsed = performance.now() - startTime;
@@ -120,6 +182,9 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
     }, 32);
 
     return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
       window.clearInterval(progressTimer);
       stopAmbientSound();
     };
@@ -359,25 +424,12 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
       {/* 60fps Animated Spiritual Video Canvas */}
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full block" />
 
-      {/* Top Controls Bar: Sacred Sound Toggle + Skip Intro */}
+      {/* Top Controls Bar: Sacred Music Status (No Mute) + Skip Intro */}
       <div className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-4 sm:pt-6 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={handleToggleSacredSound}
-          className="min-h-[42px] px-3.5 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800/90 border border-amber-500/40 text-amber-200 text-xs font-bold flex items-center gap-2 backdrop-blur-md cursor-pointer transition-all"
-        >
-          {soundEnabled ? (
-            <>
-              <Volume2 className="w-4 h-4 text-emerald-400" />
-              <span>Om Resonance ON</span>
-            </>
-          ) : (
-            <>
-              <VolumeX className="w-4 h-4 text-amber-400" />
-              <span>Tap for Sacred Om Sound</span>
-            </>
-          )}
-        </button>
+        <div className="min-h-[40px] px-3.5 py-2 rounded-xl bg-slate-900/80 border border-emerald-400/45 text-emerald-200 text-xs font-bold flex items-center gap-2 backdrop-blur-md">
+          <Volume2 className="w-4 h-4 text-emerald-400 animate-pulse" />
+          <span>Sacred Om Music ON</span>
+        </div>
 
         <button
           type="button"

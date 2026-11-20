@@ -42,7 +42,8 @@ import {
   TATHASTU_ADMIN_EMAIL,
   TATHASTU_LOGO_PATH,
 } from './utils/tathastuStore';
-import { X, ShieldCheck, Globe } from 'lucide-react';
+import { PENDING_PAYU_ORDER_STORAGE_KEY } from './components/PayUPaymentModal';
+import { X, Globe, LogOut, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 const SECTION_TITLES: Record<string, string> = {
   dashboard: 'VEDIC & CHALDEAN SPIRITUAL DASHBOARD',
@@ -69,14 +70,37 @@ function TathastuMainApp() {
     profiles,
     currentAccount,
     activeProfile,
-     latestLiveBroadcastAlert,
+    latestLiveBroadcastAlert,
     dismissLiveBroadcastAlert,
     selectActiveProfile,
     clearActiveProfile,
+    logout,
     quickSwitchRoleAccount,
+    restoreAccountSessionById,
+    registerAccountAndPrimaryProfile,
+    upgradeAccountPlan,
     adminUpdateProfile,
     triggerAdminRestrictionPopup,
   } = useTathastu();
+
+  const [payuReturnBanner, setPayuReturnBanner] = useState<{
+    type: 'success' | 'error';
+    title: string;
+    message: string;
+  } | null>(null);
+  const payuCallbackProcessedRef = React.useRef(false);
+
+  const handleLogout = () => {
+    logout();
+    setIsAuthPortalOpen(false);
+    setActiveTab('profiles-portal');
+    if (typeof window !== 'undefined') {
+      if (window.location.search) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<string>(() => {
     try {
@@ -93,7 +117,11 @@ function TathastuMainApp() {
   const [showIntroSplash, setShowIntroSplash] = useState<boolean>(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('autoDownloadPdf') === '1' || params.get('noIntro') === '1') {
+      if (
+        params.get('autoDownloadPdf') === '1' ||
+        params.get('noIntro') === '1' ||
+        params.get('payuCallback') === '1'
+      ) {
         return false;
       }
     } catch {
@@ -103,6 +131,196 @@ function TathastuMainApp() {
   });
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isAuthPortalOpen, setIsAuthPortalOpen] = useState(false);
+
+  // Automatic Subscription Activation when redirected back from Official PayU Payment Confirmation Page
+  useEffect(() => {
+    if (typeof window === 'undefined' || payuCallbackProcessedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payuCallback') !== '1') return;
+
+    payuCallbackProcessedRef.current = true;
+    const status = (params.get('status') || '').toLowerCase();
+    const txnid = (params.get('txnid') || '').trim();
+    const mihpayid = (params.get('mihpayid') || '').trim();
+    const reason = (params.get('reason') || '').trim();
+
+    const cleanUrl = () => {
+      try {
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch {
+        // ignore
+      }
+    };
+
+    if (status !== 'success' || !txnid) {
+      cleanUrl();
+      setPayuReturnBanner({
+        type: 'error',
+        title: 'PayU Payment Not Completed',
+        message:
+          reason ||
+          'Payment was cancelled or could not be verified on Official PayU. No account or subscription was activated.',
+      });
+      return;
+    }
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/payu/order/${encodeURIComponent(txnid)}`, {
+          cache: 'no-store',
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.ok || !data?.order) {
+          cleanUrl();
+          setPayuReturnBanner({
+            type: 'error',
+            title: 'PayU Order Verification Failed',
+            message: 'Could not verify PayU order record on server. Please contact Master Admin.',
+          });
+          return;
+        }
+
+        const order = data.order;
+        if (order.status !== 'success' || !order.hashVerified) {
+          cleanUrl();
+          setPayuReturnBanner({
+            type: 'error',
+            title: 'PayU Hash Verification Failed',
+            message: 'Official PayU cryptographic confirmation did not succeed. Subscription was not activated.',
+          });
+          return;
+        }
+
+        if (order.consumed) {
+          cleanUrl();
+          return;
+        }
+
+        let payload: Record<string, any> = order.checkoutPayload || {};
+        if (!payload || Object.keys(payload).length === 0) {
+          try {
+            const rawLocal = localStorage.getItem(PENDING_PAYU_ORDER_STORAGE_KEY);
+            if (rawLocal) {
+              const parsed = JSON.parse(rawLocal);
+              if (parsed?.txnid === txnid && parsed?.checkoutPayload) {
+                payload = parsed.checkoutPayload;
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        const verifiedTxn = order.mihpayid || mihpayid || txnid;
+        const verifiedAmount = Number(order.amount || payload.expectedAmountInr || 0);
+
+        if (order.orderType === 'plan_upgrade' && payload.accountId && payload.planId) {
+          const upRes = await upgradeAccountPlan(
+            payload.accountId,
+            payload.planId,
+            payload.couponCode || ''
+          );
+          restoreAccountSessionById(payload.accountId);
+          setIsAuthPortalOpen(false);
+          setActiveTab('profiles-portal');
+          await fetch(`/api/payu/order/${encodeURIComponent(txnid)}/consume`, { method: 'POST' }).catch(() => {});
+          try {
+            localStorage.removeItem(PENDING_PAYU_ORDER_STORAGE_KEY);
+          } catch {
+            // ignore
+          }
+          cleanUrl();
+          if (upRes.ok) {
+            setPayuReturnBanner({
+              type: 'success',
+              title: 'Official PayU Payment Confirmed — Plan Upgraded Automatically!',
+              message: `₹${verifiedAmount.toLocaleString('en-IN')} confirmed by PayU (ID: ${verifiedTxn}). ${payload.planName || 'Your selected plan'} has been added to your account automatically.`,
+            });
+          } else {
+            setPayuReturnBanner({
+              type: 'error',
+              title: 'Plan Upgrade Activation Notice',
+              message: upRes.error || 'Payment confirmed, but plan could not be applied automatically. Contact Master Admin.',
+            });
+          }
+          return;
+        }
+
+        // New Client / Healer Registration (self sign-up or Master Admin paid registration)
+        const keepAdminSession =
+          order.orderType === 'admin_registration' && Boolean(payload.keepCurrentSession);
+        const regRes = await registerAccountAndPrimaryProfile({
+          role: payload.role === 'healer' ? 'healer' : 'client',
+          name: payload.name || order.firstname || 'Divine Seeker',
+          dob: payload.role === 'client' ? payload.dob : undefined,
+          tob: payload.role === 'client' ? payload.tob || '09:30' : undefined,
+          pob: payload.role === 'client' ? payload.pob || 'New Delhi, Delhi, India' : undefined,
+          lat: payload.lat,
+          lng: payload.lng,
+          gender: payload.gender || 'male',
+          email: payload.email || order.email,
+          mobile: payload.mobile || order.phone,
+          password: payload.password || 'tathastu123',
+          planId: payload.planId,
+          isFoc: false,
+          couponCode: payload.couponCode || '',
+          keepCurrentSession: keepAdminSession,
+          paymentVerification: {
+            transactionId: verifiedTxn,
+            utrNumber: order.bankRefNum || verifiedTxn,
+            paymentMethod: `PayU Official (${order.paymentMode || 'ONLINE'})`,
+            verifiedAmountInr: verifiedAmount,
+          },
+          healerBrandName: payload.healerBrandName,
+          healerLogoUrl: payload.healerLogoUrl,
+          healerInstagram: payload.healerInstagram,
+          healerFacebook: payload.healerFacebook,
+          healerYoutube: payload.healerYoutube,
+          healerWebsite: payload.healerWebsite,
+          healerAddress: payload.healerAddress,
+        });
+
+        if (keepAdminSession && payload.adminAccountId) {
+          restoreAccountSessionById(payload.adminAccountId);
+        }
+
+        await fetch(`/api/payu/order/${encodeURIComponent(txnid)}/consume`, { method: 'POST' }).catch(() => {});
+        try {
+          localStorage.removeItem(PENDING_PAYU_ORDER_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+        cleanUrl();
+
+        if (regRes.ok) {
+          setIsAuthPortalOpen(false);
+          setActiveTab('profiles-portal');
+          setPayuReturnBanner({
+            type: 'success',
+            title: 'Official PayU Payment Confirmed — Subscription Activated Automatically!',
+            message: `₹${verifiedAmount.toLocaleString('en-IN')} verified by PayU (Payment ID: ${verifiedTxn}). Your ${String(
+              payload.role || 'client'
+            ).toUpperCase()} account (${payload.planName || 'Paid Plan'}) is now live!`,
+          });
+        } else {
+          setPayuReturnBanner({
+            type: 'error',
+            title: 'Subscription Activation Notice',
+            message:
+              regRes.error ||
+              `Payment confirmed (${verifiedTxn}), please contact Master Admin for assistance.`,
+          });
+        }
+      } catch {
+        cleanUrl();
+        setPayuReturnBanner({
+          type: 'error',
+          title: 'PayU Callback Error',
+          message: 'Network error while verifying your PayU payment. Please contact Master Admin.',
+        });
+      }
+    })();
+  }, [registerAccountAndPrimaryProfile, upgradeAccountPlan, restoreAccountSessionById]);
 
   // Forced mobile-viewport adjustment script: enforces mobile viewport meta & adds 'tathastu-mobile-view' to document.body
   useEffect(() => {
@@ -300,20 +518,43 @@ function TathastuMainApp() {
         <TathastuIntroSplash onComplete={() => setShowIntroSplash(false)} />
       )}
 
+      {/* Official PayU Return Confirmation / Automatic Subscription Activation Banner */}
+      {payuReturnBanner && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[10000] w-[94%] max-w-2xl no-print animate-fade-in">
+          <div
+            className={`rounded-2xl border-2 p-4 shadow-2xl flex items-start justify-between gap-3 ${
+              payuReturnBanner.type === 'success'
+                ? 'bg-emerald-950/95 border-emerald-400 text-emerald-100'
+                : 'bg-rose-950/95 border-rose-400 text-rose-100'
+            }`}
+          >
+            <div className="flex items-start gap-2.5">
+              {payuReturnBanner.type === 'success' ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              )}
+              <div>
+                <div className="font-serif text-sm font-black">{payuReturnBanner.title}</div>
+                <p className="text-xs opacity-90 mt-0.5 leading-relaxed">{payuReturnBanner.message}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPayuReturnBanner(null)}
+              className="p-1 rounded-lg bg-slate-900/70 hover:bg-slate-800 text-slate-300 hover:text-white cursor-pointer shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {!currentAccount || isAuthPortalOpen ? (
         <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
           <div className="bg-slate-900/95 border-b border-amber-500/30 px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 max-w-7xl w-full mx-auto">
             <div className="flex items-center gap-2 text-xs text-amber-300 font-semibold">
-              {currentAccount ? (
-                <>
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  <span>
-                    Logged in as: <strong>{currentAccount.name}</strong> ({currentAccount.role.toUpperCase()} — {currentAccount.planName})
-                  </span>
-                </>
-              ) : (
-                <span>{t('appTitle')}</span>
-              )}
+              <span>{t('appTitle')}</span>
             </div>
             <div className="flex items-center gap-2">
               <div
@@ -334,15 +575,6 @@ function TathastuMainApp() {
                   ))}
                 </select>
               </div>
-              {currentAccount && (
-                <button
-                  onClick={() => setIsAuthPortalOpen(false)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition-all cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  <span>Return to Saved Profiles & Portals</span>
-                </button>
-              )}
             </div>
           </div>
           <TathastuAuthPortal
@@ -364,7 +596,7 @@ function TathastuMainApp() {
             setActiveTab={setActiveTab}
             profile={profile}
             onOpenProfileModal={() => setIsProfileModalOpen(true)}
-            onOpenAuthPortal={() => setIsAuthPortalOpen(true)}
+            onLogout={handleLogout}
             onReplayIntro={() => setShowIntroSplash(true)}
           />
 
@@ -425,9 +657,10 @@ function TathastuMainApp() {
             }`}
           >
         {!activeProfile || activeTab === 'profiles-portal' ? (
-          /* Post-Login Home: ONLY Saved Profiles, + New Profile, Client Portal, Healer Portal & Master Admin Portal */
+          /* Post-Login Home: Saved Profiles (role-isolated), + New Profile, and for Admin: Client Portal, Healer Portal & Master Admin Portal */
           <AdminAndProfilesPortal
             onOpenProfileWorkspace={() => setActiveTab('dashboard')}
+            onLogout={handleLogout}
           />
         ) : (
           /* Opened Client Complete Vedic Dashboard & Modules (with Print PDF / Download / Share / Edit / Delete / Direct WhatsApp & 12-Month Section Checkboxes) */
@@ -528,6 +761,7 @@ function TathastuMainApp() {
               userRole={currentAccount?.role}
               onClearActiveProfile={clearActiveProfile}
               onReplayIntro={() => setShowIntroSplash(true)}
+              onLogout={handleLogout}
             />
           )}
 
@@ -560,7 +794,7 @@ function TathastuMainApp() {
               <p className="text-[11px] text-slate-400 max-w-2xl mx-auto">
                 <strong>{TATHASTU_APP_NAME}</strong> by <strong>{TATHASTU_BRAND_NAME}</strong>. App Creator &amp; Admin: <strong className="text-amber-200">Healer Ddeepak Jain</strong> • Email: <strong className="text-amber-300 font-mono">{TATHASTU_ADMIN_EMAIL}</strong> • Helpline: <strong className="text-amber-300 font-mono">{TATHASTU_ADMIN_PHONE}</strong>.
               </p>
-              <div className="flex flex-wrap justify-center gap-4 pt-2 text-[11px] text-amber-400/80">
+              <div className="flex flex-wrap justify-center items-center gap-4 pt-2 text-[11px] text-amber-400/80">
                 <button
                   onClick={() => {
                     clearActiveProfile();
@@ -568,11 +802,15 @@ function TathastuMainApp() {
                   }}
                   className="hover:underline cursor-pointer"
                 >
-                  Saved Profiles & Portals
+                  {currentAccount?.role === 'admin' ? 'Saved Profiles & Admin Portals' : 'My Saved Profiles'}
                 </button>
                 <span>•</span>
-                <button onClick={() => setIsAuthPortalOpen(true)} className="hover:underline cursor-pointer">
-                  Switch Login / Register Account
+                <button
+                  onClick={handleLogout}
+                  className="inline-flex items-center gap-1 text-rose-300 hover:text-rose-200 font-bold hover:underline cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Logout &amp; Return to Login Page</span>
                 </button>
               </div>
             </div>

@@ -37,7 +37,13 @@ import loShuCosmicImg from '../assets/images/mobile_lo_shu_cosmic_grid_179430550
 import navagrahaImg from '../assets/images/planetary_transits_navagraha_1794305507441.jpg';
 import noorGeometryImg from '../assets/images/islamic_vedic_noor_geometry_1794305507170.jpg';
 
-export const HealerDeepakJainMissionShowcase: React.FC = () => {
+interface HealerDeepakJainMissionShowcaseProps {
+  isPublicLanding?: boolean;
+}
+
+export const HealerDeepakJainMissionShowcase: React.FC<HealerDeepakJainMissionShowcaseProps> = ({
+  isPublicLanding = false,
+}) => {
   const { accounts, currentAccount, submitFeedbackSuggestion } = useTathastu();
   const { language } = useLanguage();
   const isHindi = language === 'hi';
@@ -514,7 +520,8 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
         </div>
       </div>
 
-      {/* SECTION 4: GUIDANCE SESSION STAR-RATING & FEEDBACK BOX */}
+      {/* SECTION 4: GUIDANCE SESSION STAR-RATING & FEEDBACK BOX (Shown only after login) */}
+      {!isPublicLanding && currentAccount && (
       <div className="rounded-3xl border-2 border-amber-500/40 bg-gradient-to-br from-[#191229] via-[#110d1c] to-[#1c130a] p-6 md:p-8 shadow-2xl">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-5 space-y-4">
@@ -714,6 +721,7 @@ export const HealerDeepakJainMissionShowcase: React.FC = () => {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

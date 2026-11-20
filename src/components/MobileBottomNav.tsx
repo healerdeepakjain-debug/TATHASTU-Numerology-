@@ -19,6 +19,7 @@ import {
   X,
   FolderOpen,
   Play,
+  LogOut,
 } from 'lucide-react';
 import { useLanguage } from '../utils/i18n';
 import { UserRole } from '../utils/tathastuStore';
@@ -30,6 +31,7 @@ interface MobileBottomNavProps {
   userRole?: UserRole;
   onClearActiveProfile: () => void;
   onReplayIntro: () => void;
+  onLogout: () => void;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -39,6 +41,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   userRole,
   onClearActiveProfile,
   onReplayIntro,
+  onLogout,
 }) => {
   const { t } = useLanguage();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -144,14 +147,14 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               })}
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-amber-500/20">
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-amber-500/20">
               <button
                 type="button"
                 onClick={() => selectModule('profiles-portal')}
-                className="min-h-[44px] px-3 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                className="min-h-[44px] px-2.5 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center gap-1 cursor-pointer"
               >
-                <FolderOpen className="w-4 h-4" />
-                <span>Saved Profiles</span>
+                <FolderOpen className="w-4 h-4 shrink-0" />
+                <span>Profiles</span>
               </button>
               <button
                 type="button"
@@ -159,10 +162,21 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                   setDrawerOpen(false);
                   onReplayIntro();
                 }}
-                className="min-h-[44px] px-3 py-2.5 rounded-xl bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                className="min-h-[44px] px-2.5 py-2.5 rounded-xl bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
               >
-                <Play className="w-4 h-4 text-amber-400" />
-                <span>Brand Intro Video</span>
+                <Play className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Intro</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDrawerOpen(false);
+                  onLogout();
+                }}
+                className="min-h-[44px] px-2.5 py-2.5 rounded-xl bg-rose-600/25 border border-rose-400/60 text-rose-200 font-black text-xs flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <LogOut className="w-4 h-4 text-rose-300 shrink-0" />
+                <span>Logout</span>
               </button>
             </div>
           </div>

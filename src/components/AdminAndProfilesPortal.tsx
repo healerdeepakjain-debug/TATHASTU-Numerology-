@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import {
   Crown,
   Users,
@@ -34,16 +35,24 @@ import {
   Star,
   Check,
   HeartPulse,
+  LogOut,
+  KeyRound,
+  Globe,
+  Sparkles,
 } from 'lucide-react';
 import {
   useTathastu,
   AccountRecord,
   AstroProfileRecord,
   SubscriptionPlanOption,
+  PayUMerchantSyncConfig,
   TATHASTU_ADMIN_PHONE,
   TATHASTU_ADMIN_EMAIL,
+  TATHASTU_APP_NAME,
   TATHASTU_BRAND_NAME,
+  TATHASTU_TAGLINE,
   TATHASTU_LOGO_PATH,
+  TATHASTU_OFFICIAL_APP_URL,
 } from '../utils/tathastuStore';
 import {
   sendWhatsAppSpecificEventAlert,
@@ -51,10 +60,17 @@ import {
   sendWhatsAppAuspiciousTimeUpdate,
   generateClientReportQrDataUrl,
   getClientReportDirectUrl,
+  getPublicAppOriginUrl,
   loadWhatsAppApiConfig,
   saveWhatsAppApiConfig,
   WhatsAppApiConfig,
 } from '../utils/whatsappAndQrService';
+import {
+  getCurrentLanguage,
+  translateMultilineBlock,
+  validateAndNormalizeLocaleText,
+} from '../utils/i18n';
+import { PWAInstallButton } from './PWAInstallButton';
 import { PayUPaymentModal } from './PayUPaymentModal';
 import { CityAutocompleteInput } from './CityAutocompleteInput';
 import { BirthTimeAmPmInput, formatTime12HourAmPm } from './BirthTimeAmPmInput';
@@ -63,10 +79,12 @@ import { HEALTH_CONCERN_OPTIONS } from '../utils/yogaPranayamaData';
 
 interface AdminAndProfilesPortalProps {
   onOpenProfileWorkspace: () => void;
+  onLogout: () => void;
 }
 
 export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   onOpenProfileWorkspace,
+  onLogout,
 }) => {
   const {
     accounts,
@@ -75,11 +93,14 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
     coupons,
     broadcasts,
     feedbacks,
+    payuConfig,
+    adminUpdatePayuConfig,
     currentAccount,
     selectActiveProfile,
     addNewProfileUnderAccount,
     registerAccountAndPrimaryProfile,
     upgradeAccountPlan,
+    changePasswordByCredentials,
     adminUpdateProfile,
     adminDeleteProfile,
     adminUpdateAccount,
@@ -98,11 +119,13 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   } = useTathastu();
 
   // Top-level Post-Login Portal View:
-  // Defaults to 'welcome' (shows Welcome Box + Healer Ddeepak Jain Showcase).
-  // Clicking any option opens its dedicated page.
+  // Defaults to 'saved-profiles' right after login so:
+  // - Client sees ONLY their own created profiles
+  // - Healer sees ONLY their own created client profiles
+  // - Admin sees Admin's Saved Profiles + full control over Client Portal, Healer Portal & Master Admin Portal
   const [activeView, setActiveView] = useState<
     'welcome' | 'saved-profiles' | 'new-profile' | 'plan-upgrade' | 'client-portal' | 'healer-portal' | 'master-admin-portal'
-  >('welcome');
+  >('saved-profiles');
 
   // Selected Client or Healer in Admin's Client Portal / Healer Portal for full drill-down
   const [selectedClientAccId, setSelectedClientAccId] = useState<string | null>(null);
@@ -221,6 +244,40 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   // Direct WhatsApp API Connection Hub State
   const [whatsAppConfig, setWhatsAppConfig] = useState<WhatsAppApiConfig>(loadWhatsAppApiConfig);
   const [selectedWaClientProfileId, setSelectedWaClientProfileId] = useState<string>('');
+
+  // Master Admin Exclusive App Download Link & QR Code State
+  const [copiedAppLink, setCopiedAppLink] = useState(false);
+  const [adminAppQrDataUrl, setAdminAppQrDataUrl] = useState<string>('');
+  const adminAppShareUrl = getPublicAppOriginUrl() || TATHASTU_OFFICIAL_APP_URL;
+
+  // Master Admin Official PayU Hosted Gateway Config State
+  const [payuDraft, setPayuDraft] = useState<PayUMerchantSyncConfig>(payuConfig);
+  const [showPayuSalt, setShowPayuSalt] = useState(false);
+
+  // Change Password Modal State (Available to Client, Healer & Master Admin after login)
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
+  const [cpCurrentPassword, setCpCurrentPassword] = useState('');
+  const [cpNewPassword, setCpNewPassword] = useState('');
+  const [cpConfirmPassword, setCpConfirmPassword] = useState('');
+  const [cpShowPass, setCpShowPass] = useState(false);
+  const [cpError, setCpError] = useState<string | null>(null);
+  const [cpSuccess, setCpSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPayuDraft(payuConfig);
+  }, [payuConfig]);
+
+  useEffect(() => {
+    if (currentAccount?.role !== 'admin') return;
+    QRCode.toDataURL(adminAppShareUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 220,
+      color: { dark: '#0f172a', light: '#ffffff' },
+    })
+      .then((url) => setAdminAppQrDataUrl(url))
+      .catch(() => {});
+  }, [adminAppShareUrl, currentAccount?.role]);
 
   const [statusFeedback, setStatusFeedback] = useState<{
     type: 'success' | 'error';
@@ -388,7 +445,9 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   const executeAdminRegistrationAfterPayUOrFoc = async (
     couponUsed?: string,
     payuTxnId?: string,
-    paidAmount?: number
+    paidAmount?: number,
+    payuUtr?: string,
+    payuMethod?: string
   ) => {
     const res = await registerAccountAndPrimaryProfile({
       role: adminRegRole,
@@ -406,6 +465,14 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
       isFoc: adminRegIsFoc,
       couponCode: couponUsed || adminRegCouponCode,
       keepCurrentSession: !adminRegSwitchToAccountAfterPayU,
+      paymentVerification: payuTxnId
+        ? {
+            transactionId: payuTxnId,
+            utrNumber: payuUtr,
+            paymentMethod: payuMethod || 'PayU',
+            verifiedAmountInr: paidAmount ?? 0,
+          }
+        : undefined,
       healerBrandName: adminRegHealerBrand,
       healerLogoUrl: adminRegHealerLogo || TATHASTU_LOGO_PATH,
       healerInstagram: adminRegHealerInsta,
@@ -781,25 +848,50 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               Welcome, {currentAccount.name}
             </h2>
             <p className="text-xs text-amber-300/80">
-              {activeView === 'welcome'
-                ? 'Click any portal option below to open its dedicated page.'
-                : 'Viewing selected portal page. Click any tab below to switch or return to the Welcome Page.'}
+              {isAdmin
+                ? 'Master Admin Complete Control — Manage Admin Saved Profiles, Client Portal, Healer Portal & Master Admin Settings.'
+                : isHealer
+                ? 'Personal Healer Dashboard — View & manage ONLY the client profiles created under your Healer account.'
+                : 'Personal Client Dashboard — View & open ONLY the profiles created under your personal Client account.'}
             </p>
           </div>
-          {activeView !== 'welcome' && (
+          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
             <button
               type="button"
               onClick={() => {
-                setActiveView('welcome');
+                setActiveView(activeView === 'welcome' ? 'saved-profiles' : 'welcome');
                 setSelectedClientAccId(null);
                 setSelectedHealerAccId(null);
               }}
-              className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400 text-amber-100 font-bold text-xs flex items-center gap-2 self-start lg:self-auto cursor-pointer shadow-md"
+              className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/60 text-amber-100 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
             >
-              <ArrowLeft className="w-4 h-4 text-amber-300" />
-              <span>Back to Welcome Page</span>
+              <Star className="w-3.5 h-3.5 text-amber-300" />
+              <span>{activeView === 'welcome' ? 'Back to Saved Profiles' : 'Intro & Rate Session'}</span>
             </button>
-          )}
+            <button
+              type="button"
+              onClick={() => {
+                setCpCurrentPassword('');
+                setCpNewPassword('');
+                setCpConfirmPassword('');
+                setCpError(null);
+                setCpSuccess(null);
+                setIsChangePasswordModalOpen(true);
+              }}
+              className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/60 text-emerald-100 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Change Password</span>
+            </button>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="px-4 py-2 rounded-xl bg-rose-600/25 hover:bg-rose-600/40 border border-rose-400/70 text-rose-100 hover:text-white font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition-all"
+            >
+              <LogOut className="w-3.5 h-3.5 text-rose-300" />
+              <span>Logout</span>
+            </button>
+          </div>
         </div>
 
         {/* Navigation Buttons:
@@ -2254,6 +2346,237 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
          ===================================================================== */}
       {isAdmin && activeView === 'master-admin-portal' && (
         <div className="space-y-6 animate-fade-in">
+          {/* 0A. EXCLUSIVE MASTER ADMIN HUB: DOWNLOAD & SHARE TATHASTU NUMEROLOGY APP LINK & QR CODE */}
+          <div className="rounded-3xl border-2 border-amber-400/70 bg-gradient-to-br from-slate-900 via-amber-950/35 to-slate-950 p-6 shadow-2xl space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-amber-500/25 pb-4">
+              <div className="flex items-center gap-3.5">
+                <img
+                  src={TATHASTU_LOGO_PATH}
+                  alt={TATHASTU_APP_NAME}
+                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-amber-400 shadow-lg shrink-0"
+                />
+                <div>
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-amber-300 bg-amber-500/15 border border-amber-400/40 px-2.5 py-0.5 rounded-full">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <span>Master Admin Exclusive • Hidden from Client &amp; Healer Dashboards</span>
+                  </span>
+                  <h3 className="font-serif text-lg sm:text-xl font-black text-amber-100 mt-1">
+                    Download &amp; Share {TATHASTU_APP_NAME} App (Direct Link, QR &amp; Android APK Kit)
+                  </h3>
+                  <p className="text-xs text-amber-200/80">
+                    Share the official app link or QR code with Clients &amp; Healers. Every entry plays the Brand Intro with music and opens the Login &amp; Introduction Page.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center bg-slate-950/90 border border-amber-500/35 rounded-2xl p-4 sm:p-5">
+              <div className="md:col-span-8 space-y-3">
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-amber-400 block mb-1.5">
+                    Official {TATHASTU_APP_NAME} App Link (Admin Distribution)
+                  </label>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={adminAppShareUrl}
+                      className="flex-1 bg-slate-900 border border-amber-500/40 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-amber-100 font-mono focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(adminAppShareUrl);
+                          setCopiedAppLink(true);
+                          setTimeout(() => setCopiedAppLink(false), 2500);
+                        } catch {
+                          setCopiedAppLink(false);
+                        }
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs cursor-pointer transition-all shrink-0"
+                    >
+                      {copiedAppLink ? '✓ Link Copied!' : 'Copy App Link'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <PWAInstallButton />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const activeLang = getCurrentLanguage();
+                      const rawText =
+                        `*${TATHASTU_APP_NAME}* (${TATHASTU_BRAND_NAME})\n` +
+                        `_${TATHASTU_TAGLINE}_\n\n` +
+                        `Install & open the official TATHASTU NUMEROLOGY App for personalized Vedic & Chaldean Numerology Reports, Name & Mobile Frequency Verifier, 9-Chakra Remedies & Daily Muhurat:\n` +
+                        `${adminAppShareUrl}`;
+                      const text = validateAndNormalizeLocaleText(
+                        translateMultilineBlock(rawText, activeLang),
+                        activeLang,
+                        { context: 'whatsapp' }
+                      ).sanitizedText;
+                      const link = document.createElement('a');
+                      link.href = `https://wa.me/?text=${encodeURIComponent(text)}`;
+                      link.target = '_blank';
+                      link.rel = 'noopener noreferrer';
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg cursor-pointer transition-all"
+                  >
+                    <Globe className="w-4 h-4" />
+                    <span>Share App Link on WhatsApp</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="md:col-span-4 flex flex-col items-center justify-center border-t md:border-t-0 md:border-l border-amber-500/20 pt-4 md:pt-0 md:pl-4">
+                <div className="bg-white p-2.5 rounded-2xl border-2 border-amber-400 shadow-md">
+                  {adminAppQrDataUrl ? (
+                    <img
+                      src={adminAppQrDataUrl}
+                      alt="Master Admin Official App QR Code"
+                      className="w-28 h-28 object-contain"
+                    />
+                  ) : (
+                    <div className="w-28 h-28 flex items-center justify-center text-[10px] font-bold text-slate-700">
+                      QR Loading...
+                    </div>
+                  )}
+                </div>
+                <span className="text-[11px] font-bold text-amber-300 mt-1.5">
+                  Official App QR Code
+                </span>
+                {adminAppQrDataUrl && (
+                  <a
+                    href={adminAppQrDataUrl}
+                    download="TATHASTU_NUMEROLOGY_App_QR.png"
+                    className="text-[10px] text-emerald-300 hover:underline mt-0.5 font-semibold"
+                  >
+                    Download QR PNG
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 0B. OFFICIAL PAYU HOSTED PAYMENT GATEWAY SETTINGS (STANDARD REDIRECT + AUTO ACTIVATION) */}
+          <div className="rounded-3xl bg-slate-900/95 border-2 border-emerald-500/50 p-6 shadow-xl space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-500/25 pb-3">
+              <div>
+                <h3 className="font-serif text-lg font-bold text-amber-100 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-emerald-400" />
+                  <span>0. Official PayU Payment Gateway Settings (Auto Redirect &amp; Auto Activation)</span>
+                </h3>
+                <p className="text-xs text-emerald-300/85 mt-0.5">
+                  Configure your official PayU Merchant Key &amp; Salt. At checkout, users are automatically redirected to the Official PayU Page (UPI QR, GPay, PhonePe, Paytm, Cards &amp; NetBanking), see PayU&apos;s Payment Confirmation screen, and return to the app with instant automatic subscription activation.
+                </p>
+              </div>
+              <span
+                className={`px-3 py-1 rounded-full text-[11px] font-black border ${
+                  payuConfig.merchantKey.trim() && payuConfig.merchantSalt.trim()
+                    ? 'bg-emerald-950 border-emerald-400 text-emerald-300'
+                    : 'bg-amber-950 border-amber-400 text-amber-300'
+                }`}
+              >
+                {payuConfig.merchantKey.trim() && payuConfig.merchantSalt.trim()
+                  ? `✓ Official PayU Active (${payuConfig.environment === 'test' ? 'test.payu.in' : 'secure.payu.in'})`
+                  : '⚠ Enter PayU Key & Salt Below'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="text-[11px] font-bold text-emerald-300 block mb-1">
+                  PayU Merchant Key *
+                </label>
+                <input
+                  type="text"
+                  value={payuDraft.merchantKey}
+                  onChange={(e) => setPayuDraft({ ...payuDraft, merchantKey: e.target.value })}
+                  placeholder="Enter official PayU Merchant Key"
+                  className="w-full bg-slate-950 border border-emerald-500/45 rounded-xl px-3.5 py-2.5 text-xs text-emerald-100 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-emerald-300 block mb-1">
+                  PayU Merchant Salt (SHA-512 Verification) *
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPayuSalt ? 'text' : 'password'}
+                    value={payuDraft.merchantSalt}
+                    onChange={(e) => setPayuDraft({ ...payuDraft, merchantSalt: e.target.value })}
+                    placeholder="Enter official PayU Salt"
+                    className="w-full bg-slate-950 border border-emerald-500/45 rounded-xl pl-3.5 pr-16 py-2.5 text-xs text-emerald-100 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPayuSalt((p) => !p)}
+                    className="absolute right-2.5 top-2 text-[10px] font-bold text-amber-300 cursor-pointer"
+                  >
+                    {showPayuSalt ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-amber-300 block mb-1">
+                  PayU Gateway Mode
+                </label>
+                <select
+                  value={payuDraft.environment}
+                  onChange={(e) =>
+                    setPayuDraft({
+                      ...payuDraft,
+                      environment: e.target.value === 'test' ? 'test' : 'production',
+                    })
+                  }
+                  className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-3 py-2.5 text-xs text-amber-200 font-bold"
+                >
+                  <option value="production">Production (https://secure.payu.in/_payment)</option>
+                  <option value="test">Test / Sandbox (https://test.payu.in/_payment)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-emerald-500/20">
+              <span className="text-[11px] text-slate-300">
+                Callback URL (Auto-Configured):{' '}
+                <strong className="font-mono text-emerald-300">
+                  {typeof window !== 'undefined' ? `${window.location.origin}/api/payu/callback` : '/api/payu/callback'}
+                </strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!payuDraft.merchantKey.trim() || !payuDraft.merchantSalt.trim()) {
+                    setStatusFeedback({
+                      type: 'error',
+                      text: 'Please enter both your Official PayU Merchant Key and PayU Merchant Salt.',
+                    });
+                    return;
+                  }
+                  adminUpdatePayuConfig(payuDraft);
+                  setStatusFeedback({
+                    type: 'success',
+                    text: `Official PayU Hosted Gateway (${
+                      payuDraft.environment === 'test' ? 'test.payu.in' : 'secure.payu.in'
+                    }) saved & synced across all devices!`,
+                  });
+                }}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-amber-500 hover:from-emerald-400 hover:to-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-lg"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Save &amp; Sync Official PayU Credentials</span>
+              </button>
+            </div>
+          </div>
+
           {/* A. Register New Client or New Healer */}
           <div className="rounded-3xl bg-slate-900/95 border border-amber-500/35 p-6 shadow-xl space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
@@ -3872,6 +4195,17 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
           initialCouponCode={upgradeCouponCode}
           isCumulativeHealerUpgrade={true}
           currentMaxProfiles={currentAccount.maxProfiles}
+          checkoutContext={{
+            orderType: 'plan_upgrade',
+            payload: {
+              accountId: currentAccount.id,
+              planId: payUCheckoutPlan.id,
+              planName: payUCheckoutPlan.name,
+              maxProfiles: payUCheckoutPlan.maxProfiles,
+              durationMonths: payUCheckoutPlan.durationMonths,
+              couponCode: upgradeCouponCode,
+            },
+          }}
           onPaymentSuccess={async ({ transactionId, finalAmountInr, couponCode }) => {
             const res = await upgradeAccountPlan(
               currentAccount.id,
@@ -3902,7 +4236,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
       )}
 
       {/* =====================================================================
-          MODAL: PAYU PAYMENT GATEWAY FOR NEW CLIENT / HEALER REGISTRATION
+          MODAL: OFFICIAL PAYU PAYMENT GATEWAY FOR NEW CLIENT / HEALER REGISTRATION
          ===================================================================== */}
       {adminRegPayUPlan && (
         <PayUPaymentModal
@@ -3916,11 +4250,45 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
           initialCouponCode={adminRegCouponCode}
           isCumulativeHealerUpgrade={false}
           currentMaxProfiles={0}
-          onPaymentSuccess={async ({ transactionId, finalAmountInr, couponCode }) => {
+          checkoutContext={{
+            orderType: 'admin_registration',
+            payload: {
+              adminAccountId: currentAccount.id,
+              keepCurrentSession: !adminRegSwitchToAccountAfterPayU,
+              role: adminRegRole,
+              name: adminRegName,
+              dob: adminRegRole === 'client' ? adminRegDob : undefined,
+              tob: adminRegRole === 'client' ? adminRegTob || '09:30' : undefined,
+              pob: adminRegRole === 'client' ? adminRegPob || 'New Delhi, Delhi, India' : undefined,
+              lat: adminRegLat,
+              lng: adminRegLng,
+              gender: adminRegGender,
+              email: adminRegEmail,
+              mobile: adminRegMobile,
+              password: adminRegPassword,
+              planId: adminRegPlanId,
+              couponCode: adminRegCouponCode,
+              healerBrandName: adminRegHealerBrand,
+              healerLogoUrl: adminRegHealerLogo || TATHASTU_LOGO_PATH,
+              healerInstagram: adminRegHealerInsta,
+              healerFacebook: adminRegHealerFb,
+              healerYoutube: adminRegHealerYt,
+              healerAddress: adminRegHealerAddress,
+            },
+          }}
+          onPaymentSuccess={async ({
+            transactionId,
+            utrNumber,
+            paymentMethod,
+            finalAmountInr,
+            couponCode,
+          }) => {
             await executeAdminRegistrationAfterPayUOrFoc(
               couponCode,
               transactionId,
-              finalAmountInr
+              finalAmountInr,
+              utrNumber,
+              paymentMethod
             );
           }}
         />
@@ -4030,6 +4398,153 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 </a>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODAL: CHANGE PASSWORD FOR LOGGED-IN ACCOUNT (CLIENT / HEALER / ADMIN)
+         ===================================================================== */}
+      {isChangePasswordModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-slate-900 border-2 border-emerald-400/70 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-emerald-500/25 pb-3">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-emerald-400" />
+                <div>
+                  <h3 className="font-serif text-base font-black text-amber-100">
+                    Change Account Password
+                  </h3>
+                  <p className="text-[11px] text-emerald-300 font-mono">
+                    {currentAccount.role.toUpperCase()} • {currentAccount.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsChangePasswordModalOpen(false)}
+                className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {cpError && (
+              <div className="p-3 rounded-xl bg-rose-950/85 border border-rose-500/50 text-rose-200 text-xs flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <span>{cpError}</span>
+              </div>
+            )}
+
+            {cpSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-950/85 border border-emerald-500/50 text-emerald-200 text-xs flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <span>{cpSuccess}</span>
+              </div>
+            )}
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setCpError(null);
+                setCpSuccess(null);
+                if (cpNewPassword !== cpConfirmPassword) {
+                  setCpError('New Password and Confirm New Password do not match.');
+                  return;
+                }
+                const res = await changePasswordByCredentials({
+                  role: currentAccount.role,
+                  identifier: currentAccount.email,
+                  currentPassword: cpCurrentPassword,
+                  newPassword: cpNewPassword,
+                });
+                if (!res.ok) {
+                  setCpError(res.error || 'Could not update password.');
+                  return;
+                }
+                setCpSuccess('Password updated successfully! Use your new password on next login.');
+                setCpCurrentPassword('');
+                setCpNewPassword('');
+                setCpConfirmPassword('');
+                setStatusFeedback({
+                  type: 'success',
+                  text: `Password updated successfully for ${currentAccount.name} (${currentAccount.role.toUpperCase()}).`,
+                });
+                setTimeout(() => {
+                  setIsChangePasswordModalOpen(false);
+                }, 1100);
+              }}
+              className="space-y-3.5"
+            >
+              <div>
+                <label className="text-xs font-semibold text-amber-300 block mb-1">
+                  Current Password *
+                </label>
+                <div className="relative">
+                  <input
+                    type={cpShowPass ? 'text' : 'password'}
+                    required
+                    value={cpCurrentPassword}
+                    onChange={(e) => setCpCurrentPassword(e.target.value)}
+                    placeholder="Enter current password"
+                    className="w-full bg-slate-950 border border-amber-500/35 rounded-xl pl-3.5 pr-16 py-2.5 text-sm text-amber-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCpShowPass((p) => !p)}
+                    className="absolute right-3 top-2.5 text-xs font-bold text-amber-300 cursor-pointer"
+                  >
+                    {cpShowPass ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-emerald-300 block mb-1">
+                  New Password (Min 6 Characters) *
+                </label>
+                <input
+                  type={cpShowPass ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  value={cpNewPassword}
+                  onChange={(e) => setCpNewPassword(e.target.value)}
+                  placeholder="Enter new password"
+                  className="w-full bg-slate-950 border border-emerald-500/35 rounded-xl px-3.5 py-2.5 text-sm text-amber-100"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-emerald-300 block mb-1">
+                  Confirm New Password *
+                </label>
+                <input
+                  type={cpShowPass ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  value={cpConfirmPassword}
+                  onChange={(e) => setCpConfirmPassword(e.target.value)}
+                  placeholder="Re-enter new password"
+                  className="w-full bg-slate-950 border border-emerald-500/35 rounded-xl px-3.5 py-2.5 text-sm text-amber-100"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsChangePasswordModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-amber-500 text-slate-950 font-black text-xs cursor-pointer shadow-lg"
+                >
+                  Update Password
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
