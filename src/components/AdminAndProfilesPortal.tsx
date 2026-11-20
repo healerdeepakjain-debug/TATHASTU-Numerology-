@@ -672,33 +672,28 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
       return;
     }
 
-    const paidRolePlan =
-      plans.find((p) => p.id === adminRegPlanId && p.priceInr > 0) ||
-      plans.find((p) => p.role === adminRegRole && p.priceInr > 0);
-    const anyRolePlan =
-      plans.find((p) => p.id === adminRegPlanId) ||
-      paidRolePlan ||
+    const chosenPlan =
+      plans.find((p) => p.id === adminRegPlanId && p.role === adminRegRole) ||
       plans.find((p) => p.role === adminRegRole);
 
-    if (!adminRegIsFoc) {
-      if (!paidRolePlan) {
-        setStatusFeedback({
-          type: 'error',
-          text: 'Please select a paid subscription plan or tick the F.O.C. checkbox for Free Admin Registration.',
-        });
-        return;
-      }
-      if (paidRolePlan.id !== adminRegPlanId) {
-        setAdminRegPlanId(paidRolePlan.id);
-      }
-      // Force transition to PayU Payment Gateway Portal when F.O.C. is NOT ticked
-      setAdminRegPayUPlan(paidRolePlan);
+    if (!chosenPlan) {
+      setStatusFeedback({
+        type: 'error',
+        text: 'Please select a valid subscription plan.',
+      });
       return;
     }
 
-    if (anyRolePlan && anyRolePlan.id !== adminRegPlanId) {
-      setAdminRegPlanId(anyRolePlan.id);
+    if (chosenPlan.id !== adminRegPlanId) {
+      setAdminRegPlanId(chosenPlan.id);
     }
+
+    // Free plans and Admin F.O.C. activate immediately; Paid plans proceed to PayU
+    if (!adminRegIsFoc && chosenPlan.priceInr > 0) {
+      setAdminRegPayUPlan(chosenPlan);
+      return;
+    }
+
     await executeAdminRegistrationAfterPayUOrFoc(adminRegCouponCode);
   };
 
@@ -2975,10 +2970,17 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-3 py-2 text-xs text-amber-100"
                   >
                     {plans
-                      .filter((p) => p.role === adminRegRole && (adminRegIsFoc || p.priceInr > 0))
+                      .filter((p) => p.role === adminRegRole)
+                      .sort((a, b) => a.priceInr - b.priceInr)
                       .map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.name} ({adminRegIsFoc ? 'F.O.C. FREE' : `₹${p.priceInr}`} • {p.maxProfiles} Profiles)
+                          {p.name} (
+                          {p.priceInr <= 0
+                            ? 'FREE'
+                            : adminRegIsFoc
+                            ? 'F.O.C. FREE'
+                            : `₹${p.priceInr}`}{' '}
+                          • {p.maxProfiles} Profile{p.maxProfiles > 1 ? 's' : ''})
                         </option>
                       ))}
                   </select>
@@ -3060,17 +3062,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                       type="checkbox"
                       checked={adminRegIsFoc}
                       onChange={(e) => {
-                        const checked = e.target.checked;
-                        setAdminRegIsFoc(checked);
-                        if (!checked) {
-                          const currentPlan = plans.find((p) => p.id === adminRegPlanId);
-                          if (!currentPlan || currentPlan.priceInr <= 0) {
-                            const firstPaid = plans.find(
-                              (p) => p.role === adminRegRole && p.priceInr > 0
-                            );
-                            if (firstPaid) setAdminRegPlanId(firstPaid.id);
-                          }
-                        }
+                        setAdminRegIsFoc(e.target.checked);
                       }}
                       className="w-4 h-4 accent-emerald-500 rounded"
                     />

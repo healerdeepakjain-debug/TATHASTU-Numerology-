@@ -90,7 +90,7 @@ define(['./workbox-7e5eb42b'], (function (workbox) { 'use strict';
     "revision": "d394870bd50ef27aa6ab9ea8301c286d"
   }, {
     "url": "index.html",
-    "revision": "1fcca0500b5eb8149243fb6818dbc67c"
+    "revision": "b5bb4140bfd2c63087f0ad9395a936f9"
   }, {
     "url": "favicon.ico",
     "revision": "d6be5b6353e7498fb7e311e0ffb0b01a"
@@ -116,16 +116,16 @@ define(['./workbox-7e5eb42b'], (function (workbox) { 'use strict';
     "url": "assets/islamic_vedic_noor_geometry_1794305507170-C8RwdZK4.jpg",
     "revision": null
   }, {
-    "url": "assets/index.es-BZb9G5tE.js",
+    "url": "assets/index.es-Txquq46a.js",
     "revision": null
   }, {
-    "url": "assets/index-Dsu4fI9O.js",
+    "url": "assets/index-CjYA_G0r.css",
     "revision": null
   }, {
-    "url": "assets/index-DMWzEw__.css",
+    "url": "assets/index-CXn_L2Lf.js",
     "revision": null
   }, {
-    "url": "assets/html2canvas-DRnzVYMd.js",
+    "url": "assets/html2canvas-Dpwb0t1T.js",
     "revision": null
   }, {
     "url": "assets/healer_ddeepak_jain_portrait_opt-B-SgvQ7z.jpg",

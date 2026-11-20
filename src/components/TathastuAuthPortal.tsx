@@ -116,7 +116,7 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
   const [regMobile, setRegMobile] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regCouponCode, setRegCouponCode] = useState('');
-  const [regPlanId, setRegPlanId] = useState('client_paid_12m');
+  const [regPlanId, setRegPlanId] = useState('client_free_1m');
 
   // Healer Branding & Social Media state (No DOB, TOB, or POB required)
   const [healerBrandName, setHealerBrandName] = useState('');
@@ -141,8 +141,12 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const clientPlans = plans.filter((p) => p.role === 'client' && p.priceInr > 0);
-  const healerPlans = plans.filter((p) => p.role === 'healer' && p.priceInr > 0);
+  const clientPlans = plans
+    .filter((p) => p.role === 'client')
+    .sort((a, b) => a.priceInr - b.priceInr);
+  const healerPlans = plans
+    .filter((p) => p.role === 'healer')
+    .sort((a, b) => a.priceInr - b.priceInr);
 
   const handleOpenRoleLogin = (
     role: UserRole,
@@ -159,13 +163,13 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
       setLoginPassword('');
     }
     if (role === 'client') {
-      const defaultPaidClientPlan =
-        clientPlans.find((p) => p.priceInr > 0) || clientPlans[0];
-      setRegPlanId(defaultPaidClientPlan?.id || 'client_paid_12m');
+      const defaultClientPlan =
+        clientPlans.find((p) => p.priceInr === 0) || clientPlans[0];
+      setRegPlanId(defaultClientPlan?.id || 'client_free_1m');
     } else if (role === 'healer') {
-      const defaultPaidHealerPlan =
-        healerPlans.find((p) => p.priceInr > 0) || healerPlans[0];
-      setRegPlanId(defaultPaidHealerPlan?.id || 'healer_paid_10');
+      const defaultHealerPlan =
+        healerPlans.find((p) => p.priceInr === 0) || healerPlans[0];
+      setRegPlanId(defaultHealerPlan?.id || 'healer_free_1m');
     }
     setShowAuthWindow(true);
     if (shouldScroll) {
@@ -226,8 +230,8 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
           if (res.googleEmail) setRegEmail(res.googleEmail);
           if (res.googleName) setRegName(res.googleName);
           const rolePlans = selectedRole === 'client' ? clientPlans : healerPlans;
-          const paidPlan = rolePlans.find((p) => p.priceInr > 0) || rolePlans[0];
-          if (paidPlan) setRegPlanId(paidPlan.id);
+          const defaultPlan = rolePlans.find((p) => p.priceInr === 0) || rolePlans[0];
+          if (defaultPlan) setRegPlanId(defaultPlan.id);
           setAuthMode('register');
         }
         setErrorMessage(res.error || 'Unable to sign in with Google.');
@@ -261,15 +265,21 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
       utrNumber?: string;
       paymentMethod: string;
       finalAmountInr: number;
-    }
+    },
+    overridePlanId?: string
   ) => {
     if (selectedRole === 'admin') {
       setErrorMessage('Admin account is pre-provisioned. Please switch to Login.');
       return false;
     }
 
-    // Strictly require PayU payment confirmation before activating account & unlocking dashboard
-    if (!payuVerificationDetails?.transactionId) {
+    const effectivePlanId = overridePlanId || regPlanId;
+    const chosenPlan =
+      activePlans.find((p) => p.id === effectivePlanId) || activePlans[0];
+    const isFreePlan = Boolean(chosenPlan && chosenPlan.priceInr <= 0);
+
+    // Strictly require PayU payment confirmation for Paid plans; Free plans activate instantly
+    if (!isFreePlan && !payuVerificationDetails?.transactionId) {
       setIsAwaitingPayUConfirmation(true);
       setIsPayUModalOpen(true);
       return false;
@@ -287,15 +297,19 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
       email: regEmail,
       mobile: regMobile,
       password: regPassword,
-      planId: regPlanId,
+      planId: effectivePlanId,
       isFoc: false,
-      couponCode: finalCouponCode ?? regCouponCode,
-      paymentVerification: {
-        transactionId: payuVerificationDetails.transactionId,
-        utrNumber: payuVerificationDetails.utrNumber,
-        paymentMethod: payuVerificationDetails.paymentMethod,
-        verifiedAmountInr: payuVerificationDetails.finalAmountInr,
-      },
+      couponCode: isFreePlan ? '' : (finalCouponCode ?? regCouponCode),
+      ...(payuVerificationDetails?.transactionId
+        ? {
+            paymentVerification: {
+              transactionId: payuVerificationDetails.transactionId,
+              utrNumber: payuVerificationDetails.utrNumber,
+              paymentMethod: payuVerificationDetails.paymentMethod,
+              verifiedAmountInr: payuVerificationDetails.finalAmountInr,
+            },
+          }
+        : {}),
       healerBrandName,
       healerLogoUrl: healerLogoUrl || TATHASTU_LOGO_PATH,
       healerInstagram,
@@ -312,9 +326,13 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
 
     setIsAwaitingPayUConfirmation(false);
     setSuccessMessage(
-      `PayU Payment Confirmed (${payuVerificationDetails.transactionId})! Redirecting to your ${
-        selectedRole === 'client' ? 'Client' : 'Healer'
-      } Dashboard...`
+      isFreePlan
+        ? `✓ Free Trial Activated (${chosenPlan?.name || 'Free Plan'})! Redirecting to your ${
+            selectedRole === 'client' ? 'Client' : 'Healer'
+          } Dashboard...`
+        : `PayU Payment Confirmed (${payuVerificationDetails?.transactionId})! Redirecting to your ${
+            selectedRole === 'client' ? 'Client' : 'Healer'
+          } Dashboard...`
     );
     onAuthenticated?.(selectedRole);
     return true;
@@ -368,14 +386,16 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
       return;
     }
 
-    // Ensure a valid plan is selected and force transition to the PayU Payment Portal
-    // for both Clients and Healers before allowing access to the dashboard
+    // Ensure a valid plan is selected: Free plans activate immediately, Paid plans proceed to PayU
     const chosenPlan =
-      activePlans.find((p) => p.id === regPlanId) ||
-      activePlans.find((p) => p.priceInr > 0) ||
-      activePlans[0];
+      activePlans.find((p) => p.id === regPlanId) || activePlans[0];
     if (chosenPlan && chosenPlan.id !== regPlanId) {
       setRegPlanId(chosenPlan.id);
+    }
+
+    if (chosenPlan && chosenPlan.priceInr <= 0) {
+      await executeRegistration(undefined, undefined, chosenPlan.id);
+      return;
     }
 
     setIsAwaitingPayUConfirmation(true);
@@ -702,9 +722,9 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                     setErrorMessage(null);
                     setSuccessMessage(null);
                     const rolePlans = selectedRole === 'client' ? clientPlans : healerPlans;
-                    const paidPlan = rolePlans.find((p) => p.priceInr > 0) || rolePlans[0];
-                    if (paidPlan) {
-                      setRegPlanId(paidPlan.id);
+                    const defaultPlan = rolePlans.find((p) => p.priceInr === 0) || rolePlans[0];
+                    if (defaultPlan) {
+                      setRegPlanId(defaultPlan.id);
                     }
                   }}
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -1195,28 +1215,53 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                     <div className="space-y-2.5">
                       {activePlans.map((plan) => {
                         const isSelected = regPlanId === plan.id;
+                        const isFree = plan.priceInr <= 0;
                         return (
                           <div
                             key={plan.id}
-                            onClick={() => setRegPlanId(plan.id)}
+                            onClick={() => {
+                              setRegPlanId(plan.id);
+                              if (isFree) {
+                                setIsAwaitingPayUConfirmation(false);
+                              }
+                            }}
                             className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
                               isSelected
-                                ? 'bg-gradient-to-r from-amber-500/20 to-indigo-950/60 border-amber-400 shadow-md'
+                                ? isFree
+                                  ? 'bg-gradient-to-r from-emerald-500/20 to-teal-950/60 border-emerald-400 shadow-md'
+                                  : 'bg-gradient-to-r from-amber-500/20 to-indigo-950/60 border-amber-400 shadow-md'
+                                : isFree
+                                ? 'bg-emerald-950/35 border-emerald-500/35 hover:border-emerald-400/70'
                                 : 'bg-slate-900/90 border-amber-500/20 hover:border-amber-500/40'
                             }`}
                           >
                             <div className="flex items-center justify-between gap-2">
                               <div>
-                                <span className="text-xs font-bold text-amber-100 block">
-                                  {plan.name}
-                                </span>
-                                <span className="text-[10px] text-amber-300 font-semibold">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-bold text-amber-100">
+                                    {plan.name}
+                                  </span>
+                                  {isFree && (
+                                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/25 border border-emerald-400/50 text-[10px] font-black uppercase tracking-wider text-emerald-300">
+                                      FREE TRIAL
+                                    </span>
+                                  )}
+                                </div>
+                                <span
+                                  className={`text-[10px] font-semibold ${
+                                    isFree ? 'text-emerald-300' : 'text-amber-300'
+                                  }`}
+                                >
                                   {plan.badge}
                                 </span>
                               </div>
                               <div className="text-right">
-                                <span className="text-base font-black font-mono text-amber-300">
-                                  {plan.priceInr === 0 ? 'FREE' : `₹${plan.priceInr.toLocaleString('en-IN')}`}
+                                <span
+                                  className={`text-base font-black font-mono ${
+                                    isFree ? 'text-emerald-400' : 'text-amber-300'
+                                  }`}
+                                >
+                                  {isFree ? 'FREE' : `₹${plan.priceInr.toLocaleString('en-IN')}`}
                                 </span>
                                 <span className="block text-[10px] text-slate-400">
                                   {plan.maxProfiles} Profile{plan.maxProfiles > 1 ? 's' : ''}
@@ -1227,7 +1272,11 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                             <ul className="mt-2 space-y-1 text-[11px] text-slate-300">
                               {plan.features.map((f, i) => (
                                 <li key={i} className="flex items-center gap-1.5">
-                                  <CheckCircle2 className="w-3 h-3 text-amber-400 shrink-0" />
+                                  <CheckCircle2
+                                    className={`w-3 h-3 shrink-0 ${
+                                      isFree ? 'text-emerald-400' : 'text-amber-400'
+                                    }`}
+                                  />
                                   <span>{f}</span>
                                 </li>
                               ))}
@@ -1238,27 +1287,29 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                     </div>
                   </div>
 
-                  {isAwaitingPayUConfirmation && !isPayUModalOpen && (
-                    <div className="p-3.5 rounded-2xl bg-amber-950/85 border-2 border-amber-400/70 text-xs text-amber-100 space-y-2 mt-3">
-                      <div className="font-bold text-amber-300 flex items-center gap-1.5">
-                        <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>
-                          Plan Payment Confirmation Required
-                        </span>
+                  {isAwaitingPayUConfirmation &&
+                    !isPayUModalOpen &&
+                    ((activePlans.find((p) => p.id === regPlanId) || activePlans[0])?.priceInr ?? 0) > 0 && (
+                      <div className="p-3.5 rounded-2xl bg-amber-950/85 border-2 border-amber-400/70 text-xs text-amber-100 space-y-2 mt-3">
+                        <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>
+                            Plan Payment Confirmation Required
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-amber-100/90 leading-relaxed">
+                          Your {selectedRole === 'client' ? 'Client' : 'Healer'} registration details are ready. Confirm your subscription plan to unlock your dashboard.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setIsPayUModalOpen(true)}
+                          className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>Confirm Plan &amp; Unlock Dashboard</span>
+                        </button>
                       </div>
-                      <p className="text-[11px] text-amber-100/90 leading-relaxed">
-                        Your {selectedRole === 'client' ? 'Client' : 'Healer'} registration details are ready. Confirm your subscription plan to unlock your dashboard.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setIsPayUModalOpen(true)}
-                        className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
-                      >
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>Confirm Plan &amp; Unlock Dashboard</span>
-                      </button>
-                    </div>
-                  )}
+                    )}
 
                   <button
                     type="submit"
@@ -1266,9 +1317,13 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
                   >
                     <ShieldCheck className="w-4 h-4" />
                     <span>
-                      {`Register New ${
-                        selectedRole === 'client' ? 'Client' : 'Healer'
-                      }`}
+                      {((activePlans.find((p) => p.id === regPlanId) || activePlans[0])?.priceInr ?? 0) <= 0
+                        ? `Start Free Plan & Register ${
+                            selectedRole === 'client' ? 'Client' : 'Healer'
+                          }`
+                        : `Proceed to PayU & Register ${
+                            selectedRole === 'client' ? 'Client' : 'Healer'
+                          }`}
                     </span>
                   </button>
                 </div>

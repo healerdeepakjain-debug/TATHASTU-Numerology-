@@ -811,7 +811,14 @@ function loadLocalPlans(): SubscriptionPlanOption[] {
     if (raw) {
       const parsed = JSON.parse(raw) as SubscriptionPlanOption[];
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // Ensure default Free plans for Client & Healer are always present for registration
+        const merged = [...parsed];
+        for (const freePlan of [CLIENT_PLANS[0], HEALER_PLANS[0]]) {
+          if (!merged.some((p) => p.id === freePlan.id)) {
+            merged.unshift(freePlan);
+          }
+        }
+        return merged;
       }
     }
   } catch {
@@ -1951,26 +1958,27 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       };
     }
 
-    // Only Master Admin can register an account Free of Cost (F.O.C.)
+    // Only Master Admin can register a paid plan Free of Cost (F.O.C.)
     const effectiveIsFoc = currentAccount?.role === 'admin' && Boolean(params.isFoc);
 
-    const paidFallbackPlan =
-      plans.find((pl) => pl.role === params.role && pl.priceInr > 0) ||
-      (params.role === 'client' ? CLIENT_PLANS[1] : HEALER_PLANS[1]);
+    const roleFallbackPlan =
+      plans.find((pl) => pl.role === params.role) ||
+      (params.role === 'client' ? CLIENT_PLANS[0] : HEALER_PLANS[0]);
 
     const selectedPlan =
-      plans.find((pl) => pl.id === params.planId) || paidFallbackPlan;
+      plans.find((pl) => pl.id === params.planId && pl.role === params.role) || roleFallbackPlan;
 
-    if (!effectiveIsFoc && (!selectedPlan || selectedPlan.priceInr <= 0)) {
+    if (!selectedPlan) {
       return {
         ok: false,
-        error:
-          'Registration without payment is not permitted. Please select a paid subscription plan (or ask Admin to enable F.O.C.).',
+        error: 'Please select a valid Client or Healer subscription plan.',
       };
     }
 
-    let finalPrice = effectiveIsFoc ? 0 : selectedPlan.priceInr;
-    if (!effectiveIsFoc && params.couponCode) {
+    const isFreePlan = selectedPlan.priceInr <= 0;
+
+    let finalPrice = effectiveIsFoc || isFreePlan ? 0 : selectedPlan.priceInr;
+    if (!effectiveIsFoc && !isFreePlan && params.couponCode) {
       const cleanCoupon = params.couponCode.trim().toUpperCase();
       const matchedCoupon = coupons.find(
         (c) =>
@@ -1990,14 +1998,15 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
-    if (!effectiveIsFoc) {
+    // Paid plans strictly require official PayU payment confirmation; Free plans activate immediately
+    if (!effectiveIsFoc && !isFreePlan) {
       const txnId = (params.paymentVerification?.transactionId || '').trim();
       const verifiedAmt = Number(params.paymentVerification?.verifiedAmountInr ?? -1);
       if (!txnId) {
         return {
           ok: false,
           error:
-            'PayU Payment Confirmation is mandatory before activating any Client or Healer account. Please complete payment verification first.',
+            'PayU Payment Confirmation is mandatory before activating a Paid Client or Healer plan. Please complete payment verification first.',
         };
       }
       if (finalPrice > 0 && verifiedAmt < finalPrice) {
