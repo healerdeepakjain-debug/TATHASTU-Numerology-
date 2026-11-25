@@ -1,6 +1,6 @@
 import express, { Response } from 'express';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -393,6 +393,18 @@ const ai = hasValidKey
     })
   : null;
 
+const ttsAi = hasValidKey
+  ? new GoogleGenAI({
+      apiKey: rawApiKey!,
+      apiVersion: 'v1beta',
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    })
+  : null;
+
 function buildClassicalVedicResponse(prompt: string, profileData: any): string {
   const name = profileData?.name || 'Seeker';
   const mulank = Number(profileData?.mulank) || 1;
@@ -649,6 +661,198 @@ Include:
     });
   } catch (error: any) {
     return res.status(500).json({ available: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// AI COMPLETE REPORT SUMMARY & 10-YEAR FUTURE FORECAST (WITH vs WITHOUT REMEDIES)
+// Synthesizes Vedic Astrology + Numerology & Parashar Astrology + Numerology
+// into simple, easy-to-understand paragraph format (strictly calibrated for 1–2 A4 pages)
+// ============================================================================
+const reportSummaryServerCache = new Map<string, { summary: Record<string, any>; cachedAt: number }>();
+
+app.post('/api/gemini/report-summary', async (req, res) => {
+  try {
+    const profileSummary = req.body?.profileSummary;
+    const forceRefresh = Boolean(req.body?.forceRefresh);
+
+    if (!profileSummary || typeof profileSummary !== 'object') {
+      return res.status(400).json({ ok: false, error: 'Missing profileSummary payload.' });
+    }
+
+    const language = String(profileSummary.language || 'en');
+    const langDirective =
+      LANGUAGE_INSTRUCTION_MAP[language] || LANGUAGE_INSTRUCTION_MAP.en;
+
+    const cacheKey = [
+      profileSummary.name || '',
+      profileSummary.dob || '',
+      profileSummary.tob || '',
+      profileSummary.pob || '',
+      profileSummary.mobile || '',
+      profileSummary.healerName || '',
+      language,
+    ].join('||');
+
+    if (!forceRefresh) {
+      const hit = reportSummaryServerCache.get(cacheKey);
+      if (hit && Date.now() - hit.cachedAt < 1000 * 60 * 60 * 6) {
+        return res.json({
+          ok: true,
+          source: 'gemini',
+          cached: true,
+          summary: hit.summary,
+        });
+      }
+    }
+
+    if (!ai) {
+      return res.status(503).json({
+        ok: false,
+        source: 'unavailable',
+        error: 'Gemini API key is not configured on the server.',
+      });
+    }
+
+    const systemInstruction = `You are a deeply compassionate, senior Vedic Astrologer (following Maharishi Parashara's Brihat Parashara Hora Shastra) and Vedic-Chaldean Numerologist representing TATHASTU NUMEROLOGY — TATHASTU THE DIVINE LIGHT.
+
+CRITICAL LANGUAGE & STYLE RULES:
+1. Write the ENTIRE response strictly in: ${langDirective}
+2. Keep the language VERY SIMPLE, warm, natural, and easy for any everyday person or family member to understand. Avoid dense technical jargon; whenever you mention Mulank, Bhagyank, Rashi, Nakshatra, or Parashar Vimshottari Mahadasha, explain what it means in plain, friendly words.
+3. Write EVERY field in smooth, flowing PARAGRAPH FORMAT ONLY. Do NOT use markdown bullets, asterisks (**), hashtags (#), or numbered lists inside paragraphs.
+4. Keep each paragraph concise and well-proportioned (about 65 to 90 words per paragraph) so the entire summary + 10-year forecast + Tathastu Family thank you & spiritual blessings fits neatly across 1 to 2 A4 pages (minimum 1 page, maximum 2 pages).
+5. Ground every prediction genuinely in BOTH:
+   - Vedic Astrology + Numerology (Mulank, Bhagyank, Chaldean Name Compound, Mobile Root, Lo-Shu missing numbers, Janma Rashi & Nakshatra)
+   - Parashar Astrology + Parashari Numerology (Brihat Parashara Hora Shastra Vimshottari Mahadasha timeline & 10-Year Personal Year progression).
+6. For "withoutRemedies10YearParagraphs": Be honest, practical, and compassionate (never frightening or fatalistic) about delays, financial leaks, repeated obstacles, stress, or missed opportunities over the next 10 years if chart imbalances stay uncorrected.
+7. For "withRemedies10YearParagraphs": Paint a clear, inspiring, realistic 10-year elevation journey (Years 1–3 stabilization, Years 4–7 growth & prosperity, Years 8–10 lasting stability, respect, health & inner peace) when the client follows the report's simple remedies.
+8. End with a warm, heartfelt Thank You message from the TATHASTU Family (including the healer's name and TATHASTU THE DIVINE LIGHT) and 3 soulful spiritual blessings.`;
+
+    const userPrompt = `Create the personalized 1-to-2 page closing summary & 10-year future outlook for this client's complete report:
+- Client Name: ${profileSummary.name}
+- Date / Time / Place of Birth: ${profileSummary.dob} | ${profileSummary.tob} | ${profileSummary.pob}
+- Mulank (Driver): ${profileSummary.mulank} (${profileSummary.mulankPlanet})
+- Bhagyank (Destiny): ${profileSummary.bhagyank} (${profileSummary.bhagyankPlanet})
+- Current Name Vibration: Compound #${profileSummary.nameCompound} -> Root #${profileSummary.namank} (${profileSummary.namePlanet}); Recommended Name Spelling: ${profileSummary.recommendedName}
+- Mobile Vibration: Root #${profileSummary.mobileRoot} (${profileSummary.mobileVerdict})
+- Vedic Moon Rashi & Lord: ${profileSummary.rashi} (Lord: ${profileSummary.rashiLord}) | Sun Sign: ${profileSummary.sunSign}
+- Birth Nakshatra: ${profileSummary.nakshatra} (Lord: ${profileSummary.nakshatraLord})
+- Missing Lo-Shu Numbers: ${(profileSummary.missingLoShuNumbers || []).join(', ') || 'None'}
+- Best Career & Growth Fields: ${(profileSummary.careerDomains || []).join(', ')}
+- Primary Remedies in Report: Life Stone ${profileSummary.lifeStone}, Destiny Stone ${profileSummary.destinyStone}, Beej Mantra "${profileSummary.beejMantra}" (Deity: ${profileSummary.deity}), Lucky Days: ${profileSummary.luckyDays}, Lucky Color: ${profileSummary.luckyColor}, Friendly Numbers: ${profileSummary.friendlyNumbers}
+- Next 10 Years Window: ${profileSummary.startYear} to ${profileSummary.endYear}
+- Parashar Vimshottari Mahadasha (Next 10 Years): ${profileSummary.next10YearDashaSummary} (Current: ${profileSummary.currentMahadasha})
+- Numerology Peak Breakthrough Years: ${(profileSummary.peakYears || []).join(', ')}
+- Numerology Caution / Patience Years: ${(profileSummary.cautionYears || []).join(', ')}
+- Healer / Brand: ${profileSummary.healerName} — ${profileSummary.brandTitle}
+
+Return valid JSON matching the exact schema with:
+- executiveSummaryParagraphs: exactly 2 paragraphs summarizing the complete report simply and clearly.
+- parasharVedicFoundationParagraph: 1 paragraph explaining how Vedic + Parashar Vimshottari Dasha and 10-year Numerology cycles guide ${profileSummary.startYear}–${profileSummary.endYear}.
+- withoutRemedies10YearParagraphs: exactly 2 paragraphs explaining where ${profileSummary.name}'s future may go in the next 10 years WITHOUT remedies.
+- withRemedies10YearParagraphs: exactly 2 paragraphs explaining where ${profileSummary.name}'s future can reach in the next 10 years WITH remedies.
+- simpleRemedyRoadmapParagraph: 1 simple paragraph giving an easy everyday starting plan from the report's remedies.
+- tathastuThankYouParagraph: 1 heartfelt Thank You paragraph from the TATHASTU Family & Healer ${profileSummary.healerName}.
+- spiritualBlessings: exactly 3 warm spiritual blessings for ${profileSummary.name} and family ending with Tathastu.`;
+
+    const summarySchema = {
+      type: Type.OBJECT,
+      properties: {
+        executiveSummaryParagraphs: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: '2 simple, easy-to-understand summary paragraphs covering the complete report.',
+        },
+        parasharVedicFoundationParagraph: {
+          type: Type.STRING,
+          description: '1 simple paragraph explaining the 10-year Vedic + Parashar Mahadasha & Numerology foundation.',
+        },
+        withoutRemedies10YearParagraphs: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: '2 clear paragraphs describing the next 10 years WITHOUT remedies.',
+        },
+        withRemedies10YearParagraphs: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: '2 clear paragraphs describing the next 10 years WITH remedies.',
+        },
+        simpleRemedyRoadmapParagraph: {
+          type: Type.STRING,
+          description: '1 concise paragraph summarizing the easiest daily remedies to begin immediately.',
+        },
+        tathastuThankYouParagraph: {
+          type: Type.STRING,
+          description: '1 heartfelt Thank You paragraph from the Tathastu Family.',
+        },
+        spiritualBlessings: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: '3 warm spiritual blessings for the client and their family.',
+        },
+      },
+      required: [
+        'executiveSummaryParagraphs',
+        'parasharVedicFoundationParagraph',
+        'withoutRemedies10YearParagraphs',
+        'withRemedies10YearParagraphs',
+        'simpleRemedyRoadmapParagraph',
+        'tathastuThankYouParagraph',
+        'spiritualBlessings',
+      ],
+    };
+
+    const candidateModels = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
+    let rawText = '';
+    let lastError: any = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: userPrompt,
+          config: {
+            systemInstruction,
+            ...(modelName === 'gemini-4-hydrogen'
+              ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+              : {}),
+            responseMimeType: 'application/json',
+            responseSchema: summarySchema,
+          },
+        });
+        rawText = (response.text || '').trim();
+        if (rawText) break;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`AI report summary attempt failed on ${modelName}:`, err?.message || err);
+      }
+    }
+
+    if (!rawText) {
+      if (lastError) throw lastError;
+      return res.status(502).json({ ok: false, error: 'Empty AI response for report summary.' });
+    }
+
+    const parsed = JSON.parse(rawText);
+    if (reportSummaryServerCache.size >= 200) {
+      const oldestKey = reportSummaryServerCache.keys().next().value;
+      if (oldestKey) reportSummaryServerCache.delete(oldestKey);
+    }
+    reportSummaryServerCache.set(cacheKey, { summary: parsed, cachedAt: Date.now() });
+
+    return res.json({
+      ok: true,
+      source: 'gemini',
+      cached: false,
+      summary: parsed,
+    });
+  } catch (error: any) {
+    console.warn('AI report summary generation error:', error?.message || error);
+    return res.status(500).json({
+      ok: false,
+      source: 'error',
+      error: error?.message || 'Failed to generate AI report summary.',
+    });
   }
 });
 
@@ -1926,6 +2130,26 @@ function readCachedIntroVoiceFromDisk(): Buffer | null {
   return null;
 }
 
+function wrapPcm16AsWav(pcmData: Buffer, sampleRate = 24000, channels = 1): Buffer {
+  const byteRate = sampleRate * channels * 2;
+  const blockAlign = channels * 2;
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0, 'ascii');
+  header.writeUInt32LE(36 + pcmData.length, 4);
+  header.write('WAVE', 8, 'ascii');
+  header.write('fmt ', 12, 'ascii');
+  header.writeUInt32LE(16, 16); // Subchunk1Size (PCM)
+  header.writeUInt16LE(1, 20); // AudioFormat (1 = PCM)
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(16, 34); // BitsPerSample
+  header.write('data', 36, 'ascii');
+  header.writeUInt32LE(pcmData.length, 40);
+  return Buffer.concat([header, pcmData]);
+}
+
 async function getOrGenerateTathastuPranamVoice(): Promise<Buffer | null> {
   if (cachedIntroVoiceWav) return cachedIntroVoiceWav;
 
@@ -1935,25 +2159,29 @@ async function getOrGenerateTathastuPranamVoice(): Promise<Buffer | null> {
     return fromDisk;
   }
 
-  if (!ai) return null;
+  if (!ttsAi) return null;
 
   if (!pendingIntroVoicePromise) {
     pendingIntroVoicePromise = (async () => {
-      try {
-        const response = await ai.models.generateContent({
+      const requestTtsAudio = async (includeSpeechMetadata: boolean) => {
+        const part = includeSpeechMetadata
+          ? {
+              text: 'तथास्तु... प्रणाम।',
+              speechMetadata: {
+                style:
+                  'Warm, graceful, serene young Indian female spiritual voice greeting gently in clear Hindi and Sanskrit with devotional warmth',
+              },
+            }
+          : {
+              text: 'Say warmly and serenely in a graceful young Indian female spiritual voice: तथास्तु... प्रणाम।',
+            };
+
+        return ttsAi.models.generateContent({
           model: 'gemini-3.8-flash-lite-tts',
           contents: [
             {
               role: 'user',
-              parts: [
-                {
-                  text: 'तथास्तु... प्रणाम।',
-                  speechMetadata: {
-                    style:
-                      'Warm, graceful, serene young Indian female spiritual voice greeting gently in clear Hindi and Sanskrit with devotional warmth',
-                  },
-                } as any,
-              ],
+              parts: [part],
             },
           ],
           config: {
@@ -1965,13 +2193,30 @@ async function getOrGenerateTathastuPranamVoice(): Promise<Buffer | null> {
             },
           },
         });
+      };
 
-        const base64Audio =
-          response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      try {
+        let response;
+        try {
+          response = await requestTtsAudio(true);
+        } catch (firstErr: any) {
+          const msg = String(firstErr?.message || firstErr || '');
+          if (msg.includes('speechMetadata')) {
+            response = await requestTtsAudio(false);
+          } else {
+            throw firstErr;
+          }
+        }
+
+        const inlinePart = response.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+        const base64Audio = inlinePart?.data;
         if (!base64Audio) return null;
 
-        const wavBuffer = Buffer.from(base64Audio, 'base64');
-        if (wavBuffer.length < 1024) return null;
+        const rawBuffer = Buffer.from(base64Audio, 'base64');
+        if (rawBuffer.length < 512) return null;
+
+        const isAlreadyWav = rawBuffer.subarray(0, 4).toString('ascii') === 'RIFF';
+        const wavBuffer = isAlreadyWav ? rawBuffer : wrapPcm16AsWav(rawBuffer, 24000, 1);
 
         cachedIntroVoiceWav = wavBuffer;
         try {
@@ -2005,6 +2250,94 @@ app.get('/api/audio/tathastu-pranam.wav', async (_req, res) => {
   res.setHeader('Content-Length', String(wavBuffer.length));
   res.setHeader('Cache-Control', 'public, max-age=86400');
   return res.status(200).send(wavBuffer);
+});
+
+app.get('/manifest-windows.json', (_req, res) => {
+  res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  return res.json({
+    id: '/windows',
+    name: 'TATHASTU NUMEROLOGY — Windows Full-Page Edition',
+    short_name: 'TATHASTU',
+    description:
+      'TATHASTU NUMEROLOGY (TATHASTU THE DIVINE LIGHT) — Full-Page Windows Desktop Edition for Vedic, Chaldean, Parashar Astrology & Numerology Reports.',
+    start_url: '/windows',
+    scope: '/',
+    display: 'standalone',
+    display_override: ['window-controls-overlay', 'standalone'],
+    orientation: 'any',
+    background_color: '#020617',
+    theme_color: '#020617',
+    categories: ['lifestyle', 'utilities', 'productivity'],
+    icons: [
+      { src: '/pwa-192x192.png?v=3', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/pwa-512x512.png?v=3', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      {
+        src: '/pwa-maskable-512x512.png?v=3',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
+    ],
+  });
+});
+
+app.get('/manifest-mobile.json', (_req, res) => {
+  res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  return res.json({
+    id: '/mobile',
+    name: 'TATHASTU NUMEROLOGY — Mobile & Tablet App',
+    short_name: 'TATHASTU',
+    description:
+      'TATHASTU NUMEROLOGY (TATHASTU THE DIVINE LIGHT) — Mobile, Tablet & Google Play Store Ready Vedic, Chaldean, Parashar Astrology & Numerology App.',
+    start_url: '/mobile',
+    scope: '/',
+    display: 'standalone',
+    orientation: 'any',
+    background_color: '#020617',
+    theme_color: '#020617',
+    categories: ['lifestyle', 'utilities'],
+    prefer_related_applications: false,
+    related_applications: [
+      {
+        platform: 'play',
+        id: 'com.tathastulight.numerology',
+      },
+    ],
+    icons: [
+      { src: '/pwa-192x192.png?v=3', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/pwa-512x512.png?v=3', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      {
+        src: '/pwa-maskable-512x512.png?v=3',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
+    ],
+  });
+});
+
+app.get('/.well-known/assetlinks.json', (_req, res) => {
+  const configuredFingerprints = String(process.env.ANDROID_SHA256_CERT_FINGERPRINT || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  return res.json([
+    {
+      relation: ['delegate_permission/common.handle_all_urls'],
+      target: {
+        namespace: 'android_app',
+        package_name: 'com.tathastulight.numerology',
+        sha256_cert_fingerprints:
+          configuredFingerprints.length > 0
+            ? configuredFingerprints
+            : ['REPLACE_WITH_GOOGLE_PLAY_APP_SIGNING_SHA256_FINGERPRINT'],
+      },
+    },
+  ]);
 });
 
 async function start() {

@@ -32,7 +32,9 @@ import {
   QrCode,
   Calendar,
   Clock,
+  Columns2,
 } from 'lucide-react';
+import { usePlatformMode } from '../utils/platformMode';
 import {
   useTathastu,
   TATHASTU_LOGO_PATH,
@@ -97,6 +99,12 @@ import { formatTime12HourAmPm } from './BirthTimeAmPmInput';
 import { calculateYogaPranayamaPlan } from '../utils/yogaPranayamaData';
 import { YogaPostureIllustration, PranayamaIllustration } from './YogaPranayamaModule';
 import { calculateParivarMilanReport, ParivarMemberRecord } from '../utils/parivarMilan';
+import {
+  AiReportSummaryData,
+  buildClassicalFallbackSummary,
+  fetchAiReportSummary,
+  getCachedAiReportSummary,
+} from '../utils/aiReportSummary';
 import {
   db,
   auth,
@@ -204,6 +212,8 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     }
     return 100;
   });
+  const { isWindowsFullPage, isMobileAppMode } = usePlatformMode();
+  const [windowsSpreadView, setWindowsSpreadView] = useState<boolean>(false);
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
@@ -245,6 +255,44 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       mounted = false;
     };
   }, [activeProfile]);
+
+  const [aiReportSummary, setAiReportSummary] = useState<AiReportSummaryData | null>(null);
+
+  useEffect(() => {
+    if (!activeProfile || !currentAccount) {
+      setAiReportSummary(null);
+      return;
+    }
+    const attr = resolveReportHealerAttribution(activeProfile, accounts, currentAccount);
+    const reqInput = {
+      profile: activeProfile,
+      healerName: attr.healerDisplayName,
+      brandTitle: attr.brandTitle,
+      language,
+    };
+    const cached = getCachedAiReportSummary(reqInput);
+    if (cached) {
+      setAiReportSummary(cached);
+      return;
+    }
+    setAiReportSummary(buildClassicalFallbackSummary(reqInput));
+    let mounted = true;
+    fetchAiReportSummary(reqInput).then((data) => {
+      if (mounted) setAiReportSummary(data);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [
+    activeProfile?.id,
+    activeProfile?.name,
+    activeProfile?.dob,
+    activeProfile?.tob,
+    activeProfile?.pob,
+    activeProfile?.mobile,
+    currentAccount?.id,
+    language,
+  ]);
 
   const [selectedSections, setSelectedSections] = useState<ReportSectionSelection>(() => {
     try {
@@ -682,6 +730,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           festivals12Months: { startPage: 26, endPage: 28, pageCount: 3 },
           islamicVedicRemedies: { startPage: 29, endPage: 30, pageCount: 2 },
         } as Record<keyof ReportSectionSelection, { startPage: number; endPage: number; pageCount: number }>,
+        closingSummaryPageRange: { startPage: 31, endPage: 32, pageCount: 2 },
       };
     }
     return calculateExactPdfPageCounts({
@@ -706,6 +755,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       watermarkEnabled: watermarkSettings.enabled,
       selectedSections,
       language,
+      aiReportSummary: aiReportSummary || undefined,
     });
   }, [
     activeProfile,
@@ -727,6 +777,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     watermarkSettings.enabled,
     selectedSections,
     language,
+    aiReportSummary,
   ]);
 
   const modulePageCounts = pdfPageCountInfo.modulePageCounts;
@@ -943,6 +994,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         watermarkEnabled: watermarkSettings.enabled,
         selectedSections,
         language,
+        aiReportSummary: aiReportSummary || undefined,
       },
       'download'
     );
@@ -1003,6 +1055,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           watermarkEnabled: watermarkSettings.enabled,
           selectedSections,
           language,
+          aiReportSummary: aiReportSummary || undefined,
         },
         'blob'
       );
@@ -1051,6 +1104,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           watermarkEnabled: watermarkSettings.enabled,
           selectedSections,
           language,
+          aiReportSummary: aiReportSummary || undefined,
         },
         'download'
       );
@@ -1147,6 +1201,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           watermarkEnabled: watermarkSettings.enabled,
           selectedSections,
           language,
+          aiReportSummary: aiReportSummary || undefined,
         },
         'blob'
       );
@@ -1862,6 +1917,39 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                   </div>
                 );
               })}
+              {(() => {
+                const closingRng = pdfPageCountInfo.closingSummaryPageRange;
+                const closingPgText =
+                  closingRng && closingRng.startPage > 0
+                    ? closingRng.startPage === closingRng.endPage
+                      ? `Page ${closingRng.startPage} (1p)`
+                      : `Pages ${closingRng.startPage}–${closingRng.endPage} (${closingRng.pageCount}p)`
+                    : 'Final 2 Pages';
+                const activeSummaryPreview =
+                  aiReportSummary ||
+                  buildClassicalFallbackSummary({
+                    profile: activeProfile,
+                    healerName: healerDisplayName,
+                    brandTitle,
+                    language,
+                  });
+                return (
+                  <div className="grid grid-cols-12 px-2.5 py-1 text-[7.6px] items-center leading-tight bg-amber-950/35">
+                    <div className="col-span-3 pr-1.5 font-bold text-amber-200">
+                      {String(selectedModuleEntries.length + 1).padStart(2, '0')}. Complete Report Summary, 10-Year Future (With vs. Without Remedies) &amp; Tathastu Blessings
+                    </div>
+                    <div className="col-span-4 px-1.5 border-l border-amber-500/20 text-slate-200">
+                      1–2 Page Simple Paragraph Summary (Vedic + Parashar Astrology &amp; Numerology), Next 10 Years Future Without vs. With Remedies, Thank You &amp; Spiritual Blessings
+                    </div>
+                    <div className="col-span-3 px-1.5 border-l border-amber-500/20 text-emerald-300">
+                      Parashar Dasha: {activeSummaryPreview.parasharMahadashaLabel} • {activeSummaryPreview.startYear}–{activeSummaryPreview.endYear}
+                    </div>
+                    <div className="col-span-2 pl-1.5 border-l border-amber-500/20 text-right font-mono font-bold text-amber-300">
+                      {closingPgText}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -5033,6 +5121,163 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       });
     }
 
+    // FINAL CLOSING CHAPTER (1–2 PAGES): AI-Generated Complete Report Summary in Simple Paragraph Format
+    // including Next 10 Years Future (Without Remedies vs. With Remedies) based on Vedic + Parashar Astrology & Numerology,
+    // ending with Heartfelt Thank You & Spiritual Blessings from the TATHASTU Family.
+    const closingSummary: AiReportSummaryData =
+      aiReportSummary ||
+      buildClassicalFallbackSummary({
+        profile: activeProfile,
+        healerName: healerDisplayName,
+        brandTitle,
+        language,
+      });
+
+    pages.push({
+      title: `Final Summary (Part 1 of 2): Complete Report Summary & Next 10 Years Future (${closingSummary.startYear}–${closingSummary.endYear})`,
+      headImg: spiritualReportBanner,
+      headLabel: 'Complete Summary • Vedic & Parashar',
+      content: (
+        <div className="space-y-2.5 text-[9.5px] leading-relaxed">
+          <div className="p-2.5 rounded-xl bg-amber-950/35 border border-amber-500/45 flex flex-wrap items-center justify-between gap-2 text-[8.3px]">
+            <div className="font-bold text-amber-200">
+              Vedic Astrology + Numerology &amp; Parashar Hora (BPHS Vimshottari Mahadasha) Synthesis
+            </div>
+            <div className="font-mono text-emerald-300">
+              {closingSummary.parasharMahadashaLabel} • Horizon: {closingSummary.startYear}–{closingSummary.endYear}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-950/90 border border-amber-500/40 space-y-2.5">
+            <div className="border-b border-amber-500/30 pb-1.5">
+              <h3 className="font-serif text-[11px] font-black text-amber-300 uppercase tracking-wide">
+                1. Complete Report Summary in Simple Words ({activeProfile.name})
+              </h3>
+              <p className="text-[8px] text-amber-200/80 mt-0.5">
+                Easy-to-understand overview combining your Vedic Kundli ({astro.rashi}, {astro.nakshatra}), Parashar Vimshottari Mahadasha, and Numerology (Mulank {m} &amp; Bhagyank {b}).
+              </p>
+            </div>
+            <div className="space-y-2.5 text-slate-100 text-[9.6px] leading-[1.6] text-justify">
+              {closingSummary.executiveSummaryParagraphs.slice(0, 2).map((para, idx) => (
+                <p key={`exec-p-${idx}`}>{para}</p>
+              ))}
+              {closingSummary.parasharVedicFoundationParagraph && (
+                <p className="text-amber-100/95">{closingSummary.parasharVedicFoundationParagraph}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-rose-950/30 border-2 border-rose-500/45 space-y-2.5">
+            <div className="border-b border-rose-500/30 pb-1.5">
+              <h3 className="font-serif text-[11px] font-black text-rose-200 uppercase tracking-wide">
+                2. Without Remedies — Where Your Future Goes in the Next 10 Years ({closingSummary.startYear} to {closingSummary.endYear})
+              </h3>
+              <p className="text-[8px] text-rose-200/80 mt-0.5">
+                Parashar Dasha Reference: {closingSummary.next10YearDashaSummary} • Honest guidance on what happens if imbalances remain uncorrected.
+              </p>
+            </div>
+            <div className="space-y-2.5 text-slate-100 text-[9.6px] leading-[1.6] text-justify">
+              {closingSummary.withoutRemedies10YearParagraphs.slice(0, 2).map((para, idx) => (
+                <p key={`without-p-${idx}`}>{para}</p>
+              ))}
+            </div>
+          </div>
+        </div>
+      ),
+    });
+
+    pages.push({
+      title: `Final Summary (Part 2 of 2): Next 10 Years Future With Remedies & Tathastu Family Blessings`,
+      headImg: chakraHealingArt,
+      headLabel: '10-Year Remedies & Tathastu Blessings',
+      content: (
+        <div className="space-y-2.5 text-[9.5px] leading-relaxed">
+          <div className="p-3.5 rounded-xl bg-emerald-950/35 border-2 border-emerald-500/50 space-y-2.5">
+            <div className="border-b border-emerald-500/30 pb-1.5">
+              <h3 className="font-serif text-[11px] font-black text-emerald-200 uppercase tracking-wide">
+                1. With Remedies — Where Your Future Reaches in the Next 10 Years ({closingSummary.startYear} to {closingSummary.endYear})
+              </h3>
+              <p className="text-[8px] text-emerald-200/85 mt-0.5">
+                How Vedic + Parashar Astrology &amp; Numerology remedies transform your career, wealth, health, family peace, and long-term success.
+              </p>
+            </div>
+            <div className="space-y-2.5 text-slate-100 text-[9.6px] leading-[1.6] text-justify">
+              {closingSummary.withRemedies10YearParagraphs.slice(0, 2).map((para, idx) => (
+                <p key={`with-p-${idx}`}>{para}</p>
+              ))}
+              {closingSummary.simpleRemedyRoadmapParagraph && (
+                <p className="p-2.5 rounded-lg bg-slate-950/75 border border-emerald-500/30 text-emerald-100">
+                  {closingSummary.simpleRemedyRoadmapParagraph}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-gradient-to-br from-amber-950/55 via-slate-950 to-amber-950/45 border-2 border-amber-400/60 space-y-2.5">
+            <div className="border-b border-amber-400/35 pb-1.5 flex items-center justify-between gap-2">
+              <h3 className="font-serif text-[11px] font-black text-amber-300 uppercase tracking-wide">
+                2. Heartfelt Thank You From The TATHASTU Family &amp; Spiritual Blessings
+              </h3>
+              <span className="text-[8px] font-mono text-amber-200 uppercase">
+                {TATHASTU_BRAND_NAME} • {TATHASTU_TAGLINE}
+              </span>
+            </div>
+            <p className="text-amber-50 text-[9.6px] leading-[1.6] text-justify">
+              {closingSummary.tathastuThankYouParagraph}
+            </p>
+            <div className="space-y-1.5 pt-1">
+              {closingSummary.spiritualBlessings.slice(0, 3).map((blessing, idx) => (
+                <p
+                  key={`blessing-${idx}`}
+                  className="px-2.5 py-1.5 rounded-lg bg-amber-950/45 border border-amber-400/35 text-amber-200 italic text-[9px] leading-snug"
+                >
+                  {blessing}
+                </p>
+              ))}
+            </div>
+          </div>
+
+          <div
+            className="p-2.5 rounded-xl bg-gradient-to-r from-amber-950/70 via-slate-950 to-emerald-950/70 border-2 border-amber-400/60 flex items-center justify-between gap-2.5 min-w-0 break-words whitespace-normal a4-section-no-break"
+            style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+          >
+            {reportQrDataUrl && (
+              <div className="p-1 rounded-xl bg-amber-100 border border-amber-400 shrink-0 text-center">
+                <img
+                  src={reportQrDataUrl}
+                  alt="Scan for Mobile PDF Report"
+                  className="w-14 h-14 object-contain mx-auto"
+                />
+                <span className="block text-[6px] font-mono font-black text-slate-950 mt-0.5">
+                  SCAN LIVE REPORT
+                </span>
+              </div>
+            )}
+            <div className="min-w-0 flex-1 break-words whitespace-normal">
+              <div className="text-[8px] font-mono uppercase tracking-widest text-amber-400 font-bold">
+                WITH DIVINE GRATITUDE • OFFICIAL TATHASTU FAMILY ATTESTATION
+              </div>
+              <div className="font-serif text-[11px] font-black text-amber-100 mt-0.5 break-words whitespace-normal">
+                Healer {healerDisplayName} — {brandTitle}
+              </div>
+              <div className="text-[8.5px] text-emerald-300 font-mono break-words whitespace-normal">
+                📞 {healerDisplayMobile} • ✉️ {healerDisplayEmail} • 📍 {healerDisplayAddress}
+              </div>
+              <div className="text-[8px] text-amber-200/90 mt-0.5 break-words whitespace-normal">
+                Om Shanti, Shanti, Shantih • Tathastu Divya Jyoti Sada Sahayate — May Divine Light Guide Your Path Always.
+              </div>
+            </div>
+            <img
+              src={brandLogo}
+              alt={brandTitle}
+              referrerPolicy="no-referrer"
+              className="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shadow-lg shrink-0"
+            />
+          </div>
+        </div>
+      ),
+    });
+
     if (includeActiveTabInPrint) {
       pages.push({
         title: `Active Module View — ${sectionTitle}`,
@@ -5265,48 +5510,26 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
 
   return (
     <div className="w-full space-y-4">
-      {latestBroadcast && (
-        <div className="rounded-2xl bg-gradient-to-r from-amber-950/90 via-indigo-950/90 to-slate-900 border border-amber-400/50 px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-100 no-print">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 font-black text-[10px] uppercase">
+      {latestBroadcast && latestBroadcast.category !== 'update' && (
+        <div className="rounded-2xl bg-gradient-to-r from-amber-950/90 via-indigo-950/90 to-slate-900 border border-amber-400/50 px-3 sm:px-4 py-2.5 flex items-start sm:items-center justify-between gap-2.5 text-xs text-amber-100 no-print">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 font-black text-[10px] uppercase shrink-0">
               <Bell className="w-3 h-3" />
               <span>{latestBroadcast.category}</span>
             </span>
-            <strong className="text-amber-200">{latestBroadcast.title}:</strong>
-            <span>{latestBroadcast.message}</span>
+            <strong className="text-amber-200 break-words">{latestBroadcast.title}:</strong>
+            <span className="break-words">{latestBroadcast.message}</span>
             {latestBroadcast.couponCode && (
               <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono font-bold">
                 Code: {latestBroadcast.couponCode}
               </span>
             )}
-            {latestBroadcast.category === 'update' && (
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    if ('serviceWorker' in navigator) {
-                      const regs = await navigator.serviceWorker.getRegistrations();
-                      await Promise.all(regs.map((r) => r.update()));
-                    }
-                    if ('caches' in window) {
-                      const keys = await caches.keys();
-                      await Promise.all(keys.map((k) => caches.delete(k)));
-                    }
-                  } catch {
-                    // Ignore
-                  }
-                  window.location.reload();
-                }}
-                className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[10px] uppercase tracking-wider cursor-pointer shadow"
-              >
-                ↻ Apply App Update Now (No Uninstall)
-              </button>
-            )}
           </div>
           <button
             type="button"
             onClick={() => setDismissedBroadcastId(latestBroadcast.id)}
-            className="text-slate-400 hover:text-amber-200 p-1 cursor-pointer"
+            className="text-slate-400 hover:text-amber-200 p-1 cursor-pointer shrink-0"
+            aria-label="Dismiss notification"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -5897,7 +6120,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
             <div className="flex items-center gap-1.5 bg-slate-950 border border-amber-500/35 rounded-xl px-2.5 py-1">
               <button
                 type="button"
-                onClick={() => setPreviewScale((s) => Math.max(70, s - 10))}
+                onClick={() => setPreviewScale((s) => Math.max(60, s - 10))}
                 className="p-1 text-amber-300 hover:text-white cursor-pointer"
               >
                 <ZoomOut className="w-4 h-4" />
@@ -5907,11 +6130,26 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               </span>
               <button
                 type="button"
-                onClick={() => setPreviewScale((s) => Math.min(115, s + 10))}
+                onClick={() => setPreviewScale((s) => Math.min(isWindowsFullPage ? 135 : 115, s + 10))}
                 className="p-1 text-amber-300 hover:text-white cursor-pointer"
               >
                 <ZoomIn className="w-4 h-4" />
               </button>
+              {isWindowsFullPage && (
+                <button
+                  type="button"
+                  onClick={() => setWindowsSpreadView((prev) => !prev)}
+                  className={`ml-1.5 px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border cursor-pointer transition-all ${
+                    windowsSpreadView
+                      ? 'bg-amber-500 text-slate-950 border-amber-400'
+                      : 'bg-slate-900 text-amber-200 border-amber-500/40 hover:bg-slate-800'
+                  }`}
+                  title="Toggle Full-Page Single vs Side-by-Side 2-Page Spread on Windows"
+                >
+                  <Columns2 className="w-3.5 h-3.5" />
+                  <span>{windowsSpreadView ? '2-Page Spread' : '1-Page Full'}</span>
+                </button>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -5946,7 +6184,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
 
           <div className="flex-1 overflow-y-auto p-3 sm:p-6 flex justify-center bg-slate-950/95">
             <div
-              className="origin-top transition-transform duration-200"
+              className={`origin-top transition-transform duration-200 ${
+                isWindowsFullPage && windowsSpreadView
+                  ? '[&>div]:grid [&>div]:grid-cols-1 [&>div]:2xl:grid-cols-2 [&>div]:gap-6 [&>div]:space-y-0'
+                  : ''
+              }`}
               style={{ transform: `scale(${previewScale / 100})` }}
             >
               {renderDiscreteA4PagesStack()}
@@ -5956,10 +6198,20 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       )}
 
       <div className="w-full">
-        <div className="no-print relative rounded-3xl border-2 border-amber-500/35 bg-gradient-to-b from-slate-900/95 via-slate-950/98 to-slate-900/95 shadow-2xl overflow-hidden">
+        <div
+          className={`no-print relative border-2 border-amber-500/35 bg-gradient-to-b from-slate-900/95 via-slate-950/98 to-slate-900/95 shadow-2xl overflow-hidden ${
+            isWindowsFullPage ? 'rounded-2xl' : isMobileAppMode ? 'rounded-2xl' : 'rounded-3xl'
+          }`}
+        >
           {activeProfile && renderCenteredBrandWatermark()}
 
-          <div className="relative z-10 p-4 sm:p-6 lg:p-8">{children}</div>
+          <div
+            className={`relative z-10 ${
+              isWindowsFullPage ? 'p-5 lg:p-8 xl:p-10' : isMobileAppMode ? 'p-3 sm:p-5' : 'p-4 sm:p-6 lg:p-8'
+            }`}
+          >
+            {children}
+          </div>
 
           {activeProfile && (
             <div className="relative z-10 px-4 sm:px-6 pb-4">

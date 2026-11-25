@@ -1509,6 +1509,7 @@ export function getDailyPanchang(dateObj: Date = new Date(), mulank: number, bha
     rahuKaalWindow: rahuWindow,
     isRahuKaalNow,
     auspiciousTimings,
+    personalDayNumber,
     luckyNumbers,
     todayLuckyNumbers: luckyNumbers,
     luckyColor,

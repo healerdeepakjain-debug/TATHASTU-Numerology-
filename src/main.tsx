@@ -10,6 +10,42 @@ if (typeof window !== 'undefined') {
       event.preventDefault();
     }
   });
+
+  // Automatic silent OTA version sync on open & resume (no Play Store update needed)
+  if (
+    'serviceWorker' in navigator &&
+    window.location.hostname.indexOf('ais-dev-') === -1 &&
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1'
+  ) {
+    let hasRefreshedForNewSw = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hasRefreshedForNewSw) return;
+      hasRefreshedForNewSw = true;
+      window.location.reload();
+    });
+
+    const triggerSilentUpdateCheck = () => {
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((regs) => {
+          regs.forEach((reg) => {
+            reg.update().catch(() => {});
+          });
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener('load', () => {
+      setTimeout(triggerSilentUpdateCheck, 1200);
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        triggerSilentUpdateCheck();
+      }
+    });
+    window.addEventListener('focus', triggerSilentUpdateCheck);
+  }
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

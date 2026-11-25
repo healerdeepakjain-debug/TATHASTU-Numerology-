@@ -1,12 +1,12 @@
 {
   "id": "/",
   "name": "TATHASTU NUMEROLOGY",
-  "short_name": "TATHASTU NUMEROLOGY",
+  "short_name": "TATHASTU",
   "description": "TATHASTU NUMEROLOGY (TATHASTU THE DIVINE LIGHT) — One place . EVERY SOLUTION. Vedic, Chaldean, Islamic-Vedic & Pranic Energy Alignment Portal.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "background_color": "#020617",
   "theme_color": "#020617",
   "icons": [

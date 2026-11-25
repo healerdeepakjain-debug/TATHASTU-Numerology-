@@ -144,8 +144,30 @@
   animation: tathastu-intro-fade-up 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* Forced Mobile View & Automatic Responsive Stack */
+/* Forced Mobile View & Complete Mobile Screen + Report Alignment */
 @media screen {
+  body.tathastu-mobile-view,
+  body.tathastu-mobile-app-mode {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: clip;
+  }
+
+  body.tathastu-mobile-view #root,
+  body.tathastu-mobile-app-mode #root,
+  body.tathastu-mobile-view main,
+  body.tathastu-mobile-app-mode main {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  body.tathastu-mobile-view *,
+  body.tathastu-mobile-app-mode * {
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
   body.tathastu-mobile-view .grid.grid-cols-1 {
     grid-template-columns: minmax(0, 1fr) !important;
   }
@@ -159,15 +181,99 @@
     display: none !important;
   }
 
-  body.tathastu-mobile-view table {
+  /* Prevent text & long strings inside cards, reports, and badges from overflowing mobile screen */
+  body.tathastu-mobile-view h1,
+  body.tathastu-mobile-view h2,
+  body.tathastu-mobile-view h3,
+  body.tathastu-mobile-view p,
+  body.tathastu-mobile-view li,
+  body.tathastu-mobile-view td,
+  body.tathastu-mobile-view th,
+  body.tathastu-mobile-app-mode h1,
+  body.tathastu-mobile-app-mode h2,
+  body.tathastu-mobile-app-mode h3,
+  body.tathastu-mobile-app-mode p,
+  body.tathastu-mobile-app-mode li,
+  body.tathastu-mobile-app-mode td,
+  body.tathastu-mobile-app-mode th {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    word-break: break-word;
+  }
+
+  body.tathastu-mobile-view main .whitespace-nowrap,
+  body.tathastu-mobile-app-mode main .whitespace-nowrap {
+    white-space: normal !important;
+  }
+
+  body.tathastu-mobile-view table,
+  body.tathastu-mobile-app-mode table {
     display: block;
+    width: 100%;
     max-width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
 
-  body.tathastu-mobile-view .rounded-3xl {
-    border-radius: 1.25rem;
+  body.tathastu-mobile-view .rounded-3xl,
+  body.tathastu-mobile-app-mode .rounded-3xl {
+    border-radius: 1.15rem;
+  }
+
+  /* Clean mobile card padding & report alignment on narrow phone screens */
+  @media (max-width: 640px) {
+    body.tathastu-mobile-view main .p-6,
+    body.tathastu-mobile-view main .p-8,
+    body.tathastu-mobile-app-mode main .p-6,
+    body.tathastu-mobile-app-mode main .p-8 {
+      padding: 0.9rem !important;
+    }
+
+    body.tathastu-mobile-view main .p-5,
+    body.tathastu-mobile-app-mode main .p-5 {
+      padding: 0.8rem !important;
+    }
+
+    body.tathastu-mobile-view main h1,
+    body.tathastu-mobile-app-mode main h1 {
+      font-size: 1.25rem !important;
+      line-height: 1.3 !important;
+    }
+
+    body.tathastu-mobile-view main h2,
+    body.tathastu-mobile-app-mode main h2 {
+      font-size: 1.08rem !important;
+      line-height: 1.32 !important;
+    }
+
+    body.tathastu-mobile-view .a4-print-grid-2,
+    body.tathastu-mobile-view .a4-print-grid-3,
+    body.tathastu-mobile-view .a4-print-grid-4,
+    body.tathastu-mobile-app-mode .a4-print-grid-2,
+    body.tathastu-mobile-app-mode .a4-print-grid-3,
+    body.tathastu-mobile-app-mode .a4-print-grid-4 {
+      grid-template-columns: minmax(0, 1fr) !important;
+      gap: 0.6rem !important;
+    }
+  }
+
+  /* Dedicated Windows Full-Page Edition (/windows): full viewport width for app & report */
+  body.tathastu-windows-fullpage .max-w-7xl,
+  body.tathastu-windows-fullpage .max-w-6xl,
+  body.tathastu-windows-fullpage .max-w-5xl {
+    max-width: 100% !important;
+  }
+
+  body.tathastu-windows-fullpage .a4-spiritual-report {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Dedicated Mobile & Tablet Play Store App Mode (/mobile) */
+  body.tathastu-mobile-app-mode {
+    overscroll-behavior-y: contain;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 }
 
@@ -215,13 +321,35 @@
   page-break-inside: avoid !important;
 }
 
-/* Responsive scaling wrapper for A4 Preview Modal on smaller screens */
+/* Responsive alignment for A4 Report Sheets on Mobile & Tablet screens (Print retains exact 210mm A4) */
 @media screen and (max-width: 860px) {
   .a4-sheet-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    min-height: auto !important;
+    max-height: none !important;
+    padding: 12px !important;
+    border-radius: 14px;
+    overflow: visible;
+  }
+
+  .a4-sheet-page .grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .a4-sheet-page table {
+    display: block;
     width: 100%;
-    min-width: 0;
-    min-height: auto;
-    padding: 14px;
+    overflow-x: auto;
+    table-layout: auto !important;
+  }
+
+  .a4-sheet-page th,
+  .a4-sheet-page td {
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+    padding: 5px 6px !important;
   }
 }
 

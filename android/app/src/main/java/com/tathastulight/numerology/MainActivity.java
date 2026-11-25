@@ -50,9 +50,9 @@ import java.io.InputStream;
 public class MainActivity extends AppCompatActivity {
 
     private static final String LIVE_CLOUD_URL =
-            "https://tathastu-vedic-chaldean-numerology-harmony-108.ai.studio";
+            "https://tathastu-vedic-chaldean-numerology-harmony-108.ai.studio/mobile";
     private static final String BUNDLED_ENTRY_URL =
-            "https://appassets.androidplatform.net/assets/index.html";
+            "https://appassets.androidplatform.net/assets/index.html?platform=mobile";
 
     private WebView webView;
     private ValueCallback<Uri[]> filePathCallback;
@@ -116,6 +116,8 @@ public class MainActivity extends AppCompatActivity {
         webView.addJavascriptInterface(new TathastuNativeBridge(), "TathastuAndroidBridge");
 
         webView.setWebViewClient(new WebViewClient() {
+            private boolean fellBackToBundle = false;
+
             @Override
             public WebResourceResponse shouldInterceptRequest(
                     WebView view,
@@ -129,6 +131,19 @@ public class MainActivity extends AppCompatActivity {
                     return assetLoader.shouldInterceptRequest(Uri.parse(BUNDLED_ENTRY_URL));
                 }
                 return super.shouldInterceptRequest(view, request);
+            }
+
+            @Override
+            public void onReceivedError(
+                    WebView view,
+                    WebResourceRequest request,
+                    android.webkit.WebResourceError error
+            ) {
+                super.onReceivedError(view, request, error);
+                if (request != null && request.isForMainFrame() && !fellBackToBundle && hasBundledWebAssets()) {
+                    fellBackToBundle = true;
+                    view.loadUrl(BUNDLED_ENTRY_URL);
+                }
             }
 
             @Override
@@ -173,21 +188,35 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // Keep app running smoothly in the background on root back press so session stays alive
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
                 if (webView != null && webView.canGoBack()) {
                     webView.goBack();
                 } else {
-                    finish();
+                    moveTaskToBack(true);
                 }
             }
         });
 
-        if (hasBundledWebAssets()) {
-            webView.loadUrl(BUNDLED_ENTRY_URL);
-        } else {
-            webView.loadUrl(LIVE_CLOUD_URL);
+        // Always load LIVE_CLOUD_URL first so users automatically see the latest version on open
+        // without needing Play Store updates; falls back to bundled offline assets if offline.
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        webView.loadUrl(LIVE_CLOUD_URL);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        CookieManager.getInstance().flush();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webView != null) {
+            webView.onResume();
         }
     }
 

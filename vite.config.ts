@@ -19,18 +19,21 @@ export default defineConfig(() => {
           'pwa-192x192.png',
           'pwa-512x512.png',
           'pwa-maskable-512x512.png',
+          'manifest-windows.json',
+          'manifest-mobile.json',
+          '.well-known/assetlinks.json',
           'assets/aistudio/pic_2_93a8f2dc.png',
         ],
         manifest: {
           id: '/',
           name: 'TATHASTU NUMEROLOGY',
-          short_name: 'TATHASTU NUMEROLOGY',
+          short_name: 'TATHASTU',
           description:
             'TATHASTU NUMEROLOGY (TATHASTU THE DIVINE LIGHT) — One place . EVERY SOLUTION. Vedic, Chaldean, Islamic-Vedic & Pranic Energy Alignment Portal.',
           theme_color: '#020617',
           background_color: '#020617',
           display: 'standalone',
-          orientation: 'portrait-primary',
+          orientation: 'any',
           start_url: '/',
           scope: '/',
           icons: [
@@ -55,8 +58,12 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          skipWaiting: true,
+          clientsClaim: true,
+          cleanupOutdatedCaches: true,
           globPatterns: ['**/*.{js,css,html,ico,png,jpg,svg,woff,woff2}'],
           maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
+          navigateFallbackDenylist: [/^\/api\//],
         },
         devOptions: {
           enabled: false,

@@ -210,7 +210,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   // Master Admin Portal: Broadcast Push Notification / Offer state
   const [bcastTitle, setBcastTitle] = useState('');
   const [bcastMessage, setBcastMessage] = useState('');
-  const [bcastCategory, setBcastCategory] = useState<'update' | 'offer' | 'muhurat' | 'announcement'>('offer');
+  const [bcastCategory, setBcastCategory] = useState<'offer' | 'muhurat' | 'announcement'>('announcement');
   const [bcastAudience, setBcastAudience] = useState<'all' | 'client' | 'healer'>('all');
   const [bcastCoupon, setBcastCoupon] = useState('');
 
@@ -3243,32 +3243,20 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
 
           {/* B. Broadcast Push Notification & Discount Coupons */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="rounded-3xl bg-slate-900/95 border border-amber-500/35 p-6 shadow-xl space-y-4">
+            <div className="rounded-3xl bg-slate-900/95 border border-amber-500/35 p-4 sm:p-6 shadow-xl space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-serif text-lg font-bold text-amber-100 flex items-center gap-2">
-                  <Bell className="w-5 h-5 text-amber-400" />
-                  <span>2. Push Notification &amp; App Update Broadcast</span>
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => {
-                    adminSendBroadcastNotification({
-                      title: 'New App Update v4.8 Live (No Uninstall Needed)',
-                      message:
-                        'Full Multi-Page PDF Engine, Vedic Yoga & 7-Day Planner, and Opt-In Partner Milan are now live! Tap "Apply App Update Now (No Uninstall)" to refresh in 1 click.',
-                      category: 'update',
-                      targetAudience: 'all',
-                    });
-                    setStatusFeedback({
-                      type: 'success',
-                      text: 'Live App Update pushed to all Client & Healer devices (in-place update without uninstall)!',
-                    });
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] flex items-center gap-1.5 cursor-pointer shadow"
-                >
-                  <Send className="w-3 h-3" />
-                  <span>1-Click Push App Update</span>
-                </button>
+                <div>
+                  <h3 className="font-serif text-base sm:text-lg font-bold text-amber-100 flex items-center gap-2">
+                    <Bell className="w-5 h-5 text-amber-400 shrink-0" />
+                    <span>2. Push Notification (Real-Time Flash to All Users)</span>
+                  </h3>
+                  <p className="text-[11px] text-emerald-300/90 mt-0.5">
+                    Send any announcement, offer, or Muhurat message — it flashes live in real time on all users&apos; screens.
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 font-bold text-[10px] uppercase tracking-wider">
+                  Live Real-Time Flash
+                </span>
               </div>
 
               <form
@@ -3287,25 +3275,24 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   setBcastCoupon('');
                   setStatusFeedback({
                     type: 'success',
-                    text: 'Push notification broadcasted in real time to all users!',
+                    text: 'Push notification broadcasted — flashing in real time on all user devices!',
                   });
                 }}
                 className="space-y-3"
               >
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <select
                     value={bcastCategory}
                     onChange={(e) =>
                       setBcastCategory(
-                        e.target.value as 'update' | 'offer' | 'muhurat' | 'announcement'
+                        e.target.value as 'offer' | 'muhurat' | 'announcement'
                       )
                     }
                     className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-3 py-2 text-xs text-amber-100"
                   >
+                    <option value="announcement">General Announcement / Message</option>
                     <option value="offer">Special Offer / Discount</option>
-                    <option value="update">App Update</option>
                     <option value="muhurat">Auspicious Muhurat Alert</option>
-                    <option value="announcement">General Announcement</option>
                   </select>
 
                   <select
@@ -3335,11 +3322,11 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   required
                   value={bcastMessage}
                   onChange={(e) => setBcastMessage(e.target.value)}
-                  placeholder="Enter update or offer message..."
+                  placeholder="Type your real-time message to flash to all users..."
                   className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-3 py-2 text-xs text-amber-100"
                 />
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
                   <input
                     type="text"
                     value={bcastCoupon}
@@ -3349,10 +3336,10 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   />
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer"
+                    className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>Send Push</span>
+                    <span>Send Push Notification</span>
                   </button>
                 </div>
               </form>

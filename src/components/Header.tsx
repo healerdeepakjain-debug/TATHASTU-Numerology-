@@ -24,12 +24,17 @@ import {
   BookOpen,
   HeartPulse,
   Play,
+  Monitor,
+  Smartphone,
+  Menu,
 } from 'lucide-react';
 import { BirthProfile } from '../types';
 import { calculateMulank, calculateBhagyank, getDailyPanchang, PLANETARY_PROFILES } from '../utils/numerology';
 import { requestNotificationPermission, sendBrowserNotification } from '../utils/notifications';
 import { useLanguage, INDIAN_LANGUAGES, SupportedLanguage } from '../utils/i18n';
 import { useResponsiveViewport } from '../utils/useResponsiveViewport';
+import { usePlatformMode } from '../utils/platformMode';
+import { PWAInstallButton } from './PWAInstallButton';
 import {
   useTathastu,
   TATHASTU_LOGO_PATH,
@@ -47,6 +52,7 @@ interface HeaderProps {
   onOpenProfileModal: () => void;
   onLogout: () => void;
   onReplayIntro?: () => void;
+  onOpenMobileMenu?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -56,9 +62,11 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenProfileModal,
   onLogout,
   onReplayIntro,
+  onOpenMobileMenu,
 }) => {
   const { language, setLanguage, t } = useLanguage();
   const { isMobile } = useResponsiveViewport();
+  const { isWindowsFullPage, isMobileAppMode, switchPlatformMode } = usePlatformMode();
   const {
     currentAccount,
     activeProfile,
@@ -151,68 +159,90 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="sticky top-0 z-40 bg-slate-950/95 backdrop-blur-md border-b border-amber-500/20 shadow-xl shadow-black/40 no-print">
       {/* Topmost Live Good/Bad Time & Rahu Kaal Real-Time Bar */}
-      <div className="bg-gradient-to-r from-amber-950/60 via-indigo-950/50 to-slate-950 px-3 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-xs border-b border-amber-500/20 flex flex-wrap items-center justify-between gap-2 text-amber-200/95">
-        <div className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto whitespace-nowrap py-0.5 no-scrollbar max-w-full">
+      <div className="bg-gradient-to-r from-amber-950/60 via-indigo-950/50 to-slate-950 px-2.5 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-xs border-b border-amber-500/20 flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-1.5 sm:gap-2 text-amber-200/95">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 overflow-x-auto whitespace-nowrap py-0.5 no-scrollbar w-full sm:w-auto max-w-full">
           {/* Live Present Time Clock */}
-          <span className="inline-flex items-center gap-1.5 font-mono font-bold text-amber-100 bg-slate-950/90 px-2 py-1 rounded-lg border border-amber-500/35 shrink-0">
-            <Clock className="w-3.5 h-3.5 text-amber-400" />
-            <span>LIVE: {liveClockString}</span>
+          <span className="inline-flex items-center gap-1 font-mono font-bold text-amber-100 bg-slate-950/90 px-2 py-0.5 sm:py-1 rounded-lg border border-amber-500/35 shrink-0 text-[10.5px] sm:text-xs">
+            <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
+            <span>{liveClockString}</span>
           </span>
 
-          <span className="text-amber-500/40">•</span>
-
           {/* Live Good / Bad Time according to Present Time */}
-          <span className="inline-flex items-center gap-1.5 font-semibold">
-            <Sun className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-amber-300">Good/Bad Time (Now):</span>
-            <span
-              className={`font-bold px-2 py-0.5 rounded-md text-[11px] font-mono ${
-                isGoodTimeNow
-                  ? 'bg-emerald-950/95 text-emerald-300 border border-emerald-500/50'
-                  : 'bg-rose-950/95 text-rose-300 border border-rose-500/50'
-              }`}
-            >
-              {isGoodTimeNow ? 'GOOD TIME' : 'BAD TIME'} — {panchang.currentChoghadiya.name} ({panchang.currentChoghadiya.quality} • {panchang.currentChoghadiya.startTime}–{panchang.currentChoghadiya.endTime})
+          <span
+            className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-md text-[10.5px] sm:text-[11px] font-mono shrink-0 ${
+              isGoodTimeNow
+                ? 'bg-emerald-950/95 text-emerald-300 border border-emerald-500/50'
+                : 'bg-rose-950/95 text-rose-300 border border-rose-500/50'
+            }`}
+          >
+            <Sun className="w-3 h-3 shrink-0" />
+            <span>
+              {isGoodTimeNow ? 'GOOD' : 'BAD'} • {panchang.currentChoghadiya.name} ({panchang.currentChoghadiya.startTime}–{panchang.currentChoghadiya.endTime})
             </span>
           </span>
 
-          <span className="text-amber-500/40">•</span>
-
           {/* Live Rahu Kaal Status according to Present Time */}
-          <span className="inline-flex items-center gap-1.5">
-            <span className="text-amber-300 font-semibold">Rahu Kaal (Live):</span>
-            {panchang.isRahuKaalNow ? (
-              <span className="inline-flex items-center gap-1 text-rose-300 font-bold bg-rose-950/90 px-2 py-0.5 rounded-md border border-rose-500/50 font-mono">
-                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                ACTIVE NOW — AVOID ({panchang.rahuKaalWindow.start}–{panchang.rahuKaalWindow.end})
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-emerald-300 font-bold bg-emerald-950/70 px-2 py-0.5 rounded-md border border-emerald-500/40 font-mono">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                Safe Now (Today: {panchang.rahuKaalWindow.start}–{panchang.rahuKaalWindow.end})
-              </span>
-            )}
-          </span>
+          {panchang.isRahuKaalNow ? (
+            <span className="inline-flex items-center gap-1 text-rose-300 font-bold bg-rose-950/90 px-2 py-0.5 rounded-md border border-rose-500/50 font-mono text-[10.5px] sm:text-[11px] shrink-0">
+              <AlertTriangle className="w-3 h-3 text-rose-400" />
+              Rahu Kaal NOW ({panchang.rahuKaalWindow.start}–{panchang.rahuKaalWindow.end})
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-emerald-300 font-bold bg-emerald-950/70 px-2 py-0.5 rounded-md border border-emerald-500/40 font-mono text-[10.5px] sm:text-[11px] shrink-0">
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              Rahu: {panchang.rahuKaalWindow.start}–{panchang.rahuKaalWindow.end}
+            </span>
+          )}
 
-          <span className="text-amber-500/40 hidden sm:inline">•</span>
-
-          <span className="text-amber-300/90 font-semibold hidden sm:inline">
-            Helpline: <span className="text-amber-200 font-mono">{TATHASTU_ADMIN_PHONE}</span>
+          <span className="text-amber-300/90 font-semibold hidden md:inline shrink-0">
+            • Helpline: <span className="text-amber-200 font-mono">{TATHASTU_ADMIN_PHONE}</span>
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-1.5 w-full sm:w-auto">
+          {/* Unified Windows Full-Page (/windows) & Mobile/Tablet Play Store (/mobile) Switcher */}
+          <div className="inline-flex items-center rounded-lg bg-slate-900 border border-amber-500/35 p-0.5">
+            <button
+              type="button"
+              onClick={() => switchPlatformMode('windows')}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${
+                isWindowsFullPage
+                  ? 'bg-amber-500 text-slate-950'
+                  : 'text-amber-200/80 hover:text-amber-100'
+              }`}
+              title="Open Dedicated Windows Full-Page Link (/windows)"
+            >
+              <Monitor className="w-3 h-3" />
+              <span>Windows</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => switchPlatformMode('mobile')}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${
+                isMobileAppMode
+                  ? 'bg-emerald-500 text-slate-950'
+                  : 'text-emerald-200/80 hover:text-emerald-100'
+              }`}
+              title="Open Dedicated Mobile / Tablet & Play Store Link (/mobile)"
+            >
+              <Smartphone className="w-3 h-3" />
+              <span>Mobile</span>
+            </button>
+          </div>
+
+          <PWAInstallButton compact />
+
           {/* Indian Language Selection Dropdown Window */}
           <div
             data-no-translate="true"
-            className="flex items-center gap-1.5 bg-slate-900 border border-amber-500/35 rounded-lg px-2.5 py-1"
+            className="flex items-center gap-1 bg-slate-900 border border-amber-500/35 rounded-lg px-2 py-1 max-w-[135px] sm:max-w-none"
           >
             <Globe className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value as SupportedLanguage)}
               aria-label="Select Language (English, Hindi & All Indian Languages)"
-              className="bg-slate-900 text-amber-100 text-[11px] font-semibold focus:outline-none cursor-pointer pr-1"
+              className="bg-slate-900 text-amber-100 text-[10.5px] sm:text-[11px] font-semibold focus:outline-none cursor-pointer pr-0.5 w-full truncate"
             >
               {INDIAN_LANGUAGES.map((lang) => (
                 <option key={lang.code} value={lang.code} className="bg-slate-950 text-amber-100">
@@ -224,51 +254,71 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={handleToggleNotifications}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10.5px] sm:text-xs font-semibold transition-all cursor-pointer ${
               notificationEnabled
                 ? 'bg-emerald-900/40 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-900/60'
                 : 'bg-amber-950/40 text-amber-300 border border-amber-500/30 hover:bg-amber-900/40'
             }`}
             title="Toggle daily Good/Bad time & lucky number push alerts"
           >
-            <Bell className="w-3.5 h-3.5" />
-            <span>{notificationEnabled ? 'Alerts ON' : 'Enable Alerts'}</span>
+            <Bell className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden xs:inline sm:inline">{notificationEnabled ? 'Alerts ON' : 'Alerts'}</span>
           </button>
         </div>
       </div>
 
       {/* Main navigation & Tathastu Numerology branding bar */}
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-2.5 sm:gap-4">
-        {/* Tathastu Numerology Brand & Uploaded App Icon */}
-        <div
-          onClick={() => {
-            if (activeProfile) {
-              setActiveTab('dashboard');
-            } else {
-              setActiveTab('profiles-portal');
-            }
-          }}
-          className="flex items-center gap-2.5 sm:gap-3.5 cursor-pointer group min-w-0"
-        >
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-amber-400 via-amber-600 to-indigo-900 p-0.5 shadow-lg shadow-amber-500/25 group-hover:shadow-amber-500/50 transition-all shrink-0 overflow-hidden">
-            <img
-              src={TATHASTU_LOGO_PATH}
-              alt={TATHASTU_BRAND_NAME}
-              className="w-full h-full object-cover rounded-[10px]"
-            />
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <h1 className="font-serif text-sm sm:text-xl font-extrabold tracking-wide bg-gradient-to-r from-amber-100 via-amber-300 to-amber-500 bg-clip-text text-transparent truncate">
-                {TATHASTU_APP_NAME}
-              </h1>
-              <span className="text-[10px] sm:text-[11px] font-semibold text-amber-300/90 hidden sm:inline">
-                · {TATHASTU_BRAND_NAME} ({TATHASTU_TAGLINE})
-              </span>
+      <div
+        className={`${
+          isWindowsFullPage ? 'max-w-none px-4 xl:px-8' : 'max-w-7xl px-2.5 sm:px-6'
+        } mx-auto py-2 sm:py-3 flex flex-wrap items-center justify-between gap-2 sm:gap-4`}
+      >
+        {/* Left: Mobile Side-Panel Hamburger Button + Tathastu Numerology Brand */}
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 sm:flex-initial">
+          {!isWindowsFullPage && (isMobile || isMobileAppMode) && onOpenMobileMenu && (
+            <button
+              type="button"
+              onClick={onOpenMobileMenu}
+              className="w-10 h-10 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/60 text-amber-200 flex items-center justify-center shrink-0 cursor-pointer shadow-sm"
+              aria-label="Open All Modules Side Panel"
+              title="Open All Modules Side Panel"
+            >
+              <Menu className="w-5 h-5 text-amber-300" />
+            </button>
+          )}
+
+          <div
+            onClick={() => {
+              if (activeProfile) {
+                setActiveTab('dashboard');
+              } else {
+                setActiveTab('profiles-portal');
+              }
+            }}
+            className="flex items-center gap-2 sm:gap-3.5 cursor-pointer group min-w-0"
+          >
+            <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-amber-400 via-amber-600 to-indigo-900 p-0.5 shadow-lg shadow-amber-500/25 group-hover:shadow-amber-500/50 transition-all shrink-0 overflow-hidden">
+              <img
+                src={TATHASTU_LOGO_PATH}
+                alt={TATHASTU_BRAND_NAME}
+                className="w-full h-full object-cover rounded-[10px]"
+              />
             </div>
-            <p className="text-[10px] sm:text-[11px] text-amber-200/75 tracking-wider truncate">
-              {isMobile ? `Helpline: ${TATHASTU_ADMIN_PHONE}` : `${TATHASTU_ADMIN_EMAIL} • Helpline: ${TATHASTU_ADMIN_PHONE}`}
-            </p>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                <h1 className="font-serif text-xs sm:text-xl font-extrabold tracking-wide bg-gradient-to-r from-amber-100 via-amber-300 to-amber-500 bg-clip-text text-transparent truncate">
+                  {TATHASTU_APP_NAME}
+                </h1>
+                <span className="text-[10px] sm:text-[11px] font-semibold text-amber-300/90 hidden sm:inline">
+                  · {TATHASTU_BRAND_NAME} ({TATHASTU_TAGLINE})
+                </span>
+              </div>
+              <p className="text-[10px] sm:text-[11px] text-amber-200/75 tracking-wider truncate">
+                {isMobile || isMobileAppMode
+                  ? `Helpline: ${TATHASTU_ADMIN_PHONE}`
+                  : `${TATHASTU_ADMIN_EMAIL} • Helpline: ${TATHASTU_ADMIN_PHONE}`}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -346,10 +396,20 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Navigation Tabs (2-Line Grid on Desktop/Tablet; Mobile uses MobileBottomNav) */}
-      {activeProfile && !isMobile && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-3">
-          <nav className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-1.5 sm:gap-2">
+      {/* Navigation Tabs (Full-Width Desktop Grid on Windows/Desktop; Mobile/Tablet /mobile uses MobileBottomNav) */}
+      {activeProfile && (isWindowsFullPage || (!isMobile && !isMobileAppMode)) && (
+        <div
+          className={`${
+            isWindowsFullPage ? 'max-w-none px-4 xl:px-8' : 'max-w-7xl px-4 sm:px-6'
+          } mx-auto pb-3`}
+        >
+          <nav
+            className={`grid gap-1.5 sm:gap-2 ${
+              isWindowsFullPage
+                ? 'grid-cols-3 sm:grid-cols-5 lg:grid-cols-8'
+                : 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-6'
+            }`}
+          >
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;

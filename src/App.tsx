@@ -24,11 +24,12 @@ import { DailySixNotificationsCenter } from './components/DailySixNotificationsC
 import { AdminAndProfilesPortal } from './components/AdminAndProfilesPortal';
 import { IslamicVedicRemedies } from './components/IslamicVedicRemedies';
 import { YogaPranayamaModule } from './components/YogaPranayamaModule';
-import { OfflineIndicator } from './components/PWAInstallButton';
+import { OfflineIndicator, PWAInstallButton } from './components/PWAInstallButton';
 import { GlobalTapFeedback } from './components/GlobalTapFeedback';
 import { TathastuIntroSplash } from './components/TathastuIntroSplash';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { useResponsiveViewport, isMobileDeviceDetected } from './utils/useResponsiveViewport';
+import { usePlatformMode } from './utils/platformMode';
 import { BirthProfile } from './types';
 import { getSavedProfile } from './utils/storage';
 import { LanguageProvider, useLanguage, INDIAN_LANGUAGES, SupportedLanguage } from './utils/i18n';
@@ -43,7 +44,7 @@ import {
   TATHASTU_LOGO_PATH,
 } from './utils/tathastuStore';
 import { PENDING_PAYU_ORDER_STORAGE_KEY } from './components/PayUPaymentModal';
-import { X, Globe, LogOut, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { X, Globe, LogOut, CheckCircle2, AlertTriangle, Monitor, Smartphone } from 'lucide-react';
 
 const SECTION_TITLES: Record<string, string> = {
   dashboard: 'VEDIC & CHALDEAN SPIRITUAL DASHBOARD',
@@ -116,6 +117,7 @@ function TathastuMainApp() {
     return 'profiles-portal';
   });
   const { isMobile } = useResponsiveViewport();
+  const { isWindowsFullPage, isMobileAppMode, switchPlatformMode } = usePlatformMode();
   const [showIntroSplash, setShowIntroSplash] = useState<boolean>(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -133,6 +135,7 @@ function TathastuMainApp() {
   });
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isAuthPortalOpen, setIsAuthPortalOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Listen for instant real-time PayU activation events dispatched by PayUPaymentModal
   useEffect(() => {
@@ -377,7 +380,8 @@ function TathastuMainApp() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
     const applyForcedMobileViewport = () => {
-      const mobileDetected = isMobileDeviceDetected() || isMobile;
+      const mobileDetected =
+        !isWindowsFullPage && (isMobileAppMode || isMobileDeviceDetected() || isMobile);
 
       let viewportMeta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
       if (!viewportMeta) {
@@ -394,11 +398,13 @@ function TathastuMainApp() {
       if (mobileDetected) {
         document.body.classList.add('tathastu-mobile-view');
         document.body.classList.remove('tathastu-desktop-view');
-        document.documentElement.dataset.viewMode = 'mobile';
+        document.documentElement.dataset.viewMode = isMobileAppMode ? 'mobile-app' : 'mobile';
       } else {
         document.body.classList.remove('tathastu-mobile-view');
         document.body.classList.add('tathastu-desktop-view');
-        document.documentElement.dataset.viewMode = 'desktop';
+        document.documentElement.dataset.viewMode = isWindowsFullPage
+          ? 'windows-fullpage'
+          : 'desktop';
       }
     };
 
@@ -410,7 +416,7 @@ function TathastuMainApp() {
       window.removeEventListener('resize', applyForcedMobileViewport);
       window.removeEventListener('orientationchange', applyForcedMobileViewport);
     };
-  }, [isMobile]);
+  }, [isMobile, isWindowsFullPage, isMobileAppMode]);
 
   // Detect scanned QR code or shared report parameters (?reportProfileId=... or ?qrAccess=mobile_pdf) for instant mobile report access
   useEffect(() => {
@@ -568,6 +574,48 @@ function TathastuMainApp() {
         <TathastuIntroSplash onComplete={() => setShowIntroSplash(false)} />
       )}
 
+      {/* Live Real-Time Master Admin Push Notification Flash Overlay (Visible to ALL Users Immediately) */}
+      {latestLiveBroadcastAlert &&
+        latestLiveBroadcastAlert.category !== 'update' &&
+        (latestLiveBroadcastAlert.targetAudience === 'all' ||
+          !currentAccount ||
+          currentAccount.role === 'admin' ||
+          currentAccount.role === latestLiveBroadcastAlert.targetAudience) && (
+          <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[10001] w-[95%] max-w-2xl no-print animate-fade-in">
+            <div className="rounded-2xl bg-gradient-to-r from-amber-950/98 via-indigo-950/98 to-slate-950/98 border-2 border-amber-400 p-3.5 sm:p-4 shadow-[0_12px_45px_rgba(245,158,11,0.45)] flex items-start justify-between gap-3 backdrop-blur-md">
+              <div className="space-y-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+                    LIVE PUSH • {latestLiveBroadcastAlert.category.toUpperCase()}
+                  </span>
+                  <span className="font-serif font-bold text-sm text-amber-100 break-words">
+                    {latestLiveBroadcastAlert.title}
+                  </span>
+                  {latestLiveBroadcastAlert.couponCode && (
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 font-mono text-[11px] font-black">
+                      COUPON: {latestLiveBroadcastAlert.couponCode}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-100 leading-relaxed break-words">
+                  {latestLiveBroadcastAlert.message}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={dismissLiveBroadcastAlert}
+                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-200 hover:text-white cursor-pointer shrink-0 border border-amber-500/35"
+                title="Dismiss Notification"
+                aria-label="Dismiss Notification"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
       {/* Official PayU Return Confirmation / Automatic Subscription Activation Banner */}
       {payuReturnBanner && (
         <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[10000] w-[94%] max-w-2xl no-print animate-fade-in">
@@ -602,11 +650,47 @@ function TathastuMainApp() {
 
       {!currentAccount || isAuthPortalOpen ? (
         <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-          <div className="bg-slate-900/95 border-b border-amber-500/30 px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 max-w-7xl w-full mx-auto">
+          <div
+            className={`bg-slate-900/95 border-b border-amber-500/30 px-3 sm:px-5 py-2 flex flex-wrap items-center justify-between gap-2 w-full mx-auto ${
+              isWindowsFullPage ? 'max-w-none xl:px-8' : 'max-w-7xl'
+            }`}
+          >
             <div className="flex items-center gap-2 text-xs text-amber-300 font-semibold">
               <span>{t('appTitle')}</span>
+              <span className="hidden sm:inline text-[10px] font-mono text-emerald-300/90">
+                • {isWindowsFullPage ? 'Windows Full-Page Edition' : isMobileAppMode ? 'Mobile & Tablet App' : 'Unified Web & Mobile'}
+              </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <div className="inline-flex items-center rounded-lg bg-slate-950 border border-amber-500/35 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => switchPlatformMode('windows')}
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10.5px] font-bold transition-all cursor-pointer ${
+                    isWindowsFullPage
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'text-amber-200/80 hover:text-amber-100'
+                  }`}
+                  title="Open Dedicated Windows Full-Page Link (/windows)"
+                >
+                  <Monitor className="w-3 h-3" />
+                  <span>Windows</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchPlatformMode('mobile')}
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10.5px] font-bold transition-all cursor-pointer ${
+                    isMobileAppMode
+                      ? 'bg-emerald-500 text-slate-950'
+                      : 'text-emerald-200/80 hover:text-emerald-100'
+                  }`}
+                  title="Open Dedicated Mobile / Tablet & Play Store Link (/mobile)"
+                >
+                  <Smartphone className="w-3 h-3" />
+                  <span>Mobile / Tablet</span>
+                </button>
+              </div>
+              <PWAInstallButton compact />
               <div
                 data-no-translate="true"
                 className="flex items-center gap-1.5 bg-slate-950 border border-amber-500/35 rounded-lg px-2.5 py-1"
@@ -648,62 +732,17 @@ function TathastuMainApp() {
             onOpenProfileModal={() => setIsProfileModalOpen(true)}
             onLogout={handleLogout}
             onReplayIntro={() => setShowIntroSplash(true)}
+            onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
           />
-
-          {/* Live Cross-Device Master Admin Broadcast / App Update Alert Banner */}
-          {latestLiveBroadcastAlert && (
-            <div className="max-w-7xl w-full mx-auto px-2 sm:px-4 pt-3 no-print animate-fade-in">
-              <div className="rounded-2xl bg-gradient-to-r from-amber-500/20 via-emerald-950/90 to-slate-900 border-2 border-amber-400 p-3.5 sm:p-4 shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black uppercase tracking-wider">
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
-                      LIVE ADMIN {latestLiveBroadcastAlert.category.toUpperCase()}
-                    </span>
-                    <span className="font-serif font-bold text-sm text-amber-100">
-                      {latestLiveBroadcastAlert.title}
-                    </span>
-                    {latestLiveBroadcastAlert.couponCode && (
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 font-mono text-xs font-black">
-                        COUPON: {latestLiveBroadcastAlert.couponCode}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-200 leading-relaxed">
-                    {latestLiveBroadcastAlert.message}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  {latestLiveBroadcastAlert.category === 'update' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        dismissLiveBroadcastAlert();
-                        window.location.reload();
-                      }}
-                      className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs cursor-pointer shadow-lg"
-                    >
-                      Apply App Update Now (No Uninstall)
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={dismissLiveBroadcastAlert}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white cursor-pointer"
-                    title="Dismiss Notification"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Main Content Viewport Full-Width Aligned with Header */}
           <main
-            className={`flex-1 max-w-7xl w-full mx-auto px-2 sm:px-4 pt-3 sm:pt-4 a4-print-main-reset ${
-              isMobile ? 'pb-24' : 'pb-10'
+            className={`flex-1 w-full mx-auto pt-3 sm:pt-4 a4-print-main-reset ${
+              isWindowsFullPage
+                ? 'max-w-none px-4 xl:px-8 pb-10'
+                : isMobileAppMode
+                  ? 'max-w-5xl px-2 sm:px-4 pb-10'
+                  : 'max-w-7xl px-2 sm:px-4 pb-10'
             }`}
           >
         {!activeProfile || activeTab === 'profiles-portal' ? (
@@ -803,15 +842,21 @@ function TathastuMainApp() {
 
           <OfflineIndicator />
 
-          {isMobile && (
+          {!isWindowsFullPage && (isMobile || isMobileAppMode) && (
             <MobileBottomNav
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               hasActiveProfile={Boolean(activeProfile)}
               userRole={currentAccount?.role}
+              activeProfileName={activeProfile?.name}
+              activeProfileDob={activeProfile?.dob}
               onClearActiveProfile={clearActiveProfile}
               onReplayIntro={() => setShowIntroSplash(true)}
               onLogout={handleLogout}
+              forceVisible={isMobileAppMode}
+              isOpen={isMobileSidebarOpen}
+              onOpen={() => setIsMobileSidebarOpen(true)}
+              onClose={() => setIsMobileSidebarOpen(false)}
             />
           )}
 
@@ -825,7 +870,7 @@ function TathastuMainApp() {
 
           {/* Sacred TATHASTU Vedic Footer */}
           <footer className="mt-auto border-t border-amber-500/20 bg-slate-950 py-8 px-4 text-center text-xs text-amber-200/70 no-print">
-            <div className="max-w-7xl mx-auto space-y-3">
+            <div className={`${isWindowsFullPage ? 'max-w-none px-4' : 'max-w-7xl'} mx-auto space-y-3`}>
               <div className="flex items-center justify-center gap-3">
                 <img
                   src={TATHASTU_LOGO_PATH}

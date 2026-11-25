@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   Flame,
@@ -15,68 +15,120 @@ import {
   Calendar,
   BookOpen,
   Bot,
-  LayoutGrid,
   X,
   FolderOpen,
   Play,
   LogOut,
+  Menu,
+  ChevronRight,
 } from 'lucide-react';
 import { useLanguage } from '../utils/i18n';
-import { UserRole } from '../utils/tathastuStore';
+import {
+  UserRole,
+  TATHASTU_LOGO_PATH,
+  TATHASTU_APP_NAME,
+  TATHASTU_BRAND_NAME,
+} from '../utils/tathastuStore';
 
 interface MobileBottomNavProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   hasActiveProfile: boolean;
   userRole?: UserRole;
+  activeProfileName?: string;
+  activeProfileDob?: string;
   onClearActiveProfile: () => void;
   onReplayIntro: () => void;
   onLogout: () => void;
+  forceVisible?: boolean;
+  isOpen?: boolean;
+  onOpen?: () => void;
+  onClose?: () => void;
 }
 
+/**
+ * Mobile / Tablet Side Panel Navigation Drawer
+ * Places ALL 15 Vedic & Chaldean modules cleanly in a slide-out side panel
+ * so the mobile screen & report viewport stay 100% uncluttered and aligned.
+ */
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   activeTab,
   setActiveTab,
   hasActiveProfile,
   userRole,
+  activeProfileName,
+  activeProfileDob,
   onClearActiveProfile,
   onReplayIntro,
   onLogout,
+  forceVisible = false,
+  isOpen,
+  onOpen,
+  onClose,
 }) => {
   const { t } = useLanguage();
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
 
-  if (!hasActiveProfile) {
-    return null;
-  }
+  const drawerOpen = isOpen !== undefined ? isOpen : internalOpen;
+  const openDrawer = () => {
+    if (onOpen) onOpen();
+    else setInternalOpen(true);
+  };
+  const closeDrawer = () => {
+    if (onClose) onClose();
+    else setInternalOpen(false);
+  };
 
-  const allModules = [
-    { id: 'dashboard', label: t('tab_dashboard'), icon: Sparkles },
-    { id: 'name-corrector', label: t('tab_name'), icon: Flame },
-    { id: 'mobile-auditor', label: t('tab_mobile'), icon: Phone },
-    { id: 'mantras', label: t('tab_mantras'), icon: Volume2 },
-    { id: 'yoga-pranayama', label: t('tab_yoga', 'Yoga & Pranayama'), icon: HeartPulse },
-    { id: 'compatibility', label: t('tab_compatibility'), icon: HeartHandshake },
-    { id: 'parivar-milan', label: t('tab_parivar', 'Parivar Milan'), icon: Users },
-    { id: 'festivals', label: t('tab_festivals'), icon: Sun },
-    { id: 'notifications-hub', label: t('tab_notifications', '6 Daily Alerts & WhatsApp'), icon: Bell },
-    { id: 'weekly', label: t('tab_weekly'), icon: Compass },
-    { id: 'transits', label: t('tab_transits'), icon: Moon },
-    { id: 'calendar', label: t('tab_calendar'), icon: Calendar },
-    { id: 'islamic-remedies', label: t('tab_islamic', 'Islamic-Vedic Remedies'), icon: BookOpen },
-    { id: 'ai-consultant', label: t('tab_ai'), icon: Bot },
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeDrawer();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [drawerOpen]);
+
+  const moduleGroups = [
     {
-      id: 'profiles-portal',
-      label: t('tab_profiles', 'Saved Profiles & Portals'),
-      icon: userRole === 'admin' ? Crown : Users,
+      title: 'Core Vedic & Numerology',
+      items: [
+        { id: 'dashboard', label: t('tab_dashboard'), icon: Sparkles, requiresProfile: true },
+        { id: 'name-corrector', label: t('tab_name'), icon: Flame, requiresProfile: true },
+        { id: 'mobile-auditor', label: t('tab_mobile'), icon: Phone, requiresProfile: true },
+        {
+          id: 'profiles-portal',
+          label: t('tab_profiles', 'Saved Profiles & Portals'),
+          icon: userRole === 'admin' ? Crown : Users,
+          requiresProfile: false,
+        },
+      ],
     },
-  ];
-
-  const primaryDockItems = [
-    { id: 'dashboard', shortLabel: 'Home', icon: Sparkles },
-    { id: 'name-corrector', shortLabel: 'Name', icon: Flame },
-    { id: 'mobile-auditor', shortLabel: 'Mobile', icon: Phone },
-    { id: 'ai-consultant', shortLabel: 'Oracle', icon: Bot },
+    {
+      title: 'Daily Muhurat & Transits',
+      items: [
+        { id: 'calendar', label: t('tab_calendar', 'Daily Muhurat & Calendar'), icon: Calendar, requiresProfile: true },
+        { id: 'weekly', label: t('tab_weekly'), icon: Compass, requiresProfile: true },
+        { id: 'transits', label: t('tab_transits'), icon: Moon, requiresProfile: true },
+        { id: 'festivals', label: t('tab_festivals'), icon: Sun, requiresProfile: true },
+        { id: 'notifications-hub', label: t('tab_notifications', '6 Daily Alerts & WhatsApp'), icon: Bell, requiresProfile: true },
+      ],
+    },
+    {
+      title: 'Milan & Relationship Harmony',
+      items: [
+        { id: 'compatibility', label: t('tab_compatibility'), icon: HeartHandshake, requiresProfile: true },
+        { id: 'parivar-milan', label: t('tab_parivar', 'Parivar Milan'), icon: Users, requiresProfile: true },
+      ],
+    },
+    {
+      title: 'Remedies, Healing & AI Oracle',
+      items: [
+        { id: 'mantras', label: t('tab_mantras'), icon: Volume2, requiresProfile: true },
+        { id: 'yoga-pranayama', label: t('tab_yoga', 'Yoga & Pranayama'), icon: HeartPulse, requiresProfile: true },
+        { id: 'islamic-remedies', label: t('tab_islamic', 'Islamic-Vedic Remedies'), icon: BookOpen, requiresProfile: true },
+        { id: 'ai-consultant', label: t('tab_ai'), icon: Bot, requiresProfile: true },
+      ],
+    },
   ];
 
   const selectModule = (id: string) => {
@@ -84,7 +136,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       onClearActiveProfile();
     }
     setActiveTab(id);
-    setDrawerOpen(false);
+    closeDrawer();
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -92,137 +144,160 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
   return (
     <>
-      {/* Bottom Sheet Drawer for All 14 Spiritual Modules on Mobile */}
+      {/* Subtle Floating Left-Edge Side Panel Handle on Mobile/Tablet when a profile is active */}
+      {hasActiveProfile && !drawerOpen && (
+        <button
+          type="button"
+          onClick={openDrawer}
+          aria-label="Open All Modules Side Panel"
+          className={`fixed left-0 top-1/2 -translate-y-1/2 z-40 ${
+            forceVisible ? '' : 'md:hidden'
+          } flex flex-col items-center justify-center gap-1 py-3 px-1.5 rounded-r-2xl bg-gradient-to-b from-amber-500 to-amber-600 text-slate-950 shadow-[4px_0_20px_rgba(245,158,11,0.45)] border-y border-r border-amber-300 cursor-pointer no-print`}
+          title="Open All Modules Side Panel"
+        >
+          <Menu className="w-4 h-4" />
+          <span className="text-[9px] font-black uppercase tracking-wider [writing-mode:vertical-rl] rotate-180">
+            Modules
+          </span>
+        </button>
+      )}
+
+      {/* Slide-Out Side Panel Drawer for ALL Modules */}
       {drawerOpen && (
         <div
-          className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-end md:hidden no-print"
-          onClick={() => setDrawerOpen(false)}
+          className={`fixed inset-0 z-[9990] bg-slate-950/80 backdrop-blur-sm flex ${
+            forceVisible ? '' : 'md:hidden'
+          } no-print`}
+          onClick={closeDrawer}
         >
-          <div
-            className="w-full max-h-[84vh] overflow-y-auto rounded-t-3xl bg-slate-900 border-t-2 border-amber-400/60 p-4 pb-8 shadow-2xl space-y-4"
+          <aside
+            aria-label="Mobile Modules Side Panel"
+            className="w-[84vw] max-w-[320px] h-full bg-slate-950 border-r-2 border-amber-500/50 shadow-[12px_0_45px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden animate-fade-in"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-amber-500/20 pb-3">
-              <div>
-                <h3 className="font-serif text-base font-black text-amber-100">
-                  All Vedic &amp; Chaldean Modules
-                </h3>
-                <p className="text-[11px] text-amber-300/80">
-                  Tap any spiritual module to switch view
-                </p>
+            {/* Side Panel Brand Header */}
+            <div className="p-4 bg-gradient-to-r from-amber-950/70 via-slate-900 to-slate-950 border-b border-amber-500/30 flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <img
+                  src={TATHASTU_LOGO_PATH}
+                  alt={TATHASTU_BRAND_NAME}
+                  className="w-10 h-10 rounded-xl border border-amber-400 object-cover shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="font-serif text-sm font-black text-amber-200 truncate">
+                    {TATHASTU_APP_NAME}
+                  </div>
+                  <div className="text-[10px] text-emerald-300 font-semibold truncate">
+                    {hasActiveProfile && activeProfileName
+                      ? `${activeProfileName}${activeProfileDob ? ` (${activeProfileDob})` : ''}`
+                      : 'All Modules Side Panel'}
+                  </div>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={() => setDrawerOpen(false)}
-                className="min-w-[44px] min-h-[44px] rounded-xl bg-slate-800 text-amber-200 flex items-center justify-center border border-amber-500/30 cursor-pointer"
-                aria-label="Close Modules Menu"
+                onClick={closeDrawer}
+                className="w-9 h-9 rounded-xl bg-slate-900 border border-amber-500/35 text-amber-200 flex items-center justify-center shrink-0 cursor-pointer"
+                aria-label="Close Side Panel"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              {allModules.map((mod) => {
-                const Icon = mod.icon;
-                const active = activeTab === mod.id;
+            {/* Scrollable Grouped Modules List */}
+            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+              {!hasActiveProfile && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200 leading-relaxed">
+                  Select or create a profile in <strong>Saved Profiles &amp; Portals</strong> to unlock all personalized numerology &amp; astrology modules.
+                </div>
+              )}
+
+              {moduleGroups.map((group) => {
+                const visibleItems = group.items.filter(
+                  (item) => !item.requiresProfile || hasActiveProfile
+                );
+                if (visibleItems.length === 0) return null;
+
                 return (
-                  <button
-                    key={mod.id}
-                    type="button"
-                    onClick={() => selectModule(mod.id)}
-                    className={`min-h-[52px] p-3 rounded-2xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
-                      active
-                        ? 'bg-amber-500/20 border-amber-400 text-amber-100 shadow-md'
-                        : 'bg-slate-950/85 border-amber-500/20 text-slate-200 hover:border-amber-400/50'
-                    }`}
-                  >
-                    <Icon
-                      className={`w-4 h-4 shrink-0 ${
-                        active ? 'text-amber-300' : 'text-amber-400/75'
-                      }`}
-                    />
-                    <span className="text-xs font-bold leading-snug line-clamp-2">{mod.label}</span>
-                  </button>
+                  <div key={group.title} className="space-y-1.5">
+                    <div className="px-2 text-[10px] font-extrabold uppercase tracking-wider text-amber-400/80">
+                      {group.title}
+                    </div>
+                    <div className="space-y-1">
+                      {visibleItems.map((mod) => {
+                        const Icon = mod.icon;
+                        const active = activeTab === mod.id;
+                        return (
+                          <button
+                            key={mod.id}
+                            type="button"
+                            onClick={() => selectModule(mod.id)}
+                            className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl border text-left flex items-center justify-between gap-2.5 transition-all cursor-pointer ${
+                              active
+                                ? 'bg-gradient-to-r from-amber-500/25 to-amber-600/15 border-amber-400 text-amber-100 shadow-md'
+                                : 'bg-slate-900/75 border-amber-500/15 text-slate-200 hover:border-amber-400/45 hover:bg-slate-900'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2.5 min-w-0">
+                              <Icon
+                                className={`w-4 h-4 shrink-0 ${
+                                  active ? 'text-amber-300' : 'text-amber-400/75'
+                                }`}
+                              />
+                              <span className="text-xs font-bold leading-snug break-words">
+                                {mod.label}
+                              </span>
+                            </span>
+                            <ChevronRight
+                              className={`w-3.5 h-3.5 shrink-0 ${
+                                active ? 'text-amber-300' : 'text-slate-500'
+                              }`}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
             </div>
 
-            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-amber-500/20">
+            {/* Side Panel Footer Quick Actions */}
+            <div className="p-3 bg-slate-900/95 border-t border-amber-500/30 grid grid-cols-3 gap-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] shrink-0">
               <button
                 type="button"
                 onClick={() => selectModule('profiles-portal')}
-                className="min-h-[44px] px-2.5 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center gap-1 cursor-pointer"
+                className="min-h-[40px] px-2 py-2 rounded-xl bg-amber-500 text-slate-950 font-black text-[11px] flex items-center justify-center gap-1 cursor-pointer"
               >
-                <FolderOpen className="w-4 h-4 shrink-0" />
+                <FolderOpen className="w-3.5 h-3.5 shrink-0" />
                 <span>Profiles</span>
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  setDrawerOpen(false);
+                  closeDrawer();
                   onReplayIntro();
                 }}
-                className="min-h-[44px] px-2.5 py-2.5 rounded-xl bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                className="min-h-[40px] px-2 py-2 rounded-xl bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
               >
-                <Play className="w-4 h-4 text-amber-400 shrink-0" />
+                <Play className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>Intro</span>
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  setDrawerOpen(false);
+                  closeDrawer();
                   onLogout();
                 }}
-                className="min-h-[44px] px-2.5 py-2.5 rounded-xl bg-rose-600/25 border border-rose-400/60 text-rose-200 font-black text-xs flex items-center justify-center gap-1 cursor-pointer"
+                className="min-h-[40px] px-2 py-2 rounded-xl bg-rose-600/25 border border-rose-400/60 text-rose-200 font-black text-[11px] flex items-center justify-center gap-1 cursor-pointer"
               >
-                <LogOut className="w-4 h-4 text-rose-300 shrink-0" />
+                <LogOut className="w-3.5 h-3.5 text-rose-300 shrink-0" />
                 <span>Logout</span>
               </button>
             </div>
-          </div>
+          </aside>
         </div>
       )}
-
-      {/* Persistent Thumb-Friendly Mobile Bottom Navigation Bar */}
-      <nav
-        aria-label="Mobile Navigation"
-        className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-slate-950/95 backdrop-blur-lg border-t border-amber-500/35 px-1.5 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(0,0,0,0.75)] no-print"
-      >
-        <div className="grid grid-cols-5 gap-1">
-          {primaryDockItems.map((item) => {
-            const Icon = item.icon;
-            const active = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => selectModule(item.id)}
-                className={`min-h-[48px] rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-all cursor-pointer ${
-                  active
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
-                    : 'text-slate-400 hover:text-amber-200'
-                }`}
-              >
-                <Icon className={`w-4 h-4 ${active ? 'text-amber-300' : 'text-slate-400'}`} />
-                <span>{item.shortLabel}</span>
-              </button>
-            );
-          })}
-
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(true)}
-            className={`min-h-[48px] rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition-all cursor-pointer ${
-              drawerOpen || !primaryDockItems.some((i) => i.id === activeTab)
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
-                : 'text-slate-400 hover:text-amber-200'
-            }`}
-          >
-            <LayoutGrid className="w-4 h-4" />
-            <span>Modules</span>
-          </button>
-        </div>
-      </nav>
     </>
   );
 };

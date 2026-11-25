@@ -1064,10 +1064,88 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     useState<BroadcastNotificationRecord | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
 
-  // Start on the Login + Introduction page by default on every fresh app open, QR link, or Android launch.
-  // Keep login active within the current tab session via sessionStorage (clear legacy localStorage auto-login).
+  // Determine whether current environment is Mobile / Tablet / Standalone App (persistent login until explicit Logout)
+  // vs Windows / Desktop Direct View (always opens on Introduction + Login page on fresh visit).
+  const isPersistentMobileSessionEnvironment = (): boolean => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const pathname = (window.location.pathname || '/').toLowerCase().replace(/\/+$/, '') || '/';
+      const params = new URLSearchParams(window.location.search || '');
+      const qPlatform = (params.get('platform') || '').toLowerCase();
+
+      // Explicit Windows / Desktop Direct View URL ALWAYS opens on Introduction & Login page
+      if (
+        pathname === '/windows' ||
+        pathname.startsWith('/windows/') ||
+        pathname === '/desktop' ||
+        pathname.startsWith('/desktop/') ||
+        qPlatform === 'windows' ||
+        qPlatform === 'desktop'
+      ) {
+        return false;
+      }
+
+      // Explicit Mobile / Tablet / Play Store URL or Android native bridge or installed standalone PWA -> persistent login
+      const isAndroidNative =
+        Boolean((window as unknown as { TathastuAndroidBridge?: unknown }).TathastuAndroidBridge) ||
+        window.location.hostname === 'appassets.androidplatform.net';
+      const isStandalonePwa =
+        window.matchMedia?.('(display-mode: standalone)').matches ||
+        (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+      const isExplicitMobileRoute =
+        pathname === '/mobile' ||
+        pathname.startsWith('/mobile/') ||
+        pathname === '/tablet' ||
+        pathname.startsWith('/tablet/') ||
+        pathname === '/app' ||
+        pathname.startsWith('/app/') ||
+        qPlatform === 'mobile' ||
+        qPlatform === 'tablet' ||
+        qPlatform === 'android';
+      const ua = (window.navigator.userAgent || '').toLowerCase();
+      const isMobileOrTabletDevice =
+        /android|iphone|ipad|ipod|mobile|tablet|blackberry|iemobile|opera mini/.test(ua) ||
+        (window.innerWidth <= 1024 && 'ontouchstart' in window);
+
+      return isAndroidNative || isExplicitMobileRoute || isStandalonePwa || isMobileOrTabletDevice;
+    } catch {
+      return false;
+    }
+  };
+
+  const persistAccountSession = (accountId: string) => {
+    try {
+      sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, accountId);
+      sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
+      if (isPersistentMobileSessionEnvironment()) {
+        // Mobile / Tablet: stay logged in even after closing/reopening app until user clicks Logout
+        localStorage.setItem(SESSION_ACCOUNT_ID_KEY, accountId);
+        localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+      } else {
+        // Windows / Desktop Direct View: keep session for current tab only; fresh open always starts at Intro + Login
+        localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
+        localStorage.removeItem(SESSION_PROFILE_ID_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  // Windows / Desktop always opens on Introduction + Login page on fresh visit;
+  // Mobile / Tablet restores logged-in session automatically until explicit Logout.
   const [currentAccountId, setCurrentAccountId] = useState<string | null>(() => {
     try {
+      if (isPersistentMobileSessionEnvironment()) {
+        const persisted =
+          localStorage.getItem(SESSION_ACCOUNT_ID_KEY) ||
+          sessionStorage.getItem(SESSION_ACCOUNT_ID_KEY) ||
+          null;
+        if (persisted) {
+          sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, persisted);
+        }
+        return persisted;
+      }
+      // Windows / Desktop Direct View: clear localStorage auto-login so fresh visit opens Intro + Login
       localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
       localStorage.removeItem(SESSION_PROFILE_ID_KEY);
       return sessionStorage.getItem(SESSION_ACCOUNT_ID_KEY) || null;
@@ -1634,6 +1712,23 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               String(b.createdAtIso || '').localeCompare(String(a.createdAtIso || ''))
             );
             localStorage.setItem(BROADCASTS_STORAGE_KEY, JSON.stringify(merged));
+
+            // Real-time live flash for ALL connected users whenever a fresh admin push notification arrives
+            const newest = merged[0];
+            const lastSeenId = localStorage.getItem(LAST_SEEN_BROADCAST_ID_KEY);
+            if (
+              newest &&
+              newest.id !== 'bcast_welcome_1' &&
+              newest.id !== lastSeenId &&
+              newest.id !== prev[0]?.id
+            ) {
+              localStorage.setItem(LAST_SEEN_BROADCAST_ID_KEY, newest.id);
+              setLatestLiveBroadcastAlert(newest);
+              sendBrowserNotification(`🕉️ ${TATHASTU_BRAND_NAME}: ${newest.title}`, {
+                body: `${newest.message}${newest.couponCode ? ` | Code: ${newest.couponCode}` : ''}`,
+                tag: `tathastu-bcast-${newest.id}`,
+              });
+            }
             return merged;
           });
         }
@@ -1800,14 +1895,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     setCurrentAccountId(matched.id);
-    try {
-      sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, matched.id);
-      localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
-      localStorage.removeItem(SESSION_PROFILE_ID_KEY);
-      sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
-    } catch {
-      // ignore
-    }
+    persistAccountSession(matched.id);
     // Do NOT auto-open an active profile on login; show Saved Profiles / New Profile / Portal first
     setActiveProfileId(null);
     setPublicQrSharedProfileId(null);
@@ -1855,14 +1943,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     setCurrentAccountId(matched.id);
-    try {
-      sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, matched.id);
-      localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
-      localStorage.removeItem(SESSION_PROFILE_ID_KEY);
-      sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
-    } catch {
-      // ignore
-    }
+    persistAccountSession(matched.id);
     setActiveProfileId(null);
     setPublicQrSharedProfileId(null);
     return { ok: true, role: matched.role };
@@ -1875,14 +1956,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       INITIAL_ACCOUNTS[0];
 
     setCurrentAccountId(target.id);
-    try {
-      sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, target.id);
-      localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
-      localStorage.removeItem(SESSION_PROFILE_ID_KEY);
-      sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
-    } catch {
-      // ignore
-    }
+    persistAccountSession(target.id);
     // Do NOT auto-open an active profile on login; show Saved Profiles / New Profile / Portal first
     setActiveProfileId(null);
     setPublicQrSharedProfileId(null);
@@ -1892,14 +1966,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const target = accounts.find((a) => a.id === accountId);
     if (!target) return;
     setCurrentAccountId(target.id);
-    try {
-      sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, target.id);
-      localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
-      localStorage.removeItem(SESSION_PROFILE_ID_KEY);
-      sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
-    } catch {
-      // ignore
-    }
+    persistAccountSession(target.id);
     setActiveProfileId(null);
     setPublicQrSharedProfileId(null);
   };
@@ -2120,21 +2187,10 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (!params.keepCurrentSession) {
       setCurrentAccountId(newAccountId);
-      try {
-        sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, newAccountId);
-        localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
-        localStorage.removeItem(SESSION_PROFILE_ID_KEY);
-      } catch {
-        // ignore
-      }
+      persistAccountSession(newAccountId);
       // After registration, land cleanly on the user's personal dashboard (Saved Profiles)
       setActiveProfileId(null);
       setPublicQrSharedProfileId(null);
-      try {
-        sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
-      } catch {
-        // ignore
-      }
     }
 
     if (firebaseUser) {
@@ -2207,14 +2263,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setCurrentAccountId(targetSessionAccountId);
         setActiveProfileId(null);
         setPublicQrSharedProfileId(null);
-        try {
-          sessionStorage.setItem(SESSION_ACCOUNT_ID_KEY, targetSessionAccountId);
-          sessionStorage.removeItem(SESSION_PROFILE_ID_KEY);
-          localStorage.removeItem(SESSION_ACCOUNT_ID_KEY);
-          localStorage.removeItem(SESSION_PROFILE_ID_KEY);
-        } catch {
-          // ignore
-        }
+        persistAccountSession(targetSessionAccountId);
       }
 
       // Also persist to Firebase Firestore when signed in (strip undefined fields for strict rule compliance)

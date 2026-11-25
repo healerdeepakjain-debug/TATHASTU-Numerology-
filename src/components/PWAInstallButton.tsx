@@ -14,6 +14,8 @@ import {
   WifiOff,
   ShieldCheck,
   FileDown,
+  Monitor,
+  RefreshCw,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import {
@@ -26,6 +28,7 @@ import {
   TATHASTU_OFFICIAL_APP_URL,
 } from '../utils/tathastuStore';
 import { getPublicAppOriginUrl } from '../utils/whatsappAndQrService';
+import { usePlatformMode } from '../utils/platformMode';
 import {
   getCurrentLanguage,
   translateMultilineBlock,
@@ -88,10 +91,19 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   const [isIOS, setIsIOS] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [windowsQrDataUrl, setWindowsQrDataUrl] = useState<string>('');
+  const [mobileQrDataUrl, setMobileQrDataUrl] = useState<string>('');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedPlatform, setCopiedPlatform] = useState<'windows' | 'mobile' | null>(null);
   const [downloadedLauncher, setDownloadedLauncher] = useState(false);
   const [sharedAppFile, setSharedAppFile] = useState(false);
   const [exportedAndroidKit, setExportedAndroidKit] = useState(false);
+
+  const {
+    windowsLiveUrl,
+    mobileLiveUrl,
+    switchPlatformMode,
+  } = usePlatformMode();
 
   const liveAppUrl = getPublicAppOriginUrl() || TATHASTU_OFFICIAL_APP_URL;
   const publicSharedUrl = TATHASTU_OFFICIAL_APP_URL;
@@ -128,10 +140,32 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
       .then((url) => setQrDataUrl(url))
       .catch(() => {});
 
+    QRCode.toDataURL(windowsLiveUrl, {
+      width: 200,
+      margin: 1,
+      color: {
+        dark: '#1e1136',
+        light: '#fffbeb',
+      },
+    })
+      .then((url) => setWindowsQrDataUrl(url))
+      .catch(() => {});
+
+    QRCode.toDataURL(mobileLiveUrl, {
+      width: 200,
+      margin: 1,
+      color: {
+        dark: '#022c22',
+        light: '#ecfdf5',
+      },
+    })
+      .then((url) => setMobileQrDataUrl(url))
+      .catch(() => {});
+
     return () => {
       promptListeners.delete(listener);
     };
-  }, [liveAppUrl]);
+  }, [liveAppUrl, windowsLiveUrl, mobileLiveUrl]);
 
   const generateStandaloneMobileAppHtml = async (): Promise<{ blob: Blob; fileName: string }> => {
     const absLogo = await getLogoBase64DataUrl(TATHASTU_LOGO_PATH);
@@ -926,18 +960,26 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
     setTimeout(() => setCopiedLink(false), 3000);
   };
 
+  const handleCopyPlatformLink = (target: 'windows' | 'mobile') => {
+    const targetUrl = target === 'windows' ? windowsLiveUrl : mobileLiveUrl;
+    navigator.clipboard.writeText(targetUrl);
+    setCopiedPlatform(target);
+    setTimeout(() => setCopiedPlatform(null), 3000);
+  };
+
   const handleWhatsAppAppLink = () => {
     const activeLang = getCurrentLanguage();
     const rawText = [
       `🕉️ *${TATHASTU_APP_NAME}* — *${TATHASTU_BRAND_NAME} (${TATHASTU_TAGLINE})*`,
-      `📲 *Official Vedic & Chaldean Numerology Android, iOS & Desktop App*`,
+      `📲 *Official Vedic, Chaldean & Parashar Numerology App Links*`,
       ``,
-      `👉 *Official Live App Link:*`,
-      `${TATHASTU_OFFICIAL_APP_URL}`,
+      `🖥️ *Windows Full-Page Desktop & Report Link:*`,
+      `${windowsLiveUrl}`,
       ``,
-      `✨ *Install & Open on Android, iPhone & Desktop:*`,
-      `• *Official Cloud Link:* Open ${TATHASTU_OFFICIAL_APP_URL} in Chrome (Android/Desktop) or Safari (iOS) and tap *"Add to Home screen"* / *"Install App"*.`,
-      `• *Offline Standalone Option:* You can also share the *Tathastu_Numerology_Mobile_App.html* file via WhatsApp for 100% offline mobile access.`,
+      `📱 *Mobile / Tablet & Play Store Ready App Link:*`,
+      `${mobileLiveUrl}`,
+      ``,
+      `🔄 *Auto-Synced Unified App:* Every update automatically reflects on both Windows Full-Page and Mobile/Tablet apps.`,
       ``,
       `📧 Admin & App Creator: ${TATHASTU_ADMIN_EMAIL}`,
       `📞 Support / Admin: +91 ${TATHASTU_ADMIN_PHONE}`,
@@ -994,6 +1036,115 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
                   <p className="text-[11px] text-amber-300/90 font-medium">
                     {TATHASTU_BRAND_NAME} • {TATHASTU_TAGLINE}
                   </p>
+                </div>
+              </div>
+
+              {/* DEDICATED DUAL PLATFORM LINKS: WINDOWS FULL-PAGE (/windows) & MOBILE / TABLET PLAY STORE (/mobile) */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-br from-slate-950 via-indigo-950/50 to-slate-950 border-2 border-amber-400/70 mb-3.5 space-y-3 shadow-lg">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/30 pb-2">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-amber-200 flex items-center gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    Dedicated Windows &amp; Mobile/Play Store Links (Auto-Synced)
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 font-bold text-[9.5px]">
+                    1 Codebase = Auto Update on Both
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Windows Full-Page Link Card */}
+                  <div className="p-3 rounded-xl bg-slate-900/95 border border-amber-500/45 space-y-2 flex flex-col justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-amber-300 uppercase">
+                          <Monitor className="w-3.5 h-3.5 text-amber-400" />
+                          Windows Full-Page
+                        </span>
+                        <span className="text-[9px] font-mono text-amber-200/80">/windows</span>
+                      </div>
+                      <p className="text-[10.5px] text-slate-300 leading-snug">
+                        Full-screen desktop application &amp; full-page A4 report view (Edge/Chrome Windows App).
+                      </p>
+                      {windowsQrDataUrl && (
+                        <div className="p-1.5 rounded-xl bg-amber-50 border border-amber-400 w-fit mx-auto">
+                          <img src={windowsQrDataUrl} alt="Windows Full-Page QR" className="w-20 h-20 object-contain" />
+                        </div>
+                      )}
+                      <div className="p-1.5 rounded-lg bg-slate-950 border border-slate-800 text-[9.5px] font-mono text-amber-200 break-all select-all">
+                        {windowsLiveUrl}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyPlatformLink('windows')}
+                        className="py-1.5 px-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-amber-200 font-bold text-[10.5px] flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedPlatform === 'windows' ? 'Copied!' : 'Copy Link'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          switchPlatformMode('windows');
+                          setShowModal(false);
+                        }}
+                        className="py-1.5 px-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10.5px] flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Open Now</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Mobile / Tablet & Play Store Ready Link Card */}
+                  <div className="p-3 rounded-xl bg-slate-900/95 border border-emerald-500/45 space-y-2 flex flex-col justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-emerald-300 uppercase">
+                          <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                          Mobile / Play Store
+                        </span>
+                        <span className="text-[9px] font-mono text-emerald-200/80">/mobile</span>
+                      </div>
+                      <p className="text-[10.5px] text-slate-300 leading-snug">
+                        Android &amp; Tablet touch app ready for Google Play Store upload (TWA &amp; AAB synced).
+                      </p>
+                      {mobileQrDataUrl && (
+                        <div className="p-1.5 rounded-xl bg-emerald-50 border border-emerald-400 w-fit mx-auto">
+                          <img src={mobileQrDataUrl} alt="Mobile & Play Store QR" className="w-20 h-20 object-contain" />
+                        </div>
+                      )}
+                      <div className="p-1.5 rounded-lg bg-slate-950 border border-slate-800 text-[9.5px] font-mono text-emerald-200 break-all select-all">
+                        {mobileLiveUrl}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyPlatformLink('mobile')}
+                        className="py-1.5 px-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 text-emerald-200 font-bold text-[10.5px] flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>{copiedPlatform === 'mobile' ? 'Copied!' : 'Copy Link'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          switchPlatformMode('mobile');
+                          setShowModal(false);
+                        }}
+                        className="py-1.5 px-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[10.5px] flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Open Now</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-slate-300 bg-slate-900/80 border border-slate-800 rounded-xl px-2.5 py-2 leading-relaxed">
+                  <strong className="text-amber-300">Auto-Sync Guarantee:</strong> Both official published links run from the exact same live application &amp; database. Any new feature, report update, or design change reflects automatically on both <code className="text-amber-200">/windows</code> and <code className="text-emerald-200">/mobile</code> (and your Play Store TWA/Android build).
                 </div>
               </div>
 
@@ -1193,7 +1344,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   return (
     <>
       <div className={`w-full flex flex-col items-center justify-center ${className}`}>
-        <div className="w-full max-w-xl mx-auto p-4 rounded-2xl bg-slate-900/95 border-2 border-amber-500/50 shadow-[0_0_35px_rgba(245,158,11,0.2)] flex flex-col items-center text-center space-y-3">
+        <div className="w-full max-w-3xl mx-auto p-4 rounded-2xl bg-slate-900/95 border-2 border-amber-500/50 shadow-[0_0_35px_rgba(245,158,11,0.2)] flex flex-col items-center text-center space-y-3">
           <div className="flex items-center justify-center gap-2.5">
             <img
               src={TATHASTU_LOGO_PATH}
@@ -1202,11 +1353,68 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
             />
             <div className="text-left">
               <div className="text-xs font-serif font-bold text-amber-200 uppercase tracking-wider">
-                {TATHASTU_APP_NAME} — Android, iOS &amp; Desktop App
+                {TATHASTU_APP_NAME} — Dedicated Windows Full-Page &amp; Mobile/Play Store Links
               </div>
               <div className="text-[10px] text-emerald-300 font-semibold">
-                Direct Android &amp; iOS Mobile App Download (Zero 403 Error • Works Offline &amp; Online)
+                Auto-Synced Single Codebase • Every change updates Windows &amp; Mobile/Tablet automatically
               </div>
+            </div>
+          </div>
+
+          {/* Dedicated Two-Link Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
+            <div className="p-2.5 rounded-xl bg-slate-950/90 border border-amber-500/40 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-amber-300 uppercase">
+                  <Monitor className="w-3.5 h-3.5 text-amber-400" />
+                  Windows Full-Page Link
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopyPlatformLink('windows')}
+                  className="px-2 py-0.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-amber-200 font-bold text-[10px] cursor-pointer"
+                >
+                  {copiedPlatform === 'windows' ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+              <div className="text-[10px] font-mono text-amber-200/90 break-all select-all">
+                {windowsLiveUrl}
+              </div>
+              <button
+                type="button"
+                onClick={() => switchPlatformMode('windows')}
+                className="w-full py-1.5 px-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Monitor className="w-3.5 h-3.5" />
+                <span>Open Windows Full-Page View</span>
+              </button>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-950/90 border border-emerald-500/40 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-emerald-300 uppercase">
+                  <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                  Mobile / Tablet &amp; Play Store Link
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopyPlatformLink('mobile')}
+                  className="px-2 py-0.5 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 text-emerald-200 font-bold text-[10px] cursor-pointer"
+                >
+                  {copiedPlatform === 'mobile' ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+              <div className="text-[10px] font-mono text-emerald-200/90 break-all select-all">
+                {mobileLiveUrl}
+              </div>
+              <button
+                type="button"
+                onClick={() => switchPlatformMode('mobile')}
+                className="w-full py-1.5 px-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                <span>Open Mobile / Tablet App View</span>
+              </button>
             </div>
           </div>
 
@@ -1230,16 +1438,16 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-amber-200 border border-amber-500/45 font-bold text-xs transition-all cursor-pointer"
             >
               <QrCode className="w-4 h-4 text-amber-400" />
-              <span>App QR &amp; Share File</span>
+              <span>All Links, QR &amp; Play Store Kit</span>
             </button>
 
             <button
               type="button"
-              onClick={handleShareStandaloneMobileAppFile}
+              onClick={handleWhatsAppAppLink}
               className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-500/45 font-bold text-xs transition-all cursor-pointer"
             >
               <MessageCircle className="w-4 h-4 text-emerald-400" />
-              <span>Send App to Phone</span>
+              <span>Share Both Links on WA</span>
             </button>
           </div>
         </div>

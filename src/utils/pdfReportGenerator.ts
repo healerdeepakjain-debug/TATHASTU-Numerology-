@@ -54,6 +54,11 @@ import { LO_SHU_VEDIC_REMEDIES_DB } from '../components/InteractiveLoShuGrid';
 import { SANSKRit_BEEJ_DEVANAGARI } from '../components/DailyMantras';
 import { calculateYogaPranayamaPlan, YogaPosturePrescription } from './yogaPranayamaData';
 import { calculateParivarMilanReport, ParivarMemberRecord } from './parivarMilan';
+import {
+  AiReportSummaryData,
+  buildClassicalFallbackSummary,
+  fetchAiReportSummary,
+} from './aiReportSummary';
 
 import a4DivineEnergyBg from '../assets/images/a4_divine_energy_watermark_1794229222633.jpg';
 import chakraHealingArt from '../assets/images/chakra_healing_meditation_art_1794229223170.jpg';
@@ -106,6 +111,7 @@ export interface PdfExportContext {
     islamicVedicRemedies: boolean;
   };
   language?: SupportedLanguage;
+  aiReportSummary?: AiReportSummaryData;
 }
 
 export interface MonthlyLunarAndAstroForecast {
@@ -312,6 +318,7 @@ interface PdfSectionBlock {
 interface PdfPageSpec {
   pageNumber: number;
   moduleKey?: keyof NonNullable<PdfExportContext['selectedSections']>;
+  isClosingSummaryPage?: boolean;
   chapterTag: string;
   title: string;
   subtitle: string;
@@ -3102,6 +3109,73 @@ function build18PageMasterDossier(
     filteredPages = matching.length > 0 ? matching : rawPages.filter((p) => p.moduleKey === 'nameAndCareer');
   }
 
+  // Resolve 1–2 Page AI-Generated Complete Report Summary (Vedic + Parashar Astrology & Numerology)
+  // including Next 10 Years Future (Without Remedies vs. With Remedies) + Tathastu Family Thank You & Blessings
+  const summaryData: AiReportSummaryData =
+    ctx.aiReportSummary ||
+    buildClassicalFallbackSummary({
+      profile: activeProfile,
+      healerName: ctx.healerDisplayName,
+      brandTitle: ctx.brandTitle,
+      language: ctx.language,
+    });
+
+  const closingSummaryPagesSpec: PdfPageSpec[] = [
+    {
+      pageNumber: 98,
+      isClosingSummaryPage: true,
+      chapterTag: 'FINAL SUMMARY • COMPLETE REPORT SYNTHESIS & NEXT 10 YEARS (WITHOUT REMEDIES)',
+      title: `COMPLETE REPORT SUMMARY & NEXT 10 YEARS FUTURE (${summaryData.startYear} - ${summaryData.endYear}) — PART 1 OF 2`,
+      subtitle: `Simple Paragraph Summary Based on Vedic Astrology + Numerology & Parashar Astrology (BPHS Vimshottari Mahadasha) + Numerology for ${activeProfile.name}`,
+      bannerKey: 'banner',
+      sections: [
+        {
+          heading: `1. COMPLETE REPORT SUMMARY IN SIMPLE WORDS (${activeProfile.name.toUpperCase()})`,
+          subheading: `Referenced With Vedic Astrology + Numerology & Parashar Hora (${summaryData.parasharMahadashaLabel})`,
+          paragraphs: [
+            ...summaryData.executiveSummaryParagraphs.slice(0, 2),
+            summaryData.parasharVedicFoundationParagraph,
+          ].filter(Boolean),
+        },
+        {
+          heading: `2. WITHOUT REMEDIES — WHERE YOUR FUTURE GOES IN THE NEXT 10 YEARS (${summaryData.startYear} TO ${summaryData.endYear})`,
+          subheading: `Honest & Easy-to-Understand Forecast Based on Parashar Dasha (${summaryData.next10YearDashaSummary}) If Remedies Are Not Followed`,
+          paragraphs: summaryData.withoutRemedies10YearParagraphs.slice(0, 2).filter(Boolean),
+        },
+      ],
+    },
+    {
+      pageNumber: 99,
+      isClosingSummaryPage: true,
+      chapterTag: 'FINAL SUMMARY • NEXT 10 YEARS (WITH REMEDIES), TATHASTU FAMILY THANK YOU & SPIRITUAL BLESSINGS',
+      title: `WITH REMEDIES (NEXT 10 YEARS FUTURE) & TATHASTU FAMILY BLESSINGS — PART 2 OF 2`,
+      subtitle: `Your Next 10 Years Growth Journey (${summaryData.startYear} - ${summaryData.endYear}) With Remedies + Heartfelt Thank You & Spiritual Blessings From The TATHASTU Family`,
+      bannerKey: 'chakra',
+      includeQrVerification: true,
+      includeClosingBlessing: true,
+      sections: [
+        {
+          heading: `1. WITH REMEDIES — WHERE YOUR FUTURE REACHES IN THE NEXT 10 YEARS (${summaryData.startYear} TO ${summaryData.endYear})`,
+          subheading: `Positive Elevation in Career, Finance, Health, Family Harmony & Inner Peace Through Vedic + Parashar Astrology & Numerology`,
+          paragraphs: [
+            ...summaryData.withRemedies10YearParagraphs.slice(0, 2),
+            summaryData.simpleRemedyRoadmapParagraph,
+          ].filter(Boolean),
+        },
+        {
+          heading: `2. HEARTFELT THANK YOU FROM THE TATHASTU FAMILY & SPIRITUAL BLESSINGS`,
+          subheading: `Warm Gratitude & Divine Prayers From ${TATHASTU_BRAND_NAME} ("${TATHASTU_TAGLINE}") & Healer ${ctx.healerDisplayName}`,
+          paragraphs: [
+            summaryData.tathastuThankYouParagraph,
+            summaryData.spiritualBlessings.join('   |   '),
+          ].filter(Boolean),
+        },
+      ],
+    },
+  ];
+
+  filteredPages = [...filteredPages, ...closingSummaryPagesSpec];
+
   // Dynamically generate and prepend 'Index of Modules' page at Page 1 unless skipped for raw per-module measurement
   if (!options?.skipIndexPage) {
     const pageCountSummary = calculateExactPdfPageCounts(ctx);
@@ -3243,6 +3317,15 @@ function build18PageMasterDossier(
                   pgLabel,
                 ];
               }),
+              [
+                `${String(activeModuleEntries.length + 1).padStart(2, '0')}. Complete Report Summary, 10-Year Future (With vs. Without Remedies) & Tathastu Blessings`,
+                `1-2 Page Simple Paragraph Summary (Vedic + Parashar Astrology & Numerology), Next 10 Years Future Without vs. With Remedies, Thank You & Spiritual Blessings`,
+                `Parashar Dasha: ${summaryData.parasharMahadashaLabel} • Horizon: ${summaryData.startYear}-${summaryData.endYear}`,
+                pageCountSummary.closingSummaryPageRange.startPage ===
+                pageCountSummary.closingSummaryPageRange.endPage
+                  ? `Page ${pageCountSummary.closingSummaryPageRange.startPage}\n(1 Page)`
+                  : `Pages ${pageCountSummary.closingSummaryPageRange.startPage} – ${pageCountSummary.closingSummaryPageRange.endPage}\n(${pageCountSummary.closingSummaryPageRange.pageCount} Pages)`,
+              ],
             ],
           },
         },
@@ -5441,13 +5524,16 @@ export interface PdfModulePageRange {
 
 const PER_MODULE_PAGE_COUNT_CACHE = new Map<
   string,
-  Record<keyof NonNullable<PdfExportContext['selectedSections']>, number>
+  {
+    perModule: Record<keyof NonNullable<PdfExportContext['selectedSections']>, number>;
+    closingSummaryPages: number;
+  }
 >();
 
 /**
  * Computes the exact physical A4 PDF page count (`doc.getNumberOfPages()`) for the currently
- * selected modules (including Page 1: Index of Modules) as well as the exact PDF page count
- * and starting/ending page numbers for each individual module.
+ * selected modules (including Page 1: Index of Modules and the final 1–2 page AI Summary & Blessings)
+ * as well as the exact PDF page count and starting/ending page numbers for each individual module.
  * Caches per-module measurements per profile + language so UI checkbox toggles are instantaneous.
  */
 export function calculateExactPdfPageCounts(ctx: PdfExportContext): {
@@ -5457,6 +5543,7 @@ export function calculateExactPdfPageCounts(ctx: PdfExportContext): {
     keyof NonNullable<PdfExportContext['selectedSections']>,
     PdfModulePageRange
   >;
+  closingSummaryPageRange: PdfModulePageRange;
 } {
   type ModuleKey = keyof NonNullable<PdfExportContext['selectedSections']>;
   const allModuleKeys: ModuleKey[] = [
@@ -5489,11 +5576,13 @@ export function calculateExactPdfPageCounts(ctx: PdfExportContext): {
     famSig,
     ctx.language || 'en',
     ctx.isHealerReport ? 'H' : 'C',
+    ctx.aiReportSummary?.source || 'base',
+    ctx.aiReportSummary?.generatedAtIso || '',
   ].join('||');
 
-  let cachedPerModule = PER_MODULE_PAGE_COUNT_CACHE.get(cacheKey);
+  let cachedEntry = PER_MODULE_PAGE_COUNT_CACHE.get(cacheKey);
 
-  if (!cachedPerModule) {
+  if (!cachedEntry) {
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -5511,7 +5600,7 @@ export function calculateExactPdfPageCounts(ctx: PdfExportContext): {
 
     const measurePagesList = (
       pages: PdfPageSpec[]
-    ): { total: number; perModule: Record<ModuleKey, number> } => {
+    ): { total: number; perModule: Record<ModuleKey, number>; closingSummaryPages: number } => {
       const perModule: Record<ModuleKey, number> = {
         nameAndCareer: 0,
         advanceMobileAudit: 0,
@@ -5526,13 +5615,18 @@ export function calculateExactPdfPageCounts(ctx: PdfExportContext): {
         islamicVedicRemedies: 0,
       };
       let total = 0;
+      let closingSummaryPages = 0;
 
       for (let pIdx = 0; pIdx < pages.length; pIdx++) {
         const page = pages[pIdx];
         const mKey: ModuleKey = page.moduleKey || 'nameAndCareer';
         const addPageForCurrentChapter = (): number => {
           total += 1;
-          perModule[mKey] = (perModule[mKey] || 0) + 1;
+          if (page.isClosingSummaryPage) {
+            closingSummaryPages += 1;
+          } else {
+            perModule[mKey] = (perModule[mKey] || 0) + 1;
+          }
           return bodyStartY;
         };
 
@@ -5892,7 +5986,7 @@ export function calculateExactPdfPageCounts(ctx: PdfExportContext): {
         }
       }
 
-      return { total, perModule };
+      return { total, perModule, closingSummaryPages };
     };
 
     const allSelectedCtx: PdfExportContext = {
@@ -5913,8 +6007,11 @@ export function calculateExactPdfPageCounts(ctx: PdfExportContext): {
     };
     const allPages = build18PageMasterDossier(allSelectedCtx, { skipIndexPage: true });
     const allResult = measurePagesList(allPages);
-    cachedPerModule = allResult.perModule;
-    PER_MODULE_PAGE_COUNT_CACHE.set(cacheKey, cachedPerModule);
+    cachedEntry = {
+      perModule: allResult.perModule,
+      closingSummaryPages: Math.max(1, allResult.closingSummaryPages || 2),
+    };
+    PER_MODULE_PAGE_COUNT_CACHE.set(cacheKey, cachedEntry);
   }
 
   const sel = ctx.selectedSections;
@@ -5925,7 +6022,7 @@ export function calculateExactPdfPageCounts(ctx: PdfExportContext): {
   const modulePageRanges = {} as Record<ModuleKey, PdfModulePageRange>;
 
   for (const k of allModuleKeys) {
-    const count = Math.max(1, cachedPerModule[k] || 1);
+    const count = Math.max(1, cachedEntry.perModule[k] || 1);
     const isSelected = sel ? (hasAnySelected ? Boolean(sel[k]) : k === 'nameAndCareer') : true;
     if (isSelected) {
       modulePageRanges[k] = {
@@ -5943,10 +6040,19 @@ export function calculateExactPdfPageCounts(ctx: PdfExportContext): {
     }
   }
 
+  const closingCount = Math.max(1, cachedEntry.closingSummaryPages || 2);
+  const closingSummaryPageRange: PdfModulePageRange = {
+    startPage: runningPage,
+    endPage: runningPage + closingCount - 1,
+    pageCount: closingCount,
+  };
+  runningPage += closingCount;
+
   return {
     totalPdfPages: runningPage - 1,
-    modulePageCounts: { ...cachedPerModule },
+    modulePageCounts: { ...cachedEntry.perModule },
     modulePageRanges,
+    closingSummaryPageRange,
   };
 }
 
@@ -5985,6 +6091,7 @@ export async function generateAndExport18PagePdf(
     rawBannerImg,
     rawDivineBgImg,
     shreeYantraPlateImg,
+    resolvedAiSummary,
   ] = await Promise.all([
     createCompositeA4BackgroundDataUrl(
       a4DivineEnergyBg,
@@ -6012,6 +6119,14 @@ export async function generateAndExport18PagePdf(
     loadHtmlImage(spiritualReportBanner),
     loadHtmlImage(a4DivineEnergyBg),
     loadHtmlImage(SHREE_YANTRA_PLATE_ASSET_PATH),
+    ctx.aiReportSummary
+      ? Promise.resolve(ctx.aiReportSummary)
+      : fetchAiReportSummary({
+          profile: ctx.activeProfile,
+          healerName: ctx.healerDisplayName,
+          brandTitle: ctx.brandTitle,
+          language: ctx.language,
+        }),
   ]);
 
   const loadedArtImages = [
@@ -6033,7 +6148,11 @@ export async function generateAndExport18PagePdf(
     banner: bannerStripUrl,
   };
 
-  const pages = build18PageMasterDossier(ctx);
+  const resolvedCtx: PdfExportContext = {
+    ...ctx,
+    aiReportSummary: resolvedAiSummary,
+  };
+  const pages = build18PageMasterDossier(resolvedCtx);
   const totalChapters = pages.length;
 
   const doc = new jsPDF({

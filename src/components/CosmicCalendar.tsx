@@ -6,9 +6,23 @@ import {
   Trash2,
   CheckCircle2,
   Sun,
+  Moon,
   Sparkles,
   MessageCircle,
   ShieldCheck,
+  Plane,
+  Briefcase,
+  FileSignature,
+  IndianRupee,
+  Home,
+  Heart,
+  GraduationCap,
+  Flame,
+  AlertTriangle,
+  Compass,
+  ChevronLeft,
+  ChevronRight,
+  Star,
 } from 'lucide-react';
 import { BirthProfile, CalendarEvent } from '../types';
 import {
@@ -320,6 +334,338 @@ export const CosmicCalendar: React.FC<CosmicCalendarProps> = ({ profile }) => {
     notes: 'Initiating transfer and signing contract.',
   });
 
+  const [selectedMuhuratDate, setSelectedMuhuratDate] = useState<string>(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  });
+  const [selectedActivityId, setSelectedActivityId] = useState<string>('business');
+  const [muhuratAddedToast, setMuhuratAddedToast] = useState<string | null>(null);
+
+  const dailyMuhuratActivities = useMemo(
+    () => [
+      {
+        id: 'business',
+        label: 'Business Meeting',
+        shortLabel: 'Business',
+        category: 'contract' as CalendarEvent['category'],
+        icon: Briefcase,
+        preferredChoghadiya: ['Labh', 'Amrit', 'Shubh'],
+        preferredHoras: ['Mercury', 'Jupiter', 'Sun', 'Venus'],
+        guidance: 'Ideal for board meetings, client negotiations, sales closures, and executive decisions.',
+        specialWindow: { label: 'Abhijit Vijay Muhurat', start: '11:45', end: '12:33', reason: 'Universal victory window for high-stakes business meetings' },
+      },
+      {
+        id: 'travel',
+        label: 'Travel & Journey',
+        shortLabel: 'Travel',
+        category: 'travel' as CalendarEvent['category'],
+        icon: Plane,
+        preferredChoghadiya: ['Char', 'Amrit', 'Labh'],
+        preferredHoras: ['Moon', 'Mercury', 'Venus', 'Jupiter'],
+        guidance: 'Best for flights, road trips, business tours, overseas departures, and pilgrimages.',
+        specialWindow: { label: 'Morning Char-Yatra Muhurat', start: '07:30', end: '09:00', reason: 'Dynamic movable vibration for smooth, delay-free transit' },
+      },
+      {
+        id: 'contract',
+        label: 'Sign Contract / Deal',
+        shortLabel: 'Contracts',
+        category: 'contract' as CalendarEvent['category'],
+        icon: FileSignature,
+        preferredChoghadiya: ['Amrit', 'Labh', 'Shubh'],
+        preferredHoras: ['Jupiter', 'Mercury', 'Sun'],
+        guidance: 'Ensures clarity, binding trust, and long-term profitability on legal & commercial agreements.',
+        specialWindow: { label: 'Abhijit Siddhi Muhurat', start: '11:45', end: '12:33', reason: 'Destroys minor doshas during official contract signing' },
+      },
+      {
+        id: 'finance',
+        label: 'Finance & Investment',
+        shortLabel: 'Finance',
+        category: 'finance' as CalendarEvent['category'],
+        icon: IndianRupee,
+        preferredChoghadiya: ['Labh', 'Amrit', 'Shubh'],
+        preferredHoras: ['Jupiter', 'Venus', 'Mercury'],
+        guidance: 'Auspicious for gold purchase, bank deposits, capital transfers, trading, and wealth commitments.',
+        specialWindow: { label: 'Dhana-Vriddhi Window', start: '09:15', end: '10:45', reason: 'Aligns commercial flow with Guru-Budh prosperity rays' },
+      },
+      {
+        id: 'property',
+        label: 'Property & Vastu',
+        shortLabel: 'Property',
+        category: 'property' as CalendarEvent['category'],
+        icon: Home,
+        preferredChoghadiya: ['Amrit', 'Shubh', 'Labh'],
+        preferredHoras: ['Mars', 'Venus', 'Jupiter'],
+        guidance: 'Favorable for land registry, home booking, Griha Pravesh, and office inauguration.',
+        specialWindow: { label: 'Sthira-Lagna Vastu Window', start: '08:30', end: '10:15', reason: 'Fixed earth stability for permanent real-estate prosperity' },
+      },
+      {
+        id: 'relationship',
+        label: 'Marriage & Family',
+        shortLabel: 'Family',
+        category: 'relationship' as CalendarEvent['category'],
+        icon: Heart,
+        preferredChoghadiya: ['Shubh', 'Amrit', 'Char'],
+        preferredHoras: ['Venus', 'Moon', 'Jupiter'],
+        guidance: 'Harmonizes emotional warmth for Roka, matrimonial meets, proposals, and family celebrations.',
+        specialWindow: { label: 'Godhuli Saubhagya Muhurat', start: '17:30', end: '18:30', reason: 'Sacred twilight window blessed for love and harmony' },
+      },
+      {
+        id: 'interview',
+        label: 'Interview & Career',
+        shortLabel: 'Career',
+        category: 'interview' as CalendarEvent['category'],
+        icon: GraduationCap,
+        preferredChoghadiya: ['Amrit', 'Shubh', 'Labh'],
+        preferredHoras: ['Sun', 'Jupiter', 'Mercury'],
+        guidance: 'Boosts confidence, articulation, and authority favor in job interviews, exams, and promotions.',
+        specialWindow: { label: 'Abhijit Raja-Yoga Window', start: '11:45', end: '12:33', reason: 'Activates 10th-house authority and persuasive speech' },
+      },
+      {
+        id: 'spiritual',
+        label: 'Puja & Healing',
+        shortLabel: 'Spiritual',
+        category: 'spiritual' as CalendarEvent['category'],
+        icon: Flame,
+        preferredChoghadiya: ['Amrit', 'Shubh'],
+        preferredHoras: ['Jupiter', 'Moon', 'Sun'],
+        guidance: 'Supreme pranic clarity for Sankalpa, Rudrabhishek, gemstone wearing, meditation, and chakra healing.',
+        specialWindow: { label: 'Brahma Amrit Muhurat', start: '04:36', end: '05:24', reason: 'Purest Sattvic vibration for mantra siddhi and divine grace' },
+      },
+    ],
+    []
+  );
+
+  const selectedDailyMuhurat = useMemo(() => {
+    const parsedParts = selectedMuhuratDate.split('-').map(Number);
+    const year = parsedParts[0] || new Date().getFullYear();
+    const month = (parsedParts[1] || 1) - 1;
+    const day = parsedParts[2] || 1;
+    const dayRefDate = new Date(year, month, day, 10, 0, 0);
+    const nightRefDate = new Date(year, month, day, 20, 0, 0);
+
+    const dayPanchang = getDailyPanchang(dayRefDate, mulank, bhagyank);
+    const nightPanchang = getDailyPanchang(nightRefDate, mulank, bhagyank);
+
+    const activity =
+      dailyMuhuratActivities.find((a) => a.id === selectedActivityId) ||
+      dailyMuhuratActivities[0];
+
+    const weekdayIdx = dayRefDate.getDay();
+    const dishaShoolMap: Record<number, { avoidDir: string; luckyDir: string; remedy: string }> = {
+      0: { avoidDir: 'West', luckyDir: 'East / North-East', remedy: 'Eat a small piece of betel leaf or ghee before departing West.' },
+      1: { avoidDir: 'East', luckyDir: 'North / West', remedy: 'Look in a mirror or take a sip of milk before departing East.' },
+      2: { avoidDir: 'North', luckyDir: 'South / East', remedy: 'Have a tiny piece of jaggery (Gud) before departing North.' },
+      3: { avoidDir: 'North', luckyDir: 'East / West', remedy: 'Chew 2–3 coriander (Dhaniya) seeds before departing North.' },
+      4: { avoidDir: 'South', luckyDir: 'North / East', remedy: 'Take a spoon of curd (Dahi) or cumin before departing South.' },
+      5: { avoidDir: 'West', luckyDir: 'North / South-East', remedy: 'Take a spoon of curd (Dahi) before departing West.' },
+      6: { avoidDir: 'East', luckyDir: 'West / South', remedy: 'Have a small piece of ginger or black sesame before departing East.' },
+    };
+    const gulikaMap: Record<number, string> = {
+      0: '03:00 PM – 04:30 PM',
+      1: '01:30 PM – 03:00 PM',
+      2: '12:00 PM – 01:30 PM',
+      3: '10:30 AM – 12:00 PM',
+      4: '09:00 AM – 10:30 AM',
+      5: '07:30 AM – 09:00 AM',
+      6: '06:00 AM – 07:30 AM',
+    };
+    const yamagandaMap: Record<number, string> = {
+      0: '12:00 PM – 01:30 PM',
+      1: '10:30 AM – 12:00 PM',
+      2: '09:00 AM – 10:30 AM',
+      3: '07:30 AM – 09:00 AM',
+      4: '06:00 AM – 07:30 AM',
+      5: '03:00 PM – 04:30 PM',
+      6: '01:30 PM – 03:00 PM',
+    };
+
+    const toMins = (hhmm: string) => {
+      const [h, m] = hhmm.split(':').map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+    const rStart = toMins(dayPanchang.rahuKaalWindow.start);
+    const rEnd = toMins(dayPanchang.rahuKaalWindow.end);
+
+    const overlapsRahu = (startStr: string, endStr: string, isNightSlot: boolean) => {
+      if (isNightSlot) return false;
+      const s = toMins(startStr);
+      const e = toMins(endStr);
+      return s < rEnd && e > rStart;
+    };
+
+    const dayLordByWeekday = [1, 2, 9, 5, 3, 6, 8];
+    const horaCycle = [1, 6, 5, 2, 8, 3, 9];
+    const startHoraIdx = horaCycle.indexOf(dayLordByWeekday[weekdayIdx]);
+
+    const getHoraForTime = (startStr: string) => {
+      const [h] = startStr.split(':').map(Number);
+      const hrsSince6 = ((h - 6) % 24 + 24) % 24;
+      const pNum = horaCycle[(startHoraIdx + hrsSince6) % horaCycle.length];
+      return PLANETARY_PROFILES[pNum]?.planet || 'Jupiter';
+    };
+
+    const mPlanet = PLANETARY_PROFILES[mulank] || PLANETARY_PROFILES[1];
+    const bPlanet = PLANETARY_PROFILES[bhagyank] || PLANETARY_PROFILES[9];
+    const friendlyNumbers = new Set([
+      mulank,
+      bhagyank,
+      ...(mPlanet.friendlyNumbers || []),
+      ...(bPlanet.friendlyNumbers || []),
+    ]);
+    const dayPersonalBonus = friendlyNumbers.has(dayPanchang.personalDayNumber) ? 8 : 2;
+
+    const allSlots = [
+      ...dayPanchang.choghadiyaPeriods.map((p) => ({ ...p, periodType: 'Day' as const })),
+      ...nightPanchang.choghadiyaPeriods.slice(0, 4).map((p) => ({ ...p, periodType: 'Evening/Night' as const })),
+    ];
+
+    const evaluatedWindows = allSlots.map((slot, idx) => {
+      const horaPlanet = getHoraForTime(slot.startTime);
+      const rahuClash = overlapsRahu(slot.startTime, slot.endTime, slot.periodType !== 'Day');
+      const isPreferredChog = activity.preferredChoghadiya.includes(slot.name);
+      const isPreferredHora = activity.preferredHoras.some((h) =>
+        horaPlanet.toLowerCase().includes(h.toLowerCase())
+      );
+
+      let score = 50 + dayPersonalBonus;
+      if (slot.name === 'Amrit') score += 32;
+      else if (slot.name === 'Shubh') score += 27;
+      else if (slot.name === 'Labh') score += 28;
+      else if (slot.name === 'Char') score += activity.id === 'travel' ? 30 : 18;
+      else if (slot.name === 'Udveg') score -= 24;
+      else if (slot.name === 'Rog') score -= 28;
+      else if (slot.name === 'Kaal') score -= 32;
+
+      if (isPreferredChog) score += 8;
+      if (isPreferredHora) score += 6;
+      if (rahuClash) score = Math.min(score - 38, 34);
+      score = Math.max(18, Math.min(99, score));
+
+      let tier: 'Best Muhurat' | 'Good Window' | 'Neutral' | 'Avoid' = 'Neutral';
+      if (rahuClash || ['Rog', 'Kaal', 'Udveg'].includes(slot.name)) {
+        tier = 'Avoid';
+      } else if (score >= 86) {
+        tier = 'Best Muhurat';
+      } else if (score >= 72) {
+        tier = 'Good Window';
+      }
+
+      const reason = rahuClash
+        ? `Overlaps with Rahu Kaal (${formatTime12HourAmPm(dayPanchang.rahuKaalWindow.start)} – ${formatTime12HourAmPm(dayPanchang.rahuKaalWindow.end)}). Avoid initiating ${activity.label.toLowerCase()}.`
+        : tier === 'Best Muhurat'
+          ? `${slot.name} Choghadiya (${slot.quality}) + ${horaPlanet} Hora strongly amplifies ${activity.label.toLowerCase()} for Mulank ${mulank} & Bhagyank ${bhagyank}.`
+          : tier === 'Good Window'
+            ? `Supportive ${slot.name} Choghadiya with ${horaPlanet} Hora for steady execution of ${activity.label.toLowerCase()}.`
+            : `${slot.name} Choghadiya carries ${slot.quality.toLowerCase()} energy; prefer one of the top green Muhurat windows instead.`;
+
+      return {
+        id: `muhurat-slot-${idx}-${slot.startTime}`,
+        name: slot.name,
+        quality: slot.quality,
+        periodType: slot.periodType,
+        start24: slot.startTime,
+        end24: slot.endTime,
+        windowLabel: `${formatTime12HourAmPm(slot.startTime)} – ${formatTime12HourAmPm(slot.endTime)}`,
+        horaPlanet,
+        rahuClash,
+        score,
+        tier,
+        reason,
+      };
+    });
+
+    const auspiciousWindows = evaluatedWindows
+      .filter((w) => w.tier === 'Best Muhurat' || w.tier === 'Good Window')
+      .sort((a, b) => b.score - a.score);
+
+    const avoidWindows = evaluatedWindows.filter((w) => w.tier === 'Avoid');
+
+    const dateFormatted = dayRefDate.toLocaleDateString('en-IN', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    const dayHarmonyScore = Math.min(
+      98,
+      Math.max(
+        64,
+        (auspiciousWindows[0]?.score || 76) - (weekdayIdx === 6 && activity.id === 'travel' ? 4 : 0)
+      )
+    );
+
+    return {
+      activity,
+      dateFormatted,
+      vara: dayPanchang.vara,
+      personalDayNumber: dayPanchang.personalDayNumber,
+      luckyNumbers: dayPanchang.luckyNumbers,
+      rahuKaalLabel: `${formatTime12HourAmPm(dayPanchang.rahuKaalWindow.start)} – ${formatTime12HourAmPm(dayPanchang.rahuKaalWindow.end)}`,
+      gulikaLabel: gulikaMap[weekdayIdx] || '09:00 AM – 10:30 AM',
+      yamagandaLabel: yamagandaMap[weekdayIdx] || '12:00 PM – 01:30 PM',
+      dishaShool: dishaShoolMap[weekdayIdx] || dishaShoolMap[0],
+      specialWindowFormatted: `${formatTime12HourAmPm(activity.specialWindow.start)} – ${formatTime12HourAmPm(activity.specialWindow.end)}`,
+      auspiciousWindows,
+      avoidWindows,
+      dayHarmonyScore,
+      beejMantra: mPlanet.beejMantra,
+      luckyColor: mPlanet.luckyColor?.split(',')[0]?.trim() || 'Saffron Gold',
+    };
+  }, [selectedMuhuratDate, selectedActivityId, mulank, bhagyank, dailyMuhuratActivities]);
+
+  const shiftMuhuratDateByDays = (deltaDays: number) => {
+    const parts = selectedMuhuratDate.split('-').map(Number);
+    const d = new Date(parts[0] || new Date().getFullYear(), (parts[1] || 1) - 1, (parts[2] || 1) + deltaDays);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    setSelectedMuhuratDate(`${y}-${m}-${day}`);
+  };
+
+  const setMuhuratQuickOffset = (offsetFromToday: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetFromToday);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    setSelectedMuhuratDate(`${y}-${m}-${day}`);
+  };
+
+  const handleScheduleMuhuratWindow = (slot: {
+    windowLabel: string;
+    start24: string;
+    name: string;
+    quality: string;
+    horaPlanet: string;
+    score: number;
+    reason: string;
+  }) => {
+    const created: CalendarEvent = {
+      id: `evt-${Date.now()}`,
+      title: `${selectedDailyMuhurat.activity.label} (Daily Muhurat)`,
+      date: selectedMuhuratDate,
+      time: slot.start24,
+      category: selectedDailyMuhurat.activity.category,
+      notes: `Selected via Interactive Daily Muhurat Finder (${slot.windowLabel}).`,
+      auspiciousScore: slot.score,
+      auspiciousTag: slot.score >= 82 ? 'Highly Auspicious' : 'Favorable',
+      choghadiya: `${slot.name} (${slot.quality})`,
+      hora: `${slot.horaPlanet} Hora`,
+      recommendation: slot.reason,
+    };
+    const updated = [created, ...events];
+    setEvents(updated);
+    saveEvents(updated);
+    setMuhuratAddedToast(
+      `Saved "${created.title}" on ${selectedDailyMuhurat.dateFormatted} (${slot.windowLabel}) to your Audited Events!`
+    );
+    setTimeout(() => setMuhuratAddedToast(null), 4000);
+  };
+
   const panchangToday = getDailyPanchang(new Date(), mulank, bhagyank);
 
   const upcoming12MData = useMemo(
@@ -460,8 +806,291 @@ export const CosmicCalendar: React.FC<CosmicCalendarProps> = ({ profile }) => {
         </div>
       </div>
 
+      {/* INTERACTIVE DAILY MUHURAT FINDER — CHECK ANY DATE & ACTIVITY */}
+      <div className="bg-gradient-to-br from-slate-900 via-indigo-950/50 to-slate-950 border-2 border-amber-400/45 rounded-3xl p-4 sm:p-6 shadow-2xl space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-amber-500/25 pb-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 text-[11px] font-bold uppercase tracking-wider">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Interactive Daily Muhurat Selector</span>
+            </div>
+            <h2 className="font-serif text-lg sm:text-2xl font-bold text-amber-100">
+              Daily Muhurat Finder — Best Time Windows for Any Date &amp; Activity
+            </h2>
+            <p className="text-xs text-amber-200/80 leading-relaxed">
+              Select any date and specific activity (Travel, Business Meeting, Contracts, Property, Marriage, Puja) to calculate personalized Vedic Choghadiya, Planetary Hora, Abhijit Muhurat, Disha Shool &amp; Rahu Kaal windows for <strong>{profile.name}</strong>.
+            </p>
+          </div>
+
+          {/* Date Picker + Stepper + Quick Presets */}
+          <div className="flex flex-col sm:items-end gap-2 shrink-0">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => shiftMuhuratDateByDays(-1)}
+                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/35 text-amber-300 cursor-pointer"
+                title="Previous Day"
+                aria-label="Previous Day"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <input
+                type="date"
+                value={selectedMuhuratDate}
+                onChange={(e) => {
+                  if (e.target.value) setSelectedMuhuratDate(e.target.value);
+                }}
+                aria-label="Select Date for Daily Muhurat"
+                className="bg-slate-950 border border-amber-400/55 rounded-xl px-3 py-2 text-xs sm:text-sm font-mono font-bold text-amber-100 focus:outline-none focus:border-amber-300"
+              />
+              <button
+                type="button"
+                onClick={() => shiftMuhuratDateByDays(1)}
+                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/35 text-amber-300 cursor-pointer"
+                title="Next Day"
+                aria-label="Next Day"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[
+                { label: 'Today', offset: 0 },
+                { label: 'Tomorrow', offset: 1 },
+                { label: '+3 Days', offset: 3 },
+                { label: '+7 Days', offset: 7 },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => setMuhuratQuickOffset(preset.offset)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-amber-500/20 border border-amber-500/30 text-[11px] font-bold text-amber-200 cursor-pointer transition-all"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Activity Selector Grid */}
+        <div className="space-y-2">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-amber-300/90">
+            Step 1: Choose Specific Activity
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {dailyMuhuratActivities.map((act) => {
+              const Icon = act.icon;
+              const isSelected = selectedActivityId === act.id;
+              return (
+                <button
+                  key={act.id}
+                  type="button"
+                  onClick={() => setSelectedActivityId(act.id)}
+                  className={`p-2.5 sm:p-3 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-amber-500/25 to-emerald-500/20 border-amber-400 text-amber-100 shadow-lg shadow-amber-500/15'
+                      : 'bg-slate-950/85 border-amber-500/20 text-slate-300 hover:border-amber-400/45 hover:text-amber-100'
+                  }`}
+                >
+                  <div
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                      isSelected
+                        ? 'bg-amber-400 text-slate-950'
+                        : 'bg-slate-900 border border-amber-500/25 text-amber-400'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-bold leading-tight">{act.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Selected Date Summary KPI Bar */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="p-3 rounded-xl bg-slate-950/90 border border-amber-500/30">
+            <div className="text-[10px] font-bold uppercase text-amber-300/80">Selected Date &amp; Vara</div>
+            <div className="text-sm font-serif font-bold text-amber-100 mt-0.5">
+              {selectedDailyMuhurat.dateFormatted}
+            </div>
+            <div className="text-[11px] text-emerald-300 font-mono mt-0.5">
+              Personal Day #{selectedDailyMuhurat.personalDayNumber} • Lucky: {selectedDailyMuhurat.luckyNumbers.join(', ')}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40">
+            <div className="text-[10px] font-bold uppercase text-emerald-300/90">
+              ★ {selectedDailyMuhurat.activity.specialWindow.label}
+            </div>
+            <div className="text-sm font-mono font-black text-emerald-200 mt-0.5">
+              {selectedDailyMuhurat.specialWindowFormatted}
+            </div>
+            <div className="text-[11px] text-emerald-200/80 mt-0.5">
+              {selectedDailyMuhurat.activity.specialWindow.reason}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-rose-950/35 border border-rose-500/40">
+            <div className="text-[10px] font-bold uppercase text-rose-300 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              <span>Rahu Kaal (Strictly Avoid)</span>
+            </div>
+            <div className="text-sm font-mono font-black text-rose-200 mt-0.5">
+              {selectedDailyMuhurat.rahuKaalLabel}
+            </div>
+            <div className="text-[10.5px] text-slate-300 mt-0.5">
+              Yamaganda: {selectedDailyMuhurat.yamagandaLabel}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-950/90 border border-sky-500/35">
+            <div className="text-[10px] font-bold uppercase text-sky-300 flex items-center gap-1">
+              <Compass className="w-3 h-3" />
+              <span>Disha Shool &amp; Direction</span>
+            </div>
+            <div className="text-xs font-bold text-sky-100 mt-0.5">
+              Best: {selectedDailyMuhurat.dishaShool.luckyDir} • Avoid: {selectedDailyMuhurat.dishaShool.avoidDir}
+            </div>
+            <div className="text-[10.5px] text-slate-300 mt-0.5">
+              {selectedDailyMuhurat.dishaShool.remedy}
+            </div>
+          </div>
+        </div>
+
+        {muhuratAddedToast && (
+          <div className="p-3 rounded-xl bg-emerald-950/90 border border-emerald-400 text-emerald-200 text-xs font-bold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{muhuratAddedToast}</span>
+          </div>
+        )}
+
+        {/* Ranked Auspicious Windows for Selected Date & Activity */}
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs font-bold text-amber-200 flex items-center gap-1.5">
+              <Star className="w-4 h-4 text-amber-400" />
+              <span>
+                Most Auspicious Time Windows for {selectedDailyMuhurat.activity.label} ({selectedDailyMuhurat.auspiciousWindows.length} Verified Slots)
+              </span>
+            </div>
+            <span className="text-[11px] font-mono text-emerald-300 bg-emerald-950/70 border border-emerald-500/35 px-2.5 py-0.5 rounded-lg">
+              Day Activity Score: {selectedDailyMuhurat.dayHarmonyScore}%
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {selectedDailyMuhurat.auspiciousWindows.map((slot, idx) => (
+              <div
+                key={slot.id}
+                className={`p-3.5 sm:p-4 rounded-2xl border flex flex-col justify-between gap-3 transition-all ${
+                  idx === 0
+                    ? 'bg-gradient-to-br from-emerald-950/60 via-slate-950 to-amber-950/35 border-emerald-400/70 shadow-lg shadow-emerald-500/10'
+                    : 'bg-slate-950/90 border-amber-500/30 hover:border-amber-400/50'
+                }`}
+              >
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 font-mono text-sm font-black text-amber-100">
+                      {slot.periodType === 'Day' ? (
+                        <Sun className="w-4 h-4 text-amber-400 shrink-0" />
+                      ) : (
+                        <Moon className="w-4 h-4 text-sky-400 shrink-0" />
+                      )}
+                      <span>{slot.windowLabel}</span>
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                        slot.tier === 'Best Muhurat'
+                          ? 'bg-emerald-500 text-slate-950'
+                          : 'bg-amber-500/20 border border-amber-400/50 text-amber-200'
+                      }`}
+                    >
+                      {idx === 0 ? '★ TOP PICK · ' : ''}
+                      {slot.score}% {slot.tier}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
+                    <span className="text-emerald-300">
+                      {slot.name} Choghadiya ({slot.quality})
+                    </span>
+                    <span className="text-slate-500">•</span>
+                    <span className="text-amber-300">{slot.horaPlanet} Hora</span>
+                    <span className="text-slate-500">•</span>
+                    <span className="text-slate-400">{slot.periodType}</span>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed">{slot.reason}</p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/90">
+                  <button
+                    type="button"
+                    onClick={() => handleScheduleMuhuratWindow(slot)}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-amber-200 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Save to Calendar</span>
+                  </button>
+
+                  {isHealerOrAdmin && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSendEventWhatsAppToClient({
+                          eventTitle: `${selectedDailyMuhurat.activity.label} — Daily Muhurat`,
+                          bestDate: selectedDailyMuhurat.dateFormatted,
+                          timeWindow: slot.windowLabel,
+                          choghadiyaHora: `${slot.name} (${slot.quality}) • ${slot.horaPlanet} Hora`,
+                          rahuKaal: selectedDailyMuhurat.rahuKaalLabel,
+                          recommendation: `${slot.reason} Lucky Color: ${selectedDailyMuhurat.luckyColor}. Mantra: ${selectedDailyMuhurat.beejMantra}`,
+                        })
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>WhatsApp Client</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Windows to Avoid on Selected Date */}
+          {selectedDailyMuhurat.avoidWindows.length > 0 && (
+            <div className="p-3 rounded-xl bg-rose-950/25 border border-rose-500/30 space-y-1.5">
+              <div className="text-[11px] font-bold text-rose-300 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>Times to Avoid on {selectedDailyMuhurat.dateFormatted} (Rahu Kaal / Rog / Kaal / Udveg):</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedDailyMuhurat.avoidWindows.map((slot) => (
+                  <span
+                    key={slot.id}
+                    className="px-2 py-1 rounded-lg bg-slate-950/90 border border-rose-500/35 text-[10.5px] font-mono text-rose-200"
+                  >
+                    {slot.windowLabel} ({slot.rahuClash ? 'Rahu Kaal' : slot.name})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200 flex flex-wrap items-center justify-between gap-2">
+            <span>
+              <strong>Pre-Activity Blessing:</strong> Wear <strong>{selectedDailyMuhurat.luckyColor}</strong> &amp; chant{' '}
+              <span className="italic">&ldquo;{selectedDailyMuhurat.beejMantra}&rdquo;</span> (11x) before starting {selectedDailyMuhurat.activity.label.toLowerCase()}.
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* NEXT 12 MONTHS BEST UPCOMING TIME FOR ALL LIFE PATH EVENTS ACCORDING TO CLIENT VEDIC ASTROLOGY */}
-      <div className="bg-slate-900/95 border border-amber-500/35 rounded-3xl p-6 shadow-xl space-y-4">
+      <div className="bg-slate-900/95 border border-amber-500/35 rounded-3xl p-4 sm:p-6 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/25 pb-3">
           <div>
             <h2 className="font-serif text-xl font-bold text-amber-100 flex items-center gap-2">
