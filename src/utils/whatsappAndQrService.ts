@@ -17,10 +17,13 @@ import {
   analyzeName,
   analyzeMobileNumber,
   getDailyPanchang,
+  calculateCompatibility,
 } from './numerology';
 import { calculateVedicAstrologyFromBirth } from './astrologyAndCities';
 import { getBestUpcomingEventsNext12Months } from '../components/CosmicCalendar';
 import { calculateParivarMilanReport, ParivarMemberRecord } from './parivarMilan';
+import { generateAdvanceMobileReport } from './advanceMobileReport';
+import { SANSKRit_BEEJ_DEVANAGARI } from '../components/DailyMantras';
 import {
   getCurrentLanguage,
   translateMultilineBlock,
@@ -483,6 +486,226 @@ export async function sendWhatsAppAuspiciousTimeUpdate(
     ``,
     `Blessings,`,
     `Healer: *${healerName}* (${brandTitle} • 📞 ${healerMobile})`,
+  ];
+
+  await dispatchWhatsAppMessage(profile.mobile, lines.join('\n'));
+  return { ok: true };
+}
+
+/**
+ * 4) TAB 1 — Focused WhatsApp: Auspicious Time & Lucky Colour of the Day ONLY (Short & Clean)
+ */
+export async function sendWhatsAppAuspiciousTimeAndColor(
+  profile: AstroProfileRecord,
+  senderAccount: AccountRecord
+): Promise<{ ok: boolean }> {
+  const m = calculateMulank(profile.dob);
+  const b = calculateBhagyank(profile.dob);
+  const panchang = getDailyPanchang(new Date(), m, b);
+  const dateLabel = new Date().toLocaleDateString('en-IN', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+  const brandTitle =
+    senderAccount.role === 'healer' && senderAccount.healerBrandName
+      ? senderAccount.healerBrandName
+      : TATHASTU_BRAND_NAME;
+
+  const auspiciousWindowText =
+    panchang.auspiciousTimings.length > 0
+      ? panchang.auspiciousTimings.slice(0, 3).join(' | ')
+      : 'Amrit / Shubh Choghadiya (Morning & Midday)';
+
+  const lines = [
+    `🕉️ *${brandTitle}*`,
+    `Namaste *${profile.name}* Ji (${dateLabel})`,
+    ``,
+    `⏰ *TODAY'S AUSPICIOUS TIME (IST):*`,
+    `• Brahma Muhurat: 04:45 – 05:33 IST`,
+    `• Abhijit Muhurat: 11:51 – 12:39 IST`,
+    `• Shubh Choghadiya: ${auspiciousWindowText}`,
+    `• Avoid Rahu Kaal: ${panchang.rahuKaalWindow.start} – ${panchang.rahuKaalWindow.end} IST`,
+    ``,
+    `🎨 *LUCKY COLOUR TO WEAR TODAY:*`,
+    `• ${panchang.todayLuckyColor}`,
+  ];
+
+  await dispatchWhatsAppMessage(profile.mobile, lines.join('\n'));
+  return { ok: true };
+}
+
+/**
+ * 5) TAB 2 — Focused WhatsApp: Day-According Remedies ONLY (Personal + Partner Milan + Parivar Milan)
+ * Strictly includes:
+ * 1. Vedic Beej Mantra
+ * 2. Daily Karmic Ritual & Daan
+ * 3. Maha Dasha Mantra
+ * 4. Bhagyank & Missing Number Siddhi Mantra
+ * 5. Natal Soul & Janma Rashi Siddhi Mantra
+ * 6. Today's Siddhi Mantra
+ */
+export async function sendWhatsAppDayRemediesDigest(
+  profile: AstroProfileRecord,
+  senderAccount: AccountRecord
+): Promise<{ ok: boolean }> {
+  const m = calculateMulank(profile.dob);
+  const b = calculateBhagyank(profile.dob);
+  const mulankInfo = PLANETARY_PROFILES[m] || PLANETARY_PROFILES[1];
+  const bhagyankInfo = PLANETARY_PROFILES[b] || PLANETARY_PROFILES[3];
+  const panchang = getDailyPanchang(new Date(), m, b);
+  const astro = calculateVedicAstrologyFromBirth(
+    profile.dob,
+    profile.tob || '09:30',
+    profile.lat ?? 28.6139,
+    profile.lng ?? 77.209
+  );
+  const advReport = generateAdvanceMobileReport(
+    profile.dob,
+    profile.mobile || '8899444444',
+    m,
+    b
+  );
+  const activeDasha =
+    advReport.dashaTimeline.find((d) => d.isCurrent) || advReport.dashaTimeline[0];
+  const dashaNum = activeDasha?.dashaNumber || 6;
+  const dashaInfo = PLANETARY_PROFILES[dashaNum] || mulankInfo;
+  const mulankDev = SANSKRit_BEEJ_DEVANAGARI[m] || SANSKRit_BEEJ_DEVANAGARI[1];
+  const dashaDev = SANSKRit_BEEJ_DEVANAGARI[dashaNum] || SANSKRit_BEEJ_DEVANAGARI[6];
+  const bhagyankDev = SANSKRit_BEEJ_DEVANAGARI[b] || SANSKRit_BEEJ_DEVANAGARI[3];
+
+  const today = new Date();
+  const weekdayIndex = today.getDay();
+  const dateLabel = today.toLocaleDateString('en-IN', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  const DAY_KARMIC_RITUAL_AND_DAAN: Record<number, string> = {
+    0: 'Offer Surya Arghya in copper vessel at sunrise; donate wheat or jaggery (Gur) to the needy.',
+    1: 'Offer raw milk & water on Shivling; donate white rice, milk, or white sweets.',
+    2: 'Recite Hanuman Chalisa & light a Jasmine oil diya; donate red masoor dal or jaggery.',
+    3: 'Offer Durva grass to Lord Ganesha; feed green fodder to cows or donate green moong dal.',
+    4: 'Apply Haldi/Kesar tilak & water Banana tree; donate chana dal, turmeric, or bananas.',
+    5: 'Offer white flowers to Goddess Mahalakshmi; donate kheer, sugar, or white clothes.',
+    6: 'Light a mustard oil diya under Peepal tree at dusk; donate black sesame (til) or mustard oil.',
+  };
+
+  // Partner Milan day-aligned chakra remedy (if Partner Milan is active)
+  const partnerLines: string[] = [];
+  if (profile.includePartnerMilan && (profile.partnerName || '').trim()) {
+    const isFemale = profile.gender === 'female';
+    const clientBirth = {
+      id: profile.id,
+      name: profile.name,
+      dob: profile.dob,
+      tob: profile.tob || '09:30',
+      pob: profile.pob || 'New Delhi, India',
+      lat: profile.lat ?? 28.6139,
+      lng: profile.lng ?? 77.209,
+    };
+    const partnerBirth = {
+      id: `${profile.id}-partner`,
+      name: profile.partnerName!.trim(),
+      dob: profile.partnerDob || '1990-11-24',
+      tob: profile.partnerTob || '11:15',
+      pob: profile.partnerPob || 'Mumbai, Maharashtra, India',
+      lat: profile.partnerLat ?? 19.076,
+      lng: profile.partnerLng ?? 72.8777,
+    };
+    const compat = isFemale
+      ? calculateCompatibility(partnerBirth, clientBirth)
+      : calculateCompatibility(clientBirth, partnerBirth);
+    const priorityChakras = compat.chakraChallenges.filter(
+      (c) => c.status !== 'Harmonious' || c.alignmentScore < 75
+    );
+    const chosenChakra =
+      priorityChakras.length > 0
+        ? priorityChakras[weekdayIndex % priorityChakras.length]
+        : compat.chakraChallenges[weekdayIndex % compat.chakraChallenges.length];
+    if (chosenChakra) {
+      partnerLines.push(
+        ``,
+        `💑 *Partner Milan Remedy (${profile.name} & ${partnerBirth.name} — ${priorityChakras.length}/9 Chakras Need Remedies):*`,
+        `• Focus Chakra: ${chosenChakra.chakraName} (${chosenChakra.alignmentScore}%)`,
+        `• Beej Mantra: ${chosenChakra.beejMantra}`,
+        `• Joint Ritual: ${chosenChakra.bothRemedy}`
+      );
+    }
+  }
+
+  // Parivar Milan day-aligned remedy (if family members exist)
+  const parivarLines: string[] = [];
+  const members: ParivarMemberRecord[] = Array.isArray(profile.parivarMembers)
+    ? profile.parivarMembers
+    : [];
+  if (profile.includeParivarMilan !== false && members.length > 0) {
+    const pRep = calculateParivarMilanReport(
+      {
+        name: profile.name,
+        dob: profile.dob,
+        tob: profile.tob || '09:30',
+        pob: profile.pob || 'New Delhi, India',
+        lat: profile.lat ?? 28.6139,
+        lng: profile.lng ?? 77.209,
+      },
+      members
+    );
+    const targetMember = pRep.memberResults[weekdayIndex % pRep.memberResults.length];
+    if (targetMember) {
+      const remChakras = targetMember.nineChakraDiagnostics.filter(
+        (c) => c.status !== 'Harmonious' || c.alignmentScore < 75
+      );
+      const focusCh =
+        remChakras.length > 0
+          ? remChakras[weekdayIndex % remChakras.length]
+          : targetMember.nineChakraDiagnostics[0];
+      parivarLines.push(
+        ``,
+        `🏡 *Parivar Milan Remedy (${targetMember.member.name} — ${targetMember.member.relation}):*`,
+        `• Focus Chakra: ${focusCh?.chakraName || 'Heart Chakra'} (${remChakras.length}/9 Chakras Need Remedies)`,
+        `• Beej Mantra: ${focusCh?.beejMantra || targetMember.gemstoneAndRudrakshaRemedy.rudrakshaMantra}`,
+        `• Family Ritual: ${focusCh?.jointFamilyRemedy || targetMember.vedicAstrologyHarmony.vedicRemedy}`
+      );
+    }
+  }
+
+  const brandTitle =
+    senderAccount.role === 'healer' && senderAccount.healerBrandName
+      ? senderAccount.healerBrandName
+      : TATHASTU_BRAND_NAME;
+
+  const missingLabel =
+    advReport.missingNumbersList.length > 0
+      ? advReport.missingNumbersList.slice(0, 3).join(', ')
+      : 'Balanced';
+
+  const lines = [
+    `🕉️ *${brandTitle}* — *Day-According Remedies (${dateLabel})*`,
+    `Client: *${profile.name}*`,
+    ``,
+    `1. *Vedic Beej Mantra:*`,
+    `${mulankInfo.beejMantra}`,
+    ``,
+    `2. *Daily Karmic Ritual & Daan:*`,
+    `${DAY_KARMIC_RITUAL_AND_DAAN[weekdayIndex]}`,
+    ``,
+    `3. *Maha Dasha Mantra (${activeDasha.planet} ${activeDasha.startYear}–${activeDasha.endYear}):*`,
+    `${dashaDev.devanagari} (${dashaInfo.beejMantra})`,
+    ``,
+    `4. *Bhagyank (${b}) & Missing Number (${missingLabel}) Siddhi Mantra:*`,
+    `${bhagyankDev.devanagari} (${bhagyankInfo.beejMantra})`,
+    ``,
+    `5. *Natal Soul & Janma Rashi Siddhi Mantra (${astro.rashi} • ${mulankInfo.planet}):*`,
+    `${mulankDev.devanagari} (${mulankInfo.beejMantra})`,
+    ``,
+    `6. *Today's Siddhi Mantra (${panchang.vara}):*`,
+    `${panchang.todayBeejMantra}`,
+    ...partnerLines,
+    ...parivarLines,
   ];
 
   await dispatchWhatsAppMessage(profile.mobile, lines.join('\n'));

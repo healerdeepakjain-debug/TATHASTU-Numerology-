@@ -58,6 +58,8 @@ import {
   sendWhatsAppSpecificEventAlert,
   sendWhatsAppFullReportShare,
   sendWhatsAppAuspiciousTimeUpdate,
+  sendWhatsAppAuspiciousTimeAndColor,
+  sendWhatsAppDayRemediesDigest,
   generateClientReportQrDataUrl,
   getClientReportDirectUrl,
   getPublicAppOriginUrl,
@@ -120,13 +122,11 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   } = useTathastu();
 
   // Top-level Post-Login Portal View:
-  // Defaults to 'saved-profiles' right after login so:
-  // - Client sees ONLY their own created profiles
-  // - Healer sees ONLY their own created client profiles
-  // - Admin sees Admin's Saved Profiles + full control over Client Portal, Healer Portal & Master Admin Portal
+  // Defaults to 'welcome' right after login so Welcome Page stays clean and
+  // Saved Reports appear only when user navigates into Saved Profiles.
   const [activeView, setActiveView] = useState<
     'welcome' | 'saved-profiles' | 'new-profile' | 'plan-upgrade' | 'client-portal' | 'healer-portal' | 'master-admin-portal'
-  >('saved-profiles');
+  >('welcome');
 
   // Selected Client or Healer in Admin's Client Portal / Healer Portal for full drill-down
   const [selectedClientAccId, setSelectedClientAccId] = useState<string | null>(null);
@@ -145,6 +145,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   const [newLat, setNewLat] = useState<number>(28.6139);
   const [newLng, setNewLng] = useState<number>(77.2090);
   const [newGender, setNewGender] = useState<'male' | 'female' | 'other'>('male');
+  const [newBodyWeightInput, setNewBodyWeightInput] = useState<string>('');
   const [newIncludePartnerMilan, setNewIncludePartnerMilan] = useState<boolean>(false);
   const [newHealthConcerns, setNewHealthConcerns] = useState<string[]>([]);
   const [newPartnerName, setNewPartnerName] = useState('');
@@ -158,6 +159,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
 
   // Admin Edit Profile Modal State
   const [editingProfile, setEditingProfile] = useState<AstroProfileRecord | null>(null);
+  const [editingBodyWeightInput, setEditingBodyWeightInput] = useState<string>('');
   // Admin Edit Account Modal State
   const [editingAccount, setEditingAccount] = useState<AccountRecord | null>(null);
 
@@ -167,6 +169,11 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
       !rawPartner ||
       rawPartner.toLowerCase() === 'rohit sharma' ||
       rawPartner.toLowerCase() === 'priyanka sharma';
+    setEditingBodyWeightInput(
+      prof.bodyWeightKg != null && Number.isFinite(prof.bodyWeightKg)
+        ? String(prof.bodyWeightKg)
+        : ''
+    );
     setEditingProfile({
       ...prof,
       healthConcerns: prof.healthConcerns ? [...prof.healthConcerns] : [],
@@ -519,8 +526,16 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
     }
 
     if (res.profile) {
+      const parsedNewWeight = Number(newBodyWeightInput);
       await adminUpdateProfile({
         ...res.profile,
+        bodyWeightKg:
+          newBodyWeightInput.trim() !== '' &&
+          Number.isFinite(parsedNewWeight) &&
+          parsedNewWeight >= 10 &&
+          parsedNewWeight <= 250
+            ? Math.round(parsedNewWeight * 10) / 10
+            : undefined,
         healthConcerns: newHealthConcerns,
         partnerName: newPartnerName.trim(),
         partnerDob: newPartnerDob,
@@ -537,6 +552,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
     setNewPob('');
     setNewLat(28.6139);
     setNewLng(77.2090);
+    setNewBodyWeightInput('');
     setNewIncludePartnerMilan(false);
     setNewHealthConcerns([]);
     setNewPartnerName('');
@@ -717,13 +733,25 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
 
   const handleWhatsAppAction = async (
     prof: AstroProfileRecord,
-    actionType: 'event' | 'report' | 'goodtime'
+    actionType: 'time-color' | 'remedies' | 'event' | 'report' | 'goodtime'
   ) => {
     if (!canCurrentAccountDownloadOrShare()) {
       triggerAdminRestrictionPopup('Direct WhatsApp API Messaging to Client');
       return;
     }
-    if (actionType === 'event') {
+    if (actionType === 'time-color') {
+      await sendWhatsAppAuspiciousTimeAndColor(prof, currentAccount);
+      setStatusFeedback({
+        type: 'success',
+        text: `Dispatched Today's Auspicious Time & Lucky Colour to ${prof.name} on WhatsApp!`,
+      });
+    } else if (actionType === 'remedies') {
+      await sendWhatsAppDayRemediesDigest(prof, currentAccount);
+      setStatusFeedback({
+        type: 'success',
+        text: `Dispatched Today's Day-According Remedies (Personal + Partner + Parivar) to ${prof.name} on WhatsApp!`,
+      });
+    } else if (actionType === 'event') {
       const res = await sendWhatsAppSpecificEventAlert(prof, currentAccount);
       setStatusFeedback({
         type: 'success',
@@ -733,7 +761,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
       await sendWhatsAppFullReportShare(prof, currentAccount);
       setStatusFeedback({
         type: 'success',
-        text: `Dispatched Full Report Summary & Mobile QR Link to ${prof.name} on WhatsApp!`,
+        text: `Dispatched Full Report Summary to ${prof.name} on WhatsApp!`,
       });
     } else {
       await sendWhatsAppAuspiciousTimeUpdate(prof, currentAccount);
@@ -838,46 +866,26 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
             Open Report →
           </button>
 
-          <button
-            type="button"
-            onClick={() => handleOpenQrModalForProfile(prof)}
-            className="px-2 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/50 text-amber-200 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-            title="Dynamic QR Code for Instant Mobile PDF Report"
-          >
-            <QrCode className="w-3.5 h-3.5 text-amber-400" />
-            <span>QR</span>
-          </button>
-
           {(isHealer || isAdmin) && (
             <>
               <button
                 type="button"
-                onClick={() => handleWhatsAppAction(prof, 'event')}
-                className="px-2 py-1.5 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-200 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-                title="1-Click WhatsApp: Best Upcoming Vedic Event Muhurat"
+                onClick={() => handleWhatsAppAction(prof, 'time-color')}
+                className="px-2 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-amber-200 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                title="WhatsApp: Today's Auspicious Time & Lucky Colour ONLY"
               >
-                <Calendar className="w-3 h-3 text-emerald-400" />
-                <span>WA Event</span>
+                <Clock className="w-3 h-3 text-amber-400" />
+                <span>WA Time &amp; Colour</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleWhatsAppAction(prof, 'report')}
+                onClick={() => handleWhatsAppAction(prof, 'remedies')}
                 className="px-2 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-                title="1-Click WhatsApp: Share Full Report Summary & Mobile QR Link"
+                title="WhatsApp: Day-According Remedies (Personal + Partner + Parivar)"
               >
                 <MessageCircle className="w-3 h-3" />
-                <span>WA Report</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleWhatsAppAction(prof, 'goodtime')}
-                className="px-2 py-1.5 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-200 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
-                title="1-Click WhatsApp: Live Good/Bad Time & Rahu Kaal Update"
-              >
-                <Clock className="w-3 h-3 text-emerald-400" />
-                <span>WA Time</span>
+                <span>WA Day Remedies</span>
               </button>
             </>
           )}
@@ -971,7 +979,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/60 text-amber-100 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
             >
               <Star className="w-3.5 h-3.5 text-amber-300" />
-              <span>{activeView === 'welcome' ? 'Back to Saved Profiles' : 'Intro & Rate Session'}</span>
+              <span>{activeView === 'welcome' ? 'Open Saved Reports' : 'Welcome Home'}</span>
             </button>
             <button
               type="button"
@@ -1519,6 +1527,20 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   onChange={(e) => setNewMobile(e.target.value)}
                   placeholder="9876543210"
                   className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-3.5 py-2.5 text-xs text-amber-100"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-emerald-300 block mb-1">
+                  Body Weight (kg) — For Exact Stone Carat Calculation
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={newBodyWeightInput}
+                  onChange={(e) => setNewBodyWeightInput(e.target.value.replace(/[^\d.]/g, ''))}
+                  placeholder="e.g. 65 (leave blank for default)"
+                  className="w-full bg-slate-950 border border-emerald-500/35 rounded-xl px-3.5 py-2.5 text-xs font-mono text-amber-100"
                 />
               </div>
             </div>
@@ -2318,10 +2340,10 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                   <div>
                     <h4 className="font-serif text-base font-bold text-emerald-200 flex items-center gap-2">
                       <MessageCircle className="w-4 h-4 text-emerald-400" />
-                      <span>WhatsApp Client Messaging Hub</span>
+                      <span>WhatsApp Client Messaging Hub (Auspicious Time &amp; Day-According Remedies)</span>
                     </h4>
                     <p className="text-xs text-slate-300">
-                      Send WhatsApp messages to your clients for Vedic Events, Full Report Sharing with QR Link, and Auspicious Time Updates.
+                      Tab 1 sends concise Auspicious Time &amp; Lucky Colour ONLY. Tab 2 sends Day-According Remedies covering Personal, Partner Milan &amp; Parivar Milan.
                     </p>
                   </div>
                   <span className="px-3 py-1 rounded-full bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono text-[10px] font-bold">
@@ -2347,47 +2369,33 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                         ))}
                       </select>
                     </div>
-                    <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       <button
                         type="button"
                         onClick={() => {
                           const target =
                             myProfiles.find((p) => p.id === selectedWaClientProfileId) ||
                             myProfiles[0];
-                          if (target) handleWhatsAppAction(target, 'event');
-                        }}
-                        className="py-2.5 px-3 rounded-xl bg-emerald-950 hover:bg-emerald-900 border border-emerald-400/50 text-emerald-200 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>1-Click Event Muhurat</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const target =
-                            myProfiles.find((p) => p.id === selectedWaClientProfileId) ||
-                            myProfiles[0];
-                          if (target) handleWhatsAppAction(target, 'report');
-                        }}
-                        className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>1-Click Report + QR</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const target =
-                            myProfiles.find((p) => p.id === selectedWaClientProfileId) ||
-                            myProfiles[0];
-                          if (target) handleWhatsAppAction(target, 'goodtime');
+                          if (target) handleWhatsAppAction(target, 'time-color');
                         }}
                         className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Clock className="w-3.5 h-3.5" />
-                        <span>1-Click Auspicious Time</span>
+                        <span>1. Auspicious Time &amp; Lucky Colour</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target =
+                            myProfiles.find((p) => p.id === selectedWaClientProfileId) ||
+                            myProfiles[0];
+                          if (target) handleWhatsAppAction(target, 'remedies');
+                        }}
+                        className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>2. Day-According Remedies (Personal + Partner + Parivar)</span>
                       </button>
                     </div>
                   </div>
@@ -2451,331 +2459,6 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
          ===================================================================== */}
       {isAdmin && activeView === 'master-admin-portal' && (
         <div className="space-y-6 animate-fade-in">
-          {/* 0A. EXCLUSIVE MASTER ADMIN HUB: DOWNLOAD & SHARE TATHASTU NUMEROLOGY APP LINK & QR CODE */}
-          <div className="rounded-3xl border-2 border-amber-400/70 bg-gradient-to-br from-slate-900 via-amber-950/35 to-slate-950 p-6 shadow-2xl space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-amber-500/25 pb-4">
-              <div className="flex items-center gap-3.5">
-                <img
-                  src={TATHASTU_LOGO_PATH}
-                  alt={TATHASTU_APP_NAME}
-                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-amber-400 shadow-lg shrink-0"
-                />
-                <div>
-                  <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-amber-300 bg-amber-500/15 border border-amber-400/40 px-2.5 py-0.5 rounded-full">
-                    <Sparkles className="w-3 h-3 text-amber-400" />
-                    <span>Master Admin Exclusive • Hidden from Client &amp; Healer Dashboards</span>
-                  </span>
-                  <h3 className="font-serif text-lg sm:text-xl font-black text-amber-100 mt-1">
-                    Download &amp; Share {TATHASTU_APP_NAME} App (Direct Link, QR &amp; Android APK Kit)
-                  </h3>
-                  <p className="text-xs text-amber-200/80">
-                    Share the official app link or QR code with Clients &amp; Healers. Every entry plays the Brand Intro with music and opens the Login &amp; Introduction Page.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center bg-slate-950/90 border border-amber-500/35 rounded-2xl p-4 sm:p-5">
-              <div className="md:col-span-8 space-y-3">
-                <div>
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-amber-400 block mb-1.5">
-                    Official {TATHASTU_APP_NAME} App Link (Admin Distribution)
-                  </label>
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                    <input
-                      type="text"
-                      readOnly
-                      value={adminAppShareUrl}
-                      className="flex-1 bg-slate-900 border border-amber-500/40 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-amber-100 font-mono focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(adminAppShareUrl);
-                          setCopiedAppLink(true);
-                          setTimeout(() => setCopiedAppLink(false), 2500);
-                        } catch {
-                          setCopiedAppLink(false);
-                        }
-                      }}
-                      className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs cursor-pointer transition-all shrink-0"
-                    >
-                      {copiedAppLink ? '✓ Link Copied!' : 'Copy App Link'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3 pt-1">
-                  <PWAInstallButton />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const activeLang = getCurrentLanguage();
-                      const rawText =
-                        `*${TATHASTU_APP_NAME}* (${TATHASTU_BRAND_NAME})\n` +
-                        `_${TATHASTU_TAGLINE}_\n\n` +
-                        `Install & open the official TATHASTU NUMEROLOGY App for personalized Vedic & Chaldean Numerology Reports, Name & Mobile Frequency Verifier, 9-Chakra Remedies & Daily Muhurat:\n` +
-                        `${adminAppShareUrl}`;
-                      const text = validateAndNormalizeLocaleText(
-                        translateMultilineBlock(rawText, activeLang),
-                        activeLang,
-                        { context: 'whatsapp' }
-                      ).sanitizedText;
-                      const link = document.createElement('a');
-                      link.href = `https://wa.me/?text=${encodeURIComponent(text)}`;
-                      link.target = '_blank';
-                      link.rel = 'noopener noreferrer';
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                    }}
-                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg cursor-pointer transition-all"
-                  >
-                    <Globe className="w-4 h-4" />
-                    <span>Share App Link on WhatsApp</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="md:col-span-4 flex flex-col items-center justify-center border-t md:border-t-0 md:border-l border-amber-500/20 pt-4 md:pt-0 md:pl-4">
-                <div className="bg-white p-2.5 rounded-2xl border-2 border-amber-400 shadow-md">
-                  {adminAppQrDataUrl ? (
-                    <img
-                      src={adminAppQrDataUrl}
-                      alt="Master Admin Official App QR Code"
-                      className="w-28 h-28 object-contain"
-                    />
-                  ) : (
-                    <div className="w-28 h-28 flex items-center justify-center text-[10px] font-bold text-slate-700">
-                      QR Loading...
-                    </div>
-                  )}
-                </div>
-                <span className="text-[11px] font-bold text-amber-300 mt-1.5">
-                  Official App QR Code
-                </span>
-                {adminAppQrDataUrl && (
-                  <a
-                    href={adminAppQrDataUrl}
-                    download="TATHASTU_NUMEROLOGY_App_QR.png"
-                    className="text-[10px] text-emerald-300 hover:underline mt-0.5 font-semibold"
-                  >
-                    Download QR PNG
-                  </a>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* 0B. OFFICIAL PAYU HOSTED PAYMENT GATEWAY SETTINGS (STANDARD REDIRECT + AUTO ACTIVATION) */}
-          <div className="rounded-3xl bg-slate-900/95 border-2 border-emerald-500/50 p-6 shadow-xl space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-500/25 pb-3">
-              <div>
-                <h3 className="font-serif text-lg font-bold text-amber-100 flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-emerald-400" />
-                  <span>0. Official PayU Payment Gateway Settings (Auto Redirect &amp; Auto Activation)</span>
-                </h3>
-                <p className="text-xs text-emerald-300/85 mt-0.5">
-                  Configure your official PayU Merchant Key &amp; Salt. At checkout, users are automatically redirected to the Official PayU Page (UPI QR, GPay, PhonePe, Paytm, Cards &amp; NetBanking), see PayU&apos;s Payment Confirmation screen, and return to the app with instant automatic subscription activation.
-                </p>
-              </div>
-              <span
-                className={`px-3 py-1 rounded-full text-[11px] font-black border ${
-                  payuConfig.merchantKey.trim() && payuConfig.merchantSalt.trim()
-                    ? 'bg-emerald-950 border-emerald-400 text-emerald-300'
-                    : 'bg-amber-950 border-amber-400 text-amber-300'
-                }`}
-              >
-                {payuConfig.merchantKey.trim() && payuConfig.merchantSalt.trim()
-                  ? `✓ Official PayU Active (${payuConfig.environment === 'test' ? 'test.payu.in' : 'secure.payu.in'})`
-                  : '⚠ Enter PayU Key & Salt Below'}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="text-[11px] font-bold text-emerald-300 block mb-1">
-                  PayU Merchant Key *
-                </label>
-                <input
-                  type="text"
-                  value={payuDraft.merchantKey}
-                  onChange={(e) => setPayuDraft({ ...payuDraft, merchantKey: e.target.value })}
-                  placeholder="Enter official PayU Merchant Key"
-                  className="w-full bg-slate-950 border border-emerald-500/45 rounded-xl px-3.5 py-2.5 text-xs text-emerald-100 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-emerald-300 block mb-1">
-                  PayU Merchant Salt (SHA-512 Verification) *
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPayuSalt ? 'text' : 'password'}
-                    value={payuDraft.merchantSalt}
-                    onChange={(e) => setPayuDraft({ ...payuDraft, merchantSalt: e.target.value })}
-                    placeholder="Enter official PayU Salt"
-                    className="w-full bg-slate-950 border border-emerald-500/45 rounded-xl pl-3.5 pr-16 py-2.5 text-xs text-emerald-100 font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPayuSalt((p) => !p)}
-                    className="absolute right-2.5 top-2 text-[10px] font-bold text-amber-300 cursor-pointer"
-                  >
-                    {showPayuSalt ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-amber-300 block mb-1">
-                  PayU Gateway Mode
-                </label>
-                <select
-                  value={payuDraft.environment}
-                  onChange={(e) =>
-                    setPayuDraft({
-                      ...payuDraft,
-                      environment: e.target.value === 'test' ? 'test' : 'production',
-                    })
-                  }
-                  className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-3 py-2.5 text-xs text-amber-200 font-bold"
-                >
-                  <option value="production">Production (https://secure.payu.in/_payment)</option>
-                  <option value="test">Test / Sandbox (https://test.payu.in/_payment)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-emerald-500/20">
-              <span className="text-[11px] text-slate-300">
-                Callback URL (Auto-Configured):{' '}
-                <strong className="font-mono text-emerald-300">
-                  {typeof window !== 'undefined' ? `${window.location.origin}/api/payu/callback` : '/api/payu/callback'}
-                </strong>
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!payuDraft.merchantKey.trim() || !payuDraft.merchantSalt.trim()) {
-                    setStatusFeedback({
-                      type: 'error',
-                      text: 'Please enter both your Official PayU Merchant Key and PayU Merchant Salt.',
-                    });
-                    return;
-                  }
-                  adminUpdatePayuConfig(payuDraft);
-                  setStatusFeedback({
-                    type: 'success',
-                    text: `Official PayU Hosted Gateway (${
-                      payuDraft.environment === 'test' ? 'test.payu.in' : 'secure.payu.in'
-                    }) saved & synced across all devices!`,
-                  });
-                }}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-amber-500 hover:from-emerald-400 hover:to-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-lg"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>Save &amp; Sync Official PayU Credentials</span>
-              </button>
-            </div>
-
-            {/* Live PayU Transactions Monitor & 1-Click Official PayU Auto-Verify */}
-            <div className="rounded-2xl bg-slate-950/90 border border-emerald-500/30 p-4 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h4 className="text-xs font-black text-emerald-300 uppercase tracking-wider">
-                    Live PayU Transactions &amp; Instant Official PayU Sync
-                  </h4>
-                  <p className="text-[11px] text-slate-400">
-                    Payments verify automatically in real time every 2.5s via Official PayU API. You can also sync any Order ID below to confirm directly from PayU.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => loadRecentPayuOrders()}
-                  disabled={isLoadingPayuOrders}
-                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-emerald-500/35 text-emerald-300 text-[11px] font-bold cursor-pointer"
-                >
-                  {isLoadingPayuOrders ? 'Refreshing...' : 'Refresh Orders'}
-                </button>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  value={adminVerifyTxnidInput}
-                  onChange={(e) => setAdminVerifyTxnidInput(e.target.value)}
-                  placeholder="Enter PayU Order ID / txnid (e.g. TN1795...) to verify live with PayU"
-                  className="flex-1 bg-slate-900 border border-amber-500/35 rounded-xl px-3 py-2 text-xs text-amber-100 font-mono"
-                />
-                <button
-                  type="button"
-                  disabled={verifyingTxnid !== null}
-                  onClick={() => handleVerifyPayuOrderLive(adminVerifyTxnidInput)}
-                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 font-black text-xs cursor-pointer shrink-0"
-                >
-                  {verifyingTxnid === adminVerifyTxnidInput.trim() && verifyingTxnid
-                    ? 'Checking PayU...'
-                    : 'Verify Live with PayU'}
-                </button>
-              </div>
-
-              {payuOrdersList.length > 0 && (
-                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                  {payuOrdersList.slice(0, 8).map((ord) => (
-                    <div
-                      key={ord.txnid}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900/90 border border-slate-800 px-3 py-2 text-[11px]"
-                    >
-                      <div className="space-y-0.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono font-bold text-amber-200">{ord.txnid}</span>
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                              ord.status === 'success'
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/50'
-                                : ord.status === 'failure'
-                                ? 'bg-rose-500/20 text-rose-300 border border-rose-400/50'
-                                : 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
-                            }`}
-                          >
-                            {ord.status}
-                          </span>
-                          <span className="font-mono font-bold text-emerald-300">₹{ord.amount}</span>
-                          {ord.mihpayid && (
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              PayU ID: {ord.mihpayid}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          {ord.firstname} ({ord.email}) • {ord.productinfo}
-                        </div>
-                      </div>
-
-                      {ord.status !== 'success' || !ord.activatedAccountId ? (
-                        <button
-                          type="button"
-                          disabled={verifyingTxnid === ord.txnid}
-                          onClick={() => handleVerifyPayuOrderLive(ord.txnid)}
-                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] cursor-pointer"
-                        >
-                          {verifyingTxnid === ord.txnid ? 'Verifying...' : 'Verify & Activate'}
-                        </button>
-                      ) : (
-                        <span className="text-[10px] font-bold text-emerald-400">
-                          ✓ Activated Live
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
           {/* A. Register New Client or New Healer */}
           <div className="rounded-3xl bg-slate-900/95 border border-amber-500/35 p-6 shadow-xl space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
@@ -3101,10 +2784,10 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               <div>
                 <h3 className="font-serif text-lg font-bold text-amber-100 flex items-center gap-2">
                   <MessageCircle className="w-5 h-5 text-emerald-400" />
-                  <span>Direct WhatsApp API Connection Hub (1-Click Events, Reports & Auspicious Time)</span>
+                  <span>Direct WhatsApp API Connection Hub (Auspicious Time &amp; Day-According Remedies)</span>
                 </h3>
                 <p className="text-xs text-emerald-300/80">
-                  Instantly dispatch 1-click WhatsApp updates to any client or configure Meta WhatsApp Business Cloud API credentials.
+                  Tab 1 dispatches concise Auspicious Time &amp; Lucky Colour ONLY. Tab 2 dispatches Day-According Remedies covering Personal, Partner Milan &amp; Parivar Milan.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -3197,44 +2880,31 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     ))}
                   </select>
                 </div>
-                <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <button
                     type="button"
                     onClick={() => {
                       const target =
                         profiles.find((p) => p.id === selectedWaClientProfileId) || profiles[0];
-                      if (target) handleWhatsAppAction(target, 'event');
-                    }}
-                    className="py-2.5 px-3 rounded-xl bg-emerald-950 hover:bg-emerald-900 border border-emerald-400/50 text-emerald-200 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>1-Click Event Muhurat</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const target =
-                        profiles.find((p) => p.id === selectedWaClientProfileId) || profiles[0];
-                      if (target) handleWhatsAppAction(target, 'report');
-                    }}
-                    className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    <span>1-Click Report + QR</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const target =
-                        profiles.find((p) => p.id === selectedWaClientProfileId) || profiles[0];
-                      if (target) handleWhatsAppAction(target, 'goodtime');
+                      if (target) handleWhatsAppAction(target, 'time-color');
                     }}
                     className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Clock className="w-3.5 h-3.5" />
-                    <span>1-Click Auspicious Time</span>
+                    <span>1. Auspicious Time &amp; Lucky Colour</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target =
+                        profiles.find((p) => p.id === selectedWaClientProfileId) || profiles[0];
+                      if (target) handleWhatsAppAction(target, 'remedies');
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>2. Day-According Remedies (Personal + Partner + Parivar)</span>
                   </button>
                 </div>
               </div>
@@ -3821,6 +3491,331 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
               );
             })()}
           </div>
+
+          {/* BOTTOM 1. EXCLUSIVE MASTER ADMIN HUB: DOWNLOAD & SHARE TATHASTU NUMEROLOGY APP LINK & QR CODE */}
+          <div className="rounded-3xl border-2 border-amber-400/70 bg-gradient-to-br from-slate-900 via-amber-950/35 to-slate-950 p-6 shadow-2xl space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-amber-500/25 pb-4">
+              <div className="flex items-center gap-3.5">
+                <img
+                  src={TATHASTU_LOGO_PATH}
+                  alt={TATHASTU_APP_NAME}
+                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-amber-400 shadow-lg shrink-0"
+                />
+                <div>
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-amber-300 bg-amber-500/15 border border-amber-400/40 px-2.5 py-0.5 rounded-full">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <span>Master Admin Exclusive • Hidden from Client &amp; Healer Dashboards</span>
+                  </span>
+                  <h3 className="font-serif text-lg sm:text-xl font-black text-amber-100 mt-1">
+                    Download &amp; Share {TATHASTU_APP_NAME} App (Direct Link, QR &amp; Android APK Kit)
+                  </h3>
+                  <p className="text-xs text-amber-200/80">
+                    Share the official app link or QR code with Clients &amp; Healers. Every entry plays the Brand Intro with music and opens the Login &amp; Introduction Page.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center bg-slate-950/90 border border-amber-500/35 rounded-2xl p-4 sm:p-5">
+              <div className="md:col-span-8 space-y-3">
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-amber-400 block mb-1.5">
+                    Official {TATHASTU_APP_NAME} App Link (Admin Distribution)
+                  </label>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={adminAppShareUrl}
+                      className="flex-1 bg-slate-900 border border-amber-500/40 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-amber-100 font-mono focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(adminAppShareUrl);
+                          setCopiedAppLink(true);
+                          setTimeout(() => setCopiedAppLink(false), 2500);
+                        } catch {
+                          setCopiedAppLink(false);
+                        }
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs cursor-pointer transition-all shrink-0"
+                    >
+                      {copiedAppLink ? '✓ Link Copied!' : 'Copy App Link'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <PWAInstallButton />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const activeLang = getCurrentLanguage();
+                      const rawText =
+                        `*${TATHASTU_APP_NAME}* (${TATHASTU_BRAND_NAME})\n` +
+                        `_${TATHASTU_TAGLINE}_\n\n` +
+                        `Install & open the official TATHASTU NUMEROLOGY App for personalized Vedic & Chaldean Numerology Reports, Name & Mobile Frequency Verifier, 9-Chakra Remedies & Daily Muhurat:\n` +
+                        `${adminAppShareUrl}`;
+                      const text = validateAndNormalizeLocaleText(
+                        translateMultilineBlock(rawText, activeLang),
+                        activeLang,
+                        { context: 'whatsapp' }
+                      ).sanitizedText;
+                      const link = document.createElement('a');
+                      link.href = `https://wa.me/?text=${encodeURIComponent(text)}`;
+                      link.target = '_blank';
+                      link.rel = 'noopener noreferrer';
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg cursor-pointer transition-all"
+                  >
+                    <Globe className="w-4 h-4" />
+                    <span>Share App Link on WhatsApp</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="md:col-span-4 flex flex-col items-center justify-center border-t md:border-t-0 md:border-l border-amber-500/20 pt-4 md:pt-0 md:pl-4">
+                <div className="bg-white p-2.5 rounded-2xl border-2 border-amber-400 shadow-md">
+                  {adminAppQrDataUrl ? (
+                    <img
+                      src={adminAppQrDataUrl}
+                      alt="Master Admin Official App QR Code"
+                      className="w-28 h-28 object-contain"
+                    />
+                  ) : (
+                    <div className="w-28 h-28 flex items-center justify-center text-[10px] font-bold text-slate-700">
+                      QR Loading...
+                    </div>
+                  )}
+                </div>
+                <span className="text-[11px] font-bold text-amber-300 mt-1.5">
+                  Official App QR Code
+                </span>
+                {adminAppQrDataUrl && (
+                  <a
+                    href={adminAppQrDataUrl}
+                    download="TATHASTU_NUMEROLOGY_App_QR.png"
+                    className="text-[10px] text-emerald-300 hover:underline mt-0.5 font-semibold"
+                  >
+                    Download QR PNG
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* BOTTOM 2. OFFICIAL PAYU HOSTED PAYMENT GATEWAY SETTINGS (STANDARD REDIRECT + AUTO ACTIVATION) */}
+          <div className="rounded-3xl bg-slate-900/95 border-2 border-emerald-500/50 p-6 shadow-xl space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-500/25 pb-3">
+              <div>
+                <h3 className="font-serif text-lg font-bold text-amber-100 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-emerald-400" />
+                  <span>Official PayU Payment Gateway Settings (Auto Redirect &amp; Auto Activation)</span>
+                </h3>
+                <p className="text-xs text-emerald-300/85 mt-0.5">
+                  Configure your official PayU Merchant Key &amp; Salt. At checkout, users are automatically redirected to the Official PayU Page (UPI QR, GPay, PhonePe, Paytm, Cards &amp; NetBanking), see PayU&apos;s Payment Confirmation screen, and return to the app with instant automatic subscription activation.
+                </p>
+              </div>
+              <span
+                className={`px-3 py-1 rounded-full text-[11px] font-black border ${
+                  payuConfig.merchantKey.trim() && payuConfig.merchantSalt.trim()
+                    ? 'bg-emerald-950 border-emerald-400 text-emerald-300'
+                    : 'bg-amber-950 border-amber-400 text-amber-300'
+                }`}
+              >
+                {payuConfig.merchantKey.trim() && payuConfig.merchantSalt.trim()
+                  ? `✓ Official PayU Active (${payuConfig.environment === 'test' ? 'test.payu.in' : 'secure.payu.in'})`
+                  : '⚠ Enter PayU Key & Salt Below'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="text-[11px] font-bold text-emerald-300 block mb-1">
+                  PayU Merchant Key *
+                </label>
+                <input
+                  type="text"
+                  value={payuDraft.merchantKey}
+                  onChange={(e) => setPayuDraft({ ...payuDraft, merchantKey: e.target.value })}
+                  placeholder="Enter official PayU Merchant Key"
+                  className="w-full bg-slate-950 border border-emerald-500/45 rounded-xl px-3.5 py-2.5 text-xs text-emerald-100 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-emerald-300 block mb-1">
+                  PayU Merchant Salt (SHA-512 Verification) *
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPayuSalt ? 'text' : 'password'}
+                    value={payuDraft.merchantSalt}
+                    onChange={(e) => setPayuDraft({ ...payuDraft, merchantSalt: e.target.value })}
+                    placeholder="Enter official PayU Salt"
+                    className="w-full bg-slate-950 border border-emerald-500/45 rounded-xl pl-3.5 pr-16 py-2.5 text-xs text-emerald-100 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPayuSalt((p) => !p)}
+                    className="absolute right-2.5 top-2 text-[10px] font-bold text-amber-300 cursor-pointer"
+                  >
+                    {showPayuSalt ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-amber-300 block mb-1">
+                  PayU Gateway Mode
+                </label>
+                <select
+                  value={payuDraft.environment}
+                  onChange={(e) =>
+                    setPayuDraft({
+                      ...payuDraft,
+                      environment: e.target.value === 'test' ? 'test' : 'production',
+                    })
+                  }
+                  className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-3 py-2.5 text-xs text-amber-200 font-bold"
+                >
+                  <option value="production">Production (https://secure.payu.in/_payment)</option>
+                  <option value="test">Test / Sandbox (https://test.payu.in/_payment)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-emerald-500/20">
+              <span className="text-[11px] text-slate-300">
+                Callback URL (Auto-Configured):{' '}
+                <strong className="font-mono text-emerald-300">
+                  {typeof window !== 'undefined' ? `${window.location.origin}/api/payu/callback` : '/api/payu/callback'}
+                </strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!payuDraft.merchantKey.trim() || !payuDraft.merchantSalt.trim()) {
+                    setStatusFeedback({
+                      type: 'error',
+                      text: 'Please enter both your Official PayU Merchant Key and PayU Merchant Salt.',
+                    });
+                    return;
+                  }
+                  adminUpdatePayuConfig(payuDraft);
+                  setStatusFeedback({
+                    type: 'success',
+                    text: `Official PayU Hosted Gateway (${
+                      payuDraft.environment === 'test' ? 'test.payu.in' : 'secure.payu.in'
+                    }) saved & synced across all devices!`,
+                  });
+                }}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-amber-500 hover:from-emerald-400 hover:to-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-lg"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Save &amp; Sync Official PayU Credentials</span>
+              </button>
+            </div>
+
+            {/* Live PayU Transactions Monitor & 1-Click Official PayU Auto-Verify */}
+            <div className="rounded-2xl bg-slate-950/90 border border-emerald-500/30 p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-black text-emerald-300 uppercase tracking-wider">
+                    Live PayU Transactions &amp; Instant Official PayU Sync
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Payments verify automatically in real time every 2.5s via Official PayU API. You can also sync any Order ID below to confirm directly from PayU.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => loadRecentPayuOrders()}
+                  disabled={isLoadingPayuOrders}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-emerald-500/35 text-emerald-300 text-[11px] font-bold cursor-pointer"
+                >
+                  {isLoadingPayuOrders ? 'Refreshing...' : 'Refresh Orders'}
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={adminVerifyTxnidInput}
+                  onChange={(e) => setAdminVerifyTxnidInput(e.target.value)}
+                  placeholder="Enter PayU Order ID / txnid (e.g. TN1795...) to verify live with PayU"
+                  className="flex-1 bg-slate-900 border border-amber-500/35 rounded-xl px-3 py-2 text-xs text-amber-100 font-mono"
+                />
+                <button
+                  type="button"
+                  disabled={verifyingTxnid !== null}
+                  onClick={() => handleVerifyPayuOrderLive(adminVerifyTxnidInput)}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 font-black text-xs cursor-pointer shrink-0"
+                >
+                  {verifyingTxnid === adminVerifyTxnidInput.trim() && verifyingTxnid
+                    ? 'Checking PayU...'
+                    : 'Verify Live with PayU'}
+                </button>
+              </div>
+
+              {payuOrdersList.length > 0 && (
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {payuOrdersList.slice(0, 8).map((ord) => (
+                    <div
+                      key={ord.txnid}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900/90 border border-slate-800 px-3 py-2 text-[11px]"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono font-bold text-amber-200">{ord.txnid}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                              ord.status === 'success'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/50'
+                                : ord.status === 'failure'
+                                ? 'bg-rose-500/20 text-rose-300 border border-rose-400/50'
+                                : 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
+                            }`}
+                          >
+                            {ord.status}
+                          </span>
+                          <span className="font-mono font-bold text-emerald-300">₹{ord.amount}</span>
+                          {ord.mihpayid && (
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              PayU ID: {ord.mihpayid}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {ord.firstname} ({ord.email}) • {ord.productinfo}
+                        </div>
+                      </div>
+
+                      {ord.status !== 'success' || !ord.activatedAccountId ? (
+                        <button
+                          type="button"
+                          disabled={verifyingTxnid === ord.txnid}
+                          onClick={() => handleVerifyPayuOrderLive(ord.txnid)}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] cursor-pointer"
+                        >
+                          {verifyingTxnid === ord.txnid ? 'Verifying...' : 'Verify & Activate'}
+                        </button>
+                      ) : (
+                        <span className="text-[10px] font-bold text-emerald-400">
+                          ✓ Activated Live
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -3971,6 +3966,34 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     setEditingProfile((prev) => (prev ? { ...prev, mobile: e.target.value } : prev))
                   }
                   className="w-full bg-slate-950 border border-amber-500/35 rounded-xl px-3 py-2 text-xs text-amber-100"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-[11px] font-bold text-emerald-300 block mb-1">
+                  Body Weight (kg) — For Exact Stone Carat Calculation in Report PDF
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={editingBodyWeightInput}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/[^\d.]/g, '');
+                    setEditingBodyWeightInput(cleaned);
+                    const num = Number(cleaned);
+                    setEditingProfile((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            bodyWeightKg:
+                              cleaned !== '' && Number.isFinite(num) && num >= 10 && num <= 250
+                                ? Math.round(num * 10) / 10
+                                : undefined,
+                          }
+                        : prev
+                    );
+                  }}
+                  placeholder="e.g. 65"
+                  className="w-full bg-slate-950 border border-emerald-500/35 rounded-xl px-3 py-2 text-xs font-mono text-amber-100"
                 />
               </div>
 

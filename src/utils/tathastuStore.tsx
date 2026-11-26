@@ -282,6 +282,7 @@ export interface AstroProfileRecord {
   email: string;
   mobile: string;
   gender: 'male' | 'female' | 'other';
+  bodyWeightKg?: number;
   isLocked: boolean;
   notificationsEnabled: boolean;
   notificationChannelsJson?: string;
@@ -316,6 +317,7 @@ export interface SharedReportRecord {
   lat: number;
   lng: number;
   gender: 'male' | 'female' | 'other';
+  bodyWeightKg?: number;
   partnerName?: string;
   partnerDob?: string;
   partnerTob?: string;

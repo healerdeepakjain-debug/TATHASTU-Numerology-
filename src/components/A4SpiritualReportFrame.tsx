@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, createContext, useContext } from 'react';
 import {
   Download,
   Printer,
@@ -79,6 +79,7 @@ import {
   calculateNameAndPersonalGrowthRatnaRecommendation,
   calculatePartnerMilanRatnaRecommendations,
 } from './GemstoneRecommendation';
+import { buildPartnerMilanHarmonyInsights } from './PartnerCompatibility';
 import { LO_SHU_VEDIC_REMEDIES_DB } from './InteractiveLoShuGrid';
 import { SANSKRit_BEEJ_DEVANAGARI } from './DailyMantras';
 import {
@@ -169,11 +170,31 @@ const DEFAULT_REPORT_SECTIONS: ReportSectionSelection = {
   islamicVedicRemedies: true,
 };
 
-const DEFAULT_WATERMARK_SETTINGS: CenterWatermarkSettings = {
+const FIXED_WATERMARK_SETTINGS: CenterWatermarkSettings = {
   enabled: true,
-  opacityPercent: 10,
+  opacityPercent: 11,
   sizePx: 260,
   showBrandText: true,
+};
+
+export interface ReportToolbarContextValue {
+  healerDisplayName: string;
+  brandTitle: string;
+  healerDisplayMobile: string;
+  totalPageCount: number;
+  selectedCount: number;
+  totalModulesCount: number;
+  showExportOptionsPanel: boolean;
+  toggleExportOptionsPanel: () => void;
+  openPrintPreview: () => void;
+  sendWhatsAppPdfReport: () => void;
+  renderQuickCheckboxesPanel: () => React.ReactNode;
+}
+
+const ReportToolbarContext = createContext<ReportToolbarContextValue | null>(null);
+
+export const useReportToolbar = (): ReportToolbarContextValue | null => {
+  return useContext(ReportToolbarContext);
 };
 
 export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
@@ -203,7 +224,6 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
   const [dismissedBroadcastId, setDismissedBroadcastId] = useState<string | null>(null);
 
   const [showExportOptionsPanel, setShowExportOptionsPanel] = useState<boolean>(false);
-  const [isSettingsDrawerOpen, setIsSettingsDrawerOpen] = useState<boolean>(false);
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState<boolean>(false);
   const [previewScale, setPreviewScale] = useState<number>(() => {
     if (typeof window !== 'undefined') {
@@ -218,7 +238,6 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
   const [reportQrDataUrl, setReportQrDataUrl] = useState<string>('');
-  const [isQrModalOpen, setIsQrModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const onResize = () => {
@@ -316,17 +335,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     return false;
   });
 
-  const [watermarkSettings, setWatermarkSettings] = useState<CenterWatermarkSettings>(() => {
-    try {
-      const saved = localStorage.getItem(WATERMARK_SETTINGS_STORAGE_KEY);
-      if (saved) {
-        return { ...DEFAULT_WATERMARK_SETTINGS, ...JSON.parse(saved) };
-      }
-    } catch {
-      // Fallback
-    }
-    return DEFAULT_WATERMARK_SETTINGS;
-  });
+  const watermarkSettings = FIXED_WATERMARK_SETTINGS;
 
   useEffect(() => {
     try {
@@ -462,17 +471,22 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       b,
       nameAnalysis.chaldeanSingle
     );
-    const gemRecommend = calculateGemstoneRecommendationsForProfile({
-      id: activeProfile.id,
-      name: activeProfile.name,
-      dob: activeProfile.dob,
-      tob: activeProfile.tob || '09:30',
-      pob: activeProfile.pob || 'New Delhi, India',
-      lat: activeProfile.lat ?? 28.6139,
-      lng: activeProfile.lng ?? 77.209,
-      mobile: activeProfile.mobile || '9876543210',
-      gender: activeProfile.gender,
-    });
+    const clientBodyWeightKg = activeProfile.bodyWeightKg || 65;
+    const gemRecommend = calculateGemstoneRecommendationsForProfile(
+      {
+        id: activeProfile.id,
+        name: activeProfile.name,
+        dob: activeProfile.dob,
+        tob: activeProfile.tob || '09:30',
+        pob: activeProfile.pob || 'New Delhi, India',
+        lat: activeProfile.lat ?? 28.6139,
+        lng: activeProfile.lng ?? 77.209,
+        mobile: activeProfile.mobile || '9876543210',
+        gender: activeProfile.gender,
+        bodyWeightKg: clientBodyWeightKg,
+      },
+      clientBodyWeightKg
+    );
     const nameAndGrowthRatna = calculateNameAndPersonalGrowthRatnaRecommendation(
       {
         id: activeProfile.id,
@@ -484,9 +498,10 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         lng: activeProfile.lng ?? 77.209,
         mobile: activeProfile.mobile || '9876543210',
         gender: activeProfile.gender,
+        bodyWeightKg: clientBodyWeightKg,
       },
       activeProfile.originalName || activeProfile.name,
-      68
+      clientBodyWeightKg
     );
 
     const triadCompound =
@@ -4070,6 +4085,37 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               </table>
             </div>
 
+            {/* 9-Chakra Harmony Overall Score & Chakras Needing Remedies Box (Directly below Ashtakoot Score) */}
+            {(() => {
+              const pInsights = buildPartnerMilanHarmonyInsights(
+                partnerMilan,
+                groomProfile.name,
+                brideProfile.name
+              );
+              return (
+                <div className="p-2 rounded-xl bg-purple-950/35 border border-purple-400/50 flex items-center justify-between gap-2 text-[8.2px]">
+                  <div>
+                    <strong className="text-purple-200 uppercase block text-[8.5px]">
+                      9-Chakra Harmony Overall Score ({groomProfile.name} &amp; {brideProfile.name})
+                    </strong>
+                    <span className="text-slate-200">
+                      {pInsights.chakrasNeedingRemediesCount > 0
+                        ? `Chakras Needing Remedies (${pInsights.chakrasNeedingRemediesCount} / 9): ${pInsights.chakrasNeedingRemediesNames.join(', ')}`
+                        : 'All 9 Chakras are naturally balanced and harmonious.'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="px-2 py-1 rounded-lg bg-slate-950 border border-purple-400/50 text-amber-200 font-mono font-black text-[9.5px]">
+                      {pInsights.overallNineChakraScore}% Harmony
+                    </span>
+                    <span className="px-2 py-1 rounded-lg bg-rose-950/80 border border-rose-400/50 text-rose-200 font-mono font-bold text-[8.5px]">
+                      {pInsights.chakrasNeedingRemediesCount} / 9 Chakras Need Remedies
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Width-Wise 3-Column Marital Name Vibration Harmonizer */}
             <div className="grid grid-cols-3 gap-1.5 text-[8px] a4-print-grid-3">
               {partnerMilan.perfectNameSuggestions.slice(0, 2).map((item, idx) => (
@@ -4373,6 +4419,44 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 </div>
               ))}
             </div>
+
+            {/* Key Partner Strengths, Key Karmic Frictions & Sacred Rudraksha Remedies */}
+            {(() => {
+              const pInsights = buildPartnerMilanHarmonyInsights(
+                partnerMilan,
+                groomProfile.name,
+                brideProfile.name
+              );
+              return (
+                <>
+                  <div className="grid grid-cols-2 gap-1.5 text-[7.4px] a4-print-grid-2">
+                    <div className="p-1.5 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-slate-200 space-y-0.5">
+                      <strong className="text-emerald-300 uppercase block">
+                        Key Partner Strengths ({groomProfile.name} &amp; {brideProfile.name})
+                      </strong>
+                      {pInsights.keyStrengths.slice(0, 3).map((s, sI) => (
+                        <div key={sI}>• {s}</div>
+                      ))}
+                    </div>
+                    <div className="p-1.5 rounded-xl bg-rose-950/30 border border-rose-500/40 text-slate-200 space-y-0.5">
+                      <strong className="text-rose-300 uppercase block">
+                        Key Karmic Frictions &amp; Focus Areas ({pInsights.chakrasNeedingRemediesCount}/9 Chakras Need Remedies)
+                      </strong>
+                      {pInsights.keyFrictions.slice(0, 3).map((f, fI) => (
+                        <div key={fI}>• {f}</div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="p-1.5 rounded-xl bg-amber-950/25 border border-amber-500/40 text-[7.5px] text-amber-100 leading-tight">
+                    <strong className="text-amber-300 uppercase">Sacred Rudraksha Remedies:</strong>{' '}
+                    <strong>Couple Unity:</strong> {pInsights.rudrakshaRemedies.coupleUnityRudraksha} |{' '}
+                    <strong>Groom:</strong> {pInsights.rudrakshaRemedies.groomRudraksha} |{' '}
+                    <strong>Bride:</strong> {pInsights.rudrakshaRemedies.brideRudraksha} •{' '}
+                    <span className="text-emerald-300">Mantra: {pInsights.rudrakshaRemedies.rudrakshaMantra}</span>
+                  </div>
+                </>
+              );
+            })()}
 
             {/* Joint Couple Relationship Harmony & Bedroom Crystal Synergy */}
             <div className="p-2 rounded-xl bg-emerald-950/30 border border-emerald-500/45 text-[8px] text-emerald-100 leading-snug space-y-1">
@@ -5278,7 +5362,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       ),
     });
 
-    if (includeActiveTabInPrint) {
+    const isWhatsAppNotificationHubTab =
+      sectionTitle.toLowerCase().includes('good/bad time') ||
+      sectionTitle.toLowerCase().includes('whatsapp');
+
+    if (includeActiveTabInPrint && !isWhatsAppNotificationHubTab) {
       pages.push({
         title: `Active Module View — ${sectionTitle}`,
         headImg: spiritualReportBanner,
@@ -5291,10 +5379,13 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     return pages;
   };
 
+  const isWhatsAppHubActiveScreen =
+    sectionTitle.toLowerCase().includes('good/bad time') ||
+    sectionTitle.toLowerCase().includes('whatsapp');
   const discreteA4Pages = buildDiscreteA4Pages();
   const totalPageCount =
     pdfPageCountInfo.totalPdfPages > 0
-      ? pdfPageCountInfo.totalPdfPages + (includeActiveTabInPrint ? 1 : 0)
+      ? pdfPageCountInfo.totalPdfPages + (includeActiveTabInPrint && !isWhatsAppHubActiveScreen ? 1 : 0)
       : discreteA4Pages.length;
 
   const SHREE_YANTRA_PLATE_IMAGE_PATH = '/assets/aistudio/wp8754154_d55216c3.jpg';
@@ -5508,7 +5599,136 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     </div>
   );
 
+  const renderQuickCheckboxesPanel = () => {
+    if (!activeProfile || !showExportOptionsPanel) return null;
+    return (
+      <div className="mt-4 p-4 rounded-2xl bg-slate-950/95 border border-amber-400/50 space-y-3 animate-fade-in no-print">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/20 pb-2.5">
+          <div>
+            <h4 className="font-serif text-sm font-bold text-amber-100 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-amber-400" />
+              <span>
+                Select Modules for Dynamic A4 Portrait PDF / Print ({reportDateRange.startFormatted} – {reportDateRange.endFormatted})
+              </span>
+            </h4>
+            <p className="text-[11px] text-amber-300/75">
+              PDF page count automatically adjusts to your selected active modules. Centered watermark is fixed at 11% across every A4 page.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSelectAllModules}
+              className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-500/40 text-[11px] font-bold cursor-pointer"
+            >
+              Select All Modules
+            </button>
+            <button
+              type="button"
+              onClick={handleSelectCoreFour}
+              className="px-2.5 py-1 rounded-lg bg-slate-900 text-amber-300 border border-amber-500/30 text-[11px] font-bold cursor-pointer"
+            >
+              Core Modules
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowExportOptionsPanel(false)}
+              className="p-1 text-slate-400 hover:text-white cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          {MODULE_OPTIONS.map((item) => {
+            const checked = selectedSections[item.key];
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => toggleSectionCheckbox(item.key)}
+                className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 cursor-pointer ${
+                  checked
+                    ? 'bg-amber-500/15 border-amber-400 text-amber-100'
+                    : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-amber-500/30'
+                }`}
+              >
+                {checked ? (
+                  <CheckSquare className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                ) : (
+                  <Square className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                )}
+                <div>
+                  <div className="text-xs font-bold">{item.label}</div>
+                  <div className="text-[10px] opacity-80 mt-0.5">{item.sub}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-amber-500/20">
+          {!isWhatsAppHubActiveScreen ? (
+            <button
+              type="button"
+              onClick={() => setIncludeActiveTabInPrint((prev) => !prev)}
+              className="flex items-center gap-2 text-xs text-amber-200 cursor-pointer"
+            >
+              {includeActiveTabInPrint ? (
+                <CheckSquare className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <Square className="w-4 h-4 text-slate-500" />
+              )}
+              <span>Also append currently open screen tab ({sectionTitle}) as an extra A4 page</span>
+            </button>
+          ) : (
+            <span className="text-[11px] text-slate-400">
+              Direct WhatsApp &amp; Daily Alerts Hub is a live healer service and is excluded from Report PDF.
+            </span>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleOpenPrintPreview}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print / Download PDF ({totalPageCount} Pages)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDirectWhatsAppReport}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span>WhatsApp PDF Report</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const reportToolbarContextValue: ReportToolbarContextValue = {
+    healerDisplayName,
+    brandTitle,
+    healerDisplayMobile,
+    totalPageCount,
+    selectedCount,
+    totalModulesCount: MODULE_OPTIONS.length,
+    showExportOptionsPanel,
+    toggleExportOptionsPanel: () => setShowExportOptionsPanel((prev) => !prev),
+    openPrintPreview: handleOpenPrintPreview,
+    sendWhatsAppPdfReport: handleDirectWhatsAppReport,
+    renderQuickCheckboxesPanel,
+  };
+
   return (
+    <ReportToolbarContext.Provider value={reportToolbarContextValue}>
     <div className="w-full space-y-4">
       {latestBroadcast && latestBroadcast.category !== 'update' && (
         <div className="rounded-2xl bg-gradient-to-r from-amber-950/90 via-indigo-950/90 to-slate-900 border border-amber-400/50 px-3 sm:px-4 py-2.5 flex items-start sm:items-center justify-between gap-2.5 text-xs text-amber-100 no-print">
@@ -5536,352 +5756,6 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         </div>
       )}
 
-      {activeProfile && (
-        <div className="rounded-2xl border border-amber-500/40 bg-slate-900/95 p-3.5 sm:p-4 shadow-xl space-y-3 no-print">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                onClick={clearActiveProfile}
-                className="px-3.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all"
-              >
-                <ArrowLeft className="w-4 h-4 text-amber-400" />
-                <span>Saved Profiles</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  clearActiveProfile();
-                  onOpenAdminPortal?.();
-                }}
-                className="px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 text-emerald-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all"
-                title="Create a New Profile"
-              >
-                <span>+ New Profile</span>
-              </button>
-
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-serif text-base sm:text-lg font-black text-amber-100">
-                    {activeProfile.name}
-                  </span>
-                  <span className="text-xs font-mono text-amber-300">
-                    · DOB: {activeProfile.dob}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-200 font-bold text-[10px]">
-                    Healer: {healerDisplayName}
-                  </span>
-                </div>
-                <p className="text-[11px] text-emerald-300/90 font-mono">
-                  Healer: <strong>{healerDisplayName}</strong> ({brandTitle} • {healerDisplayMobile}) · Detailed A4 Dossier ({totalPageCount} Pages)
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full lg:w-auto">
-              <button
-                type="button"
-                onClick={() => setIsSettingsDrawerOpen(true)}
-                className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/45 text-amber-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
-                <span>Modules &amp; Watermark ({selectedCount}/{MODULE_OPTIONS.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowExportOptionsPanel((prev) => !prev)}
-                className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all ${
-                  showExportOptionsPanel
-                    ? 'bg-amber-500/25 border-amber-400 text-amber-100'
-                    : 'bg-slate-950 border-amber-500/40 text-amber-300 hover:bg-slate-800'
-                }`}
-              >
-                <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
-                <span>Quick Checkboxes</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleOpenPrintPreview}
-                className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
-              >
-                <Eye className="w-3.5 h-3.5" />
-                <span>Print Preview ({totalPageCount} A4 Pages)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDownloadPdfDirectly}
-                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Download PDF</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handlePrintPdfReport}
-                className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Printer className="w-3.5 h-3.5 text-amber-400" />
-                <span>Print PDF</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsQrModalOpen(true)}
-                className="px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/60 text-amber-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Download via QR Code or Direct Link"
-              >
-                <QrCode className="w-3.5 h-3.5 text-amber-400" />
-                <span>QR & Link Download</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCopyDirectDownloadLink}
-                className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-sky-500/45 text-sky-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Copy Direct Report PDF Download Link"
-              >
-                <Share2 className="w-3.5 h-3.5 text-sky-400" />
-                <span>Copy Download Link</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleWhatsAppReportLinkOnly}
-                className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-400/50 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
-                title="Send Direct Report Download Link on WhatsApp"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-                <span>WhatsApp Link</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDirectWhatsAppReport}
-                className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-                <span>WhatsApp Full Summary</span>
-              </button>
-
-              {(currentAccount.role === 'healer' || currentAccount.role === 'admin') && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!canCurrentAccountDownloadOrShare()) {
-                        triggerAdminRestrictionPopup('WhatsApp Event Muhurat');
-                        return;
-                      }
-                      sendWhatsAppSpecificEventAlert(activeProfile, currentAccount);
-                    }}
-                    className="px-2.5 py-2 rounded-xl bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-200 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
-                    title="1-Click WhatsApp Upcoming Vedic Event Muhurat to Client"
-                  >
-                    <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>WA Event</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!canCurrentAccountDownloadOrShare()) {
-                        triggerAdminRestrictionPopup('WhatsApp Auspicious Time');
-                        return;
-                      }
-                      sendWhatsAppAuspiciousTimeUpdate(activeProfile, currentAccount);
-                    }}
-                    className="px-2.5 py-2 rounded-xl bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-200 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
-                    title="1-Click WhatsApp Live Auspicious Time & Rahu Kaal Alert to Client"
-                  >
-                    <Clock className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>WA Good Time</span>
-                  </button>
-                </>
-              )}
-
-              <button
-                type="button"
-                onClick={() => handleEditOrDeleteAttempt('Edit Profile')}
-                className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow"
-                title="Edit & Save Report + Bride / Partner Details"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Edit &amp; Save Report</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleEditOrDeleteAttempt('Delete Profile')}
-                className="px-2.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 border border-rose-500/40 text-rose-300 font-semibold text-xs flex items-center gap-1 transition-all cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="pt-2.5 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] font-bold text-amber-300 mr-1">
-                Active Report Modules ({totalPageCount} Pages):
-              </span>
-              {MODULE_OPTIONS.map((item) => {
-                const active = selectedSections[item.key];
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => toggleSectionCheckbox(item.key)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all flex items-center gap-1 cursor-pointer ${
-                      active
-                        ? 'bg-amber-500/20 border-amber-400 text-amber-100'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-amber-200'
-                    }`}
-                  >
-                    {active ? (
-                      <CheckSquare className="w-3 h-3 text-amber-400" />
-                    ) : (
-                      <Square className="w-3 h-3 text-slate-500" />
-                    )}
-                    <span>
-                      {item.shortLabel} ({item.pageCount}p)
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <button
-              type="button"
-              onClick={handleOpenPrintPreview}
-              className="text-amber-300 hover:text-amber-200 font-bold text-[11px] flex items-center gap-1 underline cursor-pointer"
-            >
-              <Eye className="w-3.5 h-3.5" />
-              <span>Open A4 Portrait Print Preview ({totalPageCount} Pages)</span>
-            </button>
-          </div>
-
-          {showExportOptionsPanel && (
-            <div className="p-4 rounded-2xl bg-slate-950 border border-amber-400/50 space-y-3 animate-fade-in">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/20 pb-2.5">
-                <div>
-                  <h4 className="font-serif text-sm font-bold text-amber-100 flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-amber-400" />
-                    <span>
-                      Select Modules for Dynamic A4 Portrait PDF / Print / Share / WhatsApp ({reportDateRange.startFormatted} – {reportDateRange.endFormatted})
-                    </span>
-                  </h4>
-                  <p className="text-[11px] text-amber-300/75">
-                    PDF page count automatically adjusts to your selected active modules. Every page includes section artwork, centered watermark, and Healer Details.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSelectAllModules}
-                    className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-500/40 text-[11px] font-bold cursor-pointer"
-                  >
-                    Select All Modules
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSelectCoreFour}
-                    className="px-2.5 py-1 rounded-lg bg-slate-900 text-amber-300 border border-amber-500/30 text-[11px] font-bold cursor-pointer"
-                  >
-                    Core Modules
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowExportOptionsPanel(false)}
-                    className="p-1 text-slate-400 hover:text-white cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                {MODULE_OPTIONS.map((item) => {
-                  const checked = selectedSections[item.key];
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => toggleSectionCheckbox(item.key)}
-                      className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 cursor-pointer ${
-                        checked
-                          ? 'bg-amber-500/15 border-amber-400 text-amber-100'
-                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-amber-500/30'
-                      }`}
-                    >
-                      {checked ? (
-                        <CheckSquare className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                      ) : (
-                        <Square className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-                      )}
-                      <div>
-                        <div className="text-xs font-bold">{item.label}</div>
-                        <div className="text-[10px] opacity-80 mt-0.5">{item.sub}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-amber-500/20">
-                <button
-                  type="button"
-                  onClick={() => setIncludeActiveTabInPrint((prev) => !prev)}
-                  className="flex items-center gap-2 text-xs text-amber-200 cursor-pointer"
-                >
-                  {includeActiveTabInPrint ? (
-                    <CheckSquare className="w-4 h-4 text-emerald-400" />
-                  ) : (
-                    <Square className="w-4 h-4 text-slate-500" />
-                  )}
-                  <span>Also append currently open screen tab ({sectionTitle}) as an extra A4 page</span>
-                </button>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleOpenPrintPreview}
-                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Open A4 Print Preview ({totalPageCount} Pages)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleDownloadPdfDirectly}
-                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download PDF</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleDirectWhatsAppReport}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5" />
-                    <span>Send Selected on WhatsApp</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {shareToast && (
         <div className="p-3 rounded-xl bg-emerald-950 border border-emerald-500/50 text-emerald-200 text-xs font-semibold flex items-center gap-2 no-print">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -5893,205 +5767,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         <div className="fixed right-4 bottom-6 z-40 flex flex-col gap-2 no-print">
           <button
             type="button"
-            onClick={() => setIsSettingsDrawerOpen(true)}
-            className="px-4 py-3 rounded-2xl bg-slate-900/95 hover:bg-slate-800 border-2 border-amber-400 text-amber-100 font-bold text-xs shadow-2xl flex items-center gap-2 cursor-pointer transition-all"
-          >
-            <SlidersHorizontal className="w-4 h-4 text-amber-400" />
-            <span>Modules &amp; Watermark ({selectedCount}/{MODULE_OPTIONS.length})</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleDownloadPdfDirectly}
+            onClick={handleOpenPrintPreview}
             className="px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-2xl flex items-center justify-center gap-2 cursor-pointer transition-all"
           >
-            <Download className="w-4 h-4" />
-            <span>Download PDF</span>
+            <Printer className="w-4 h-4" />
+            <span>Print / Download PDF</span>
           </button>
-        </div>
-      )}
-
-      {activeProfile && isSettingsDrawerOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex justify-end animate-fade-in no-print">
-          <div className="w-full max-w-md bg-slate-950 border-l-2 border-amber-400/60 h-full flex flex-col justify-between p-6 overflow-y-auto shadow-2xl">
-            <div className="space-y-5">
-              <div className="flex items-start justify-between gap-3 border-b border-amber-500/25 pb-4">
-                <div>
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 block">
-                    Persistent Export, Watermark &amp; Print Setup
-                  </span>
-                  <h3 className="font-serif text-xl font-black text-amber-100 mt-0.5">
-                    Dynamic A4 Report &amp; Watermark Settings
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Configure which modules, centered brand watermark, and Healer social media handles appear on every A4 page for <strong className="text-amber-200">{activeProfile.name}</strong>.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsSettingsDrawerOpen(false)}
-                  className="p-2 rounded-xl bg-slate-900 text-slate-400 hover:text-amber-200 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-900 border border-amber-500/35 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <img
-                      src={brandLogo}
-                      alt={brandTitle}
-                      referrerPolicy="no-referrer"
-                      className="w-10 h-10 rounded-full object-cover border border-amber-400"
-                    />
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">
-                        {isHealerReport
-                          ? 'Healer Center Watermark & Logo'
-                          : 'TATHASTU Center Brand Watermark'}
-                      </span>
-                      <strong className="text-xs text-amber-100 block">{brandTitle}</strong>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setWatermarkSettings((prev) => ({ ...prev, enabled: !prev.enabled }))
-                    }
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
-                      watermarkSettings.enabled
-                        ? 'bg-emerald-950 border-emerald-400 text-emerald-300'
-                        : 'bg-slate-950 border-slate-700 text-slate-400'
-                    }`}
-                  >
-                    {watermarkSettings.enabled ? 'Watermark ON' : 'Watermark OFF'}
-                  </button>
-                </div>
-
-                {watermarkSettings.enabled && (
-                  <div className="space-y-3 pt-2 border-t border-amber-500/20 text-xs">
-                    <div>
-                      <div className="flex items-center justify-between text-[11px] text-amber-200 mb-1">
-                        <span>Center Watermark Opacity</span>
-                        <span className="font-mono font-bold">{watermarkSettings.opacityPercent}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={4}
-                        max={22}
-                        value={watermarkSettings.opacityPercent}
-                        onChange={(e) =>
-                          setWatermarkSettings((prev) => ({
-                            ...prev,
-                            opacityPercent: Number(e.target.value),
-                          }))
-                        }
-                        className="w-full accent-amber-400 cursor-pointer"
-                      />
-                    </div>
-
-                    {currentAccount.role === 'healer' && (
-                      <div className="pt-2 border-t border-emerald-500/25 flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-emerald-300 font-semibold">
-                          Update Healer Logo & Watermark:
-                        </span>
-                        <label className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1.5 cursor-pointer">
-                          <Upload className="w-3 h-3" />
-                          <span>Upload Logo</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              const reader = new FileReader();
-                              reader.onload = () => {
-                                if (typeof reader.result === 'string') {
-                                  adminUpdateAccount({
-                                    ...currentAccount,
-                                    healerLogoUrl: reader.result,
-                                  });
-                                }
-                              };
-                              reader.readAsDataURL(file);
-                            }}
-                          />
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                {MODULE_OPTIONS.map((item) => {
-                  const checked = selectedSections[item.key];
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => toggleSectionCheckbox(item.key)}
-                      className={`w-full p-3 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
-                        checked
-                          ? 'bg-amber-500/15 border-amber-400 text-amber-100'
-                          : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:border-amber-500/30'
-                      }`}
-                    >
-                      {checked ? (
-                        <CheckSquare className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                      ) : (
-                        <Square className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-                      )}
-                      <div>
-                        <div className="text-xs font-bold">{item.label}</div>
-                        <div className="text-[11px] opacity-80 mt-0.5">{item.sub}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-amber-500/25 space-y-2.5 mt-6">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSettingsDrawerOpen(false);
-                  handleOpenPrintPreview();
-                }}
-                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg cursor-pointer"
-              >
-                <Eye className="w-4 h-4" />
-                <span>Open A4 Print Preview ({totalPageCount} Pages)</span>
-              </button>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSettingsDrawerOpen(false);
-                    handleDownloadPdfDirectly();
-                  }}
-                  className="py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download PDF</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSettingsDrawerOpen(false);
-                    handlePrintPdfReport();
-                  }}
-                  className="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Print PDF</span>
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -6182,7 +5863,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 sm:p-6 flex justify-center bg-slate-950/95">
+          <div className="report-a4-preview-viewport flex-1 overflow-y-auto p-3 sm:p-6 flex justify-center bg-slate-950/95">
             <div
               className={`origin-top transition-transform duration-200 ${
                 isWindowsFullPage && windowsSpreadView
@@ -6199,14 +5880,14 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
 
       <div className="w-full">
         <div
-          className={`no-print relative border-2 border-amber-500/35 bg-gradient-to-b from-slate-900/95 via-slate-950/98 to-slate-900/95 shadow-2xl overflow-hidden ${
+          className={`no-print relative border-2 border-amber-500/35 bg-gradient-to-b from-slate-900/95 via-slate-950/98 to-slate-900/95 shadow-2xl overflow-x-clip ${
             isWindowsFullPage ? 'rounded-2xl' : isMobileAppMode ? 'rounded-2xl' : 'rounded-3xl'
           }`}
         >
           {activeProfile && renderCenteredBrandWatermark()}
 
           <div
-            className={`relative z-10 ${
+            className={`report-snap-flow relative z-10 ${
               isWindowsFullPage ? 'p-5 lg:p-8 xl:p-10' : isMobileAppMode ? 'p-3 sm:p-5' : 'p-4 sm:p-6 lg:p-8'
             }`}
           >
@@ -6309,100 +5990,8 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         </div>
       )}
 
-      {/* Dynamic QR Code Modal for Instant Mobile PDF Report Access */}
-      {activeProfile && isQrModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/88 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in no-print">
-          <div className="w-full max-w-md rounded-3xl bg-slate-900 border-2 border-amber-400/60 p-6 shadow-2xl space-y-4 text-center">
-            <div className="flex items-center justify-between border-b border-amber-500/25 pb-3">
-              <div className="flex items-center gap-2 text-left">
-                <QrCode className="w-5 h-5 text-amber-400" />
-                <div>
-                  <h3 className="font-serif text-base font-black text-amber-100">
-                    Dynamic Report QR Code — {activeProfile.name}
-                  </h3>
-                  <p className="text-[10px] text-emerald-300 font-mono">
-                    Embedded on Every Printed A4 Page &amp; Dynamic PDF
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsQrModalOpen(false)}
-                className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {reportQrDataUrl && (
-              <div className="p-4 rounded-2xl bg-amber-100 border-2 border-amber-400 inline-block mx-auto shadow-xl">
-                <img
-                  src={reportQrDataUrl}
-                  alt={`QR Code for ${activeProfile.name}`}
-                  className="w-48 h-48 object-contain mx-auto"
-                />
-                <span className="block text-[10px] font-mono font-black text-slate-950 mt-1.5">
-                  SCAN FOR MOBILE PDF REPORT
-                </span>
-              </div>
-            )}
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Scanning this QR code from a printed version of the report immediately opens{' '}
-              <strong className="text-amber-200">{activeProfile.name}</strong>'s mobile report view with 1-click access to download the personalized PDF report.
-            </p>
-
-            <div className="p-2.5 rounded-xl bg-slate-950 border border-amber-500/30 font-mono text-[10px] text-sky-300 break-all text-left">
-              {reportDirectDownloadLink}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsQrModalOpen(false);
-                  void handleDownloadPdfDirectly();
-                }}
-                className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download PDF</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  void handleWhatsAppReportLinkOnly();
-                }}
-                className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <MessageCircle className="w-4 h-4" />
-                <span>WhatsApp Download Link</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCopyDirectDownloadLink}
-                className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Share2 className="w-3.5 h-3.5 text-amber-400" />
-                <span>Copy Download Link</span>
-              </button>
-
-              {reportQrDataUrl && (
-                <a
-                  href={reportQrDataUrl}
-                  download={`Tathastu_Report_QR_${activeProfile.name.replace(/\s+/g, '_')}.png`}
-                  className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-emerald-500/40 text-emerald-200 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <QrCode className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Download QR Image</span>
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* QR Modal removed — PDF is shared directly via WhatsApp */}
     </div>
+    </ReportToolbarContext.Provider>
   );
 };

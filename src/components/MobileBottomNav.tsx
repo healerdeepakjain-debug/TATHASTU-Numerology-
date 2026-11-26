@@ -121,12 +121,11 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       ],
     },
     {
-      title: 'Remedies, Healing & AI Oracle',
+      title: 'Remedies & Spiritual Healing',
       items: [
         { id: 'mantras', label: t('tab_mantras'), icon: Volume2, requiresProfile: true },
         { id: 'yoga-pranayama', label: t('tab_yoga', 'Yoga & Pranayama'), icon: HeartPulse, requiresProfile: true },
         { id: 'islamic-remedies', label: t('tab_islamic', 'Islamic-Vedic Remedies'), icon: BookOpen, requiresProfile: true },
-        { id: 'ai-consultant', label: t('tab_ai'), icon: Bot, requiresProfile: true },
       ],
     },
   ];

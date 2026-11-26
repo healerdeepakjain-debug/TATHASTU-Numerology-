@@ -50,6 +50,7 @@ import {
   calculateNameAndPersonalGrowthRatnaRecommendation,
   calculatePartnerMilanRatnaRecommendations,
 } from '../components/GemstoneRecommendation';
+import { buildPartnerMilanHarmonyInsights } from '../components/PartnerCompatibility';
 import { LO_SHU_VEDIC_REMEDIES_DB } from '../components/InteractiveLoShuGrid';
 import { SANSKRit_BEEJ_DEVANAGARI } from '../components/DailyMantras';
 import { calculateYogaPranayamaPlan, YogaPosturePrescription } from './yogaPranayamaData';
@@ -1182,6 +1183,7 @@ function build18PageMasterDossier(
   );
   const brideMulankPlanet = PLANETARY_PROFILES[partnerMilan.p2Mulank] || PLANETARY_PROFILES[2];
   const brideBhagyankPlanet = PLANETARY_PROFILES[partnerMilan.p2Bhagyank] || PLANETARY_PROFILES[6];
+  const clientBodyWeightKg = activeProfile.bodyWeightKg || 65;
   const gemRecommend = calculateGemstoneRecommendationsForProfile(
     {
       id: activeProfile.id,
@@ -1193,8 +1195,9 @@ function build18PageMasterDossier(
       lng: activeProfile.lng ?? 77.209,
       mobile: activeProfile.mobile,
       gender: activeProfile.gender,
+      bodyWeightKg: clientBodyWeightKg,
     },
-    68
+    clientBodyWeightKg
   );
   const nameAndGrowthRatna = calculateNameAndPersonalGrowthRatnaRecommendation(
     {
@@ -1207,9 +1210,15 @@ function build18PageMasterDossier(
       lng: activeProfile.lng ?? 77.209,
       mobile: activeProfile.mobile,
       gender: activeProfile.gender,
+      bodyWeightKg: clientBodyWeightKg,
     },
     activeProfile.originalName || activeProfile.name,
-    68
+    clientBodyWeightKg
+  );
+  const partnerInsights = buildPartnerMilanHarmonyInsights(
+    partnerMilan,
+    groomProfile.name,
+    brideProfile.name
   );
   const partnerRatnaRec = calculatePartnerMilanRatnaRecommendations(
     groomProfile,
@@ -2605,13 +2614,22 @@ function build18PageMasterDossier(
           },
         },
         {
-          heading: `3. MARITAL NAME VIBRATION HARMONIZER (${groomProfile.name.toUpperCase()} & ${brideProfile.name.toUpperCase()})`,
-          gridItems: partnerMilan.perfectNameSuggestions.map((item) => ({
-            title: `${item.partnerLabel}: ${item.suggestedPerfectName}`,
-            subtitle: `Natal Spelling: ${item.currentName} -> Compound ${item.compound} (Root ${item.root} • ${item.title})`,
-            body: item.maritalBenefit,
-            highlight: `Harmonic Resonance Target: Compound ${item.compound} -> Root ${item.root}`,
-          })),
+          heading: `3. 9-CHAKRA HARMONY OVERALL SCORE (${partnerInsights.overallNineChakraScore}%) & MARITAL NAME VIBRATION HARMONIZER`,
+          subheading: `${partnerInsights.chakrasNeedingRemediesCount} / 9 Chakras Need Remedies${partnerInsights.chakrasNeedingRemediesNames.length > 0 ? ` (${partnerInsights.chakrasNeedingRemediesNames.join(', ')})` : ' (All 9 Chakras Balanced)'}`,
+          gridItems: [
+            {
+              title: `9-Chakra Harmony Overall Score: ${partnerInsights.overallNineChakraScore}%`,
+              subtitle: `${partnerInsights.chakrasNeedingRemediesCount} / 9 Chakras Need Remedies • ${partnerInsights.harmoniousChakrasCount} / 9 Naturally Harmonious`,
+              body: `Key Partner Strengths: ${partnerInsights.keyStrengths.slice(0, 2).join(' ')}`,
+              highlight: `Key Karmic Frictions & Focus Areas: ${partnerInsights.keyFrictions.slice(0, 2).join(' ')}`,
+            },
+            ...partnerMilan.perfectNameSuggestions.map((item) => ({
+              title: `${item.partnerLabel}: ${item.suggestedPerfectName}`,
+              subtitle: `Natal Spelling: ${item.currentName} -> Compound ${item.compound} (Root ${item.root} • ${item.title})`,
+              body: item.maritalBenefit,
+              highlight: `Harmonic Resonance Target: Compound ${item.compound} -> Root ${item.root}`,
+            })),
+          ],
         },
       ],
     },
@@ -2745,6 +2763,10 @@ function build18PageMasterDossier(
             },
           ],
           bullets: [
+            `9-Chakra Overall Harmony Score: ${partnerInsights.overallNineChakraScore}% (${partnerInsights.chakrasNeedingRemediesCount} / 9 Chakras Need Remedies: ${partnerInsights.chakrasNeedingRemediesNames.join(', ') || 'All Balanced'}).`,
+            `Key Partner Strengths: ${partnerInsights.keyStrengths.join(' | ')}`,
+            `Key Karmic Frictions & Focus Areas: ${partnerInsights.keyFrictions.join(' | ')}`,
+            `Sacred Rudraksha Remedies — Couple Unity: ${partnerInsights.rudrakshaRemedies.coupleUnityRudraksha} | Groom: ${partnerInsights.rudrakshaRemedies.groomRudraksha} | Bride: ${partnerInsights.rudrakshaRemedies.brideRudraksha} | Method & Mantra: ${partnerInsights.rudrakshaRemedies.wearingMethod} (${partnerInsights.rudrakshaRemedies.rudrakshaMantra})`,
             `Joint Couple Relationship Harmony & Bedroom Crystal Synergy: ${partnerRatnaRec.jointHarmonyStoneSummary}`,
             ...clientOrAdminRemedyBullets,
           ],

@@ -685,11 +685,14 @@ app.post('/api/gemini/report-summary', async (req, res) => {
       LANGUAGE_INSTRUCTION_MAP[language] || LANGUAGE_INSTRUCTION_MAP.en;
 
     const cacheKey = [
+      'v3-partner-chakras',
       profileSummary.name || '',
       profileSummary.dob || '',
       profileSummary.tob || '',
       profileSummary.pob || '',
       profileSummary.mobile || '',
+      profileSummary.partnerMilanChakraSummary || '',
+      profileSummary.parivarMilanChakraSummary || '',
       profileSummary.healerName || '',
       language,
     ].join('||');
@@ -714,6 +717,40 @@ app.post('/api/gemini/report-summary', async (req, res) => {
       });
     }
 
+    const planetByDigit: Record<number, string> = {
+      1: 'Sun / Surya',
+      2: 'Moon / Chandra',
+      3: 'Jupiter / Guru',
+      4: 'Rahu',
+      5: 'Mercury / Budha',
+      6: 'Venus / Shukra',
+      7: 'Ketu',
+      8: 'Saturn / Shani Dev',
+      9: 'Mars / Mangal',
+    };
+    const formattedMissingLoShu = (Array.isArray(profileSummary.missingLoShuNumbers)
+      ? profileSummary.missingLoShuNumbers
+      : []
+    )
+      .map((entry: any) => {
+        if (typeof entry === 'string') {
+          const t = entry.trim();
+          return t && t !== '[object Object]' ? t : '';
+        }
+        if (typeof entry === 'number') {
+          return planetByDigit[entry] ? `${entry} (${planetByDigit[entry]})` : String(entry);
+        }
+        if (entry && typeof entry === 'object' && entry.number != null) {
+          const num = Number(entry.number);
+          const pName =
+            planetByDigit[num] || String(entry.planet || '').replace(/\s*\([^)]*\)/g, '').trim() || 'Planet';
+          return `${num} (${pName})`;
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join(', ');
+
     const systemInstruction = `You are a deeply compassionate, senior Vedic Astrologer (following Maharishi Parashara's Brihat Parashara Hora Shastra) and Vedic-Chaldean Numerologist representing TATHASTU NUMEROLOGY — TATHASTU THE DIVINE LIGHT.
 
 CRITICAL LANGUAGE & STYLE RULES:
@@ -722,7 +759,7 @@ CRITICAL LANGUAGE & STYLE RULES:
 3. Write EVERY field in smooth, flowing PARAGRAPH FORMAT ONLY. Do NOT use markdown bullets, asterisks (**), hashtags (#), or numbered lists inside paragraphs.
 4. Keep each paragraph concise and well-proportioned (about 65 to 90 words per paragraph) so the entire summary + 10-year forecast + Tathastu Family thank you & spiritual blessings fits neatly across 1 to 2 A4 pages (minimum 1 page, maximum 2 pages).
 5. Ground every prediction genuinely in BOTH:
-   - Vedic Astrology + Numerology (Mulank, Bhagyank, Chaldean Name Compound, Mobile Root, Lo-Shu missing numbers, Janma Rashi & Nakshatra)
+   - Vedic Astrology + Numerology (Mulank, Bhagyank, Chaldean Name Compound, Mobile Root, Lo-Shu missing numbers along with their ruling planet names, Janma Rashi & Nakshatra)
    - Parashar Astrology + Parashari Numerology (Brihat Parashara Hora Shastra Vimshottari Mahadasha timeline & 10-Year Personal Year progression).
 6. For "withoutRemedies10YearParagraphs": Be honest, practical, and compassionate (never frightening or fatalistic) about delays, financial leaks, repeated obstacles, stress, or missed opportunities over the next 10 years if chart imbalances stay uncorrected.
 7. For "withRemedies10YearParagraphs": Paint a clear, inspiring, realistic 10-year elevation journey (Years 1–3 stabilization, Years 4–7 growth & prosperity, Years 8–10 lasting stability, respect, health & inner peace) when the client follows the report's simple remedies.
@@ -737,9 +774,11 @@ CRITICAL LANGUAGE & STYLE RULES:
 - Mobile Vibration: Root #${profileSummary.mobileRoot} (${profileSummary.mobileVerdict})
 - Vedic Moon Rashi & Lord: ${profileSummary.rashi} (Lord: ${profileSummary.rashiLord}) | Sun Sign: ${profileSummary.sunSign}
 - Birth Nakshatra: ${profileSummary.nakshatra} (Lord: ${profileSummary.nakshatraLord})
-- Missing Lo-Shu Numbers: ${(profileSummary.missingLoShuNumbers || []).join(', ') || 'None'}
+- Missing Lo-Shu Numbers & Planets: ${formattedMissingLoShu || 'None (Balanced Lo-Shu Grid)'}
 - Best Career & Growth Fields: ${(profileSummary.careerDomains || []).join(', ')}
 - Primary Remedies in Report: Life Stone ${profileSummary.lifeStone}, Destiny Stone ${profileSummary.destinyStone}, Beej Mantra "${profileSummary.beejMantra}" (Deity: ${profileSummary.deity}), Lucky Days: ${profileSummary.luckyDays}, Lucky Color: ${profileSummary.luckyColor}, Friendly Numbers: ${profileSummary.friendlyNumbers}
+${profileSummary.partnerMilanChakraSummary ? `- Partner Milan 9-Chakra Diagnostics: ${profileSummary.partnerMilanChakraSummary} (MUST mention clearly how many chakras out of 9 need remedies in the executive summary and remedy roadmap)` : ''}
+${profileSummary.parivarMilanChakraSummary ? `- Parivar Milan 9-Chakra Diagnostics: ${profileSummary.parivarMilanChakraSummary}` : ''}
 - Next 10 Years Window: ${profileSummary.startYear} to ${profileSummary.endYear}
 - Parashar Vimshottari Mahadasha (Next 10 Years): ${profileSummary.next10YearDashaSummary} (Current: ${profileSummary.currentMahadasha})
 - Numerology Peak Breakthrough Years: ${(profileSummary.peakYears || []).join(', ')}

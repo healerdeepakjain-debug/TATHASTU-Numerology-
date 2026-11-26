@@ -143,7 +143,7 @@ export const NameCorrector: React.FC<NameCorrectorProps> = ({
   const nameAndGrowthRatna = calculateNameAndPersonalGrowthRatnaRecommendation(
     profile,
     realOriginalName || activeFinalName,
-    68
+    profile.bodyWeightKg || 65
   );
 
   const handleCopy = (name: string) => {

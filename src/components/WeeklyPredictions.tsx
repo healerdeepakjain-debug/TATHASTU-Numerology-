@@ -221,13 +221,13 @@ export const WeeklyPredictions: React.FC<WeeklyPredictionsProps> = ({ profile })
           <div className="space-y-1">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold uppercase tracking-wider">
               <Bell className="w-3 h-3 text-emerald-400" />
-              <span>Automated Daily Push Delivery • Android • iOS • Windows • Desktop • Tablet</span>
+              <span>Automated Daily Push Delivery</span>
             </div>
             <h2 className="font-serif text-lg sm:text-xl font-bold text-amber-100">
-              Cross-Device Daily & Weekly Forecast Push Notification Center
+              Daily & Weekly Forecast Push Notification Center
             </h2>
             <p className="text-xs text-slate-300">
-              Automatically dispatches your personalized Daily Forecast, Lucky Numbers ({todayPanchang.luckyNumbers.join(', ')}), Auspicious Hora ({todayPanchang.currentHora}), and Weekly Peak Reminder every morning to your mobile, tablet, or desktop.
+              Automatically dispatches your personalized Daily Forecast, Lucky Numbers ({todayPanchang.luckyNumbers.join(', ')}), Auspicious Hora ({todayPanchang.currentHora}), and Weekly Peak Reminder every morning.
             </p>
           </div>
 
@@ -269,33 +269,6 @@ export const WeeklyPredictions: React.FC<WeeklyPredictionsProps> = ({ profile })
               <span>Send Today's Forecast Push Now</span>
             </button>
           </div>
-        </div>
-
-        {/* Supported Device Badges */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
-          {[
-            { key: 'android', label: 'Android Mobile', sub: 'Chrome / PWA Push', icon: Smartphone },
-            { key: 'ios', label: 'Apple iOS (iPhone)', sub: 'Safari / Web Push', icon: Smartphone },
-            { key: 'windows', label: 'Windows 10 / 11', sub: 'Native Action Center', icon: Monitor },
-            { key: 'desktop', label: 'macOS / Desktop', sub: 'Notification Center', icon: Monitor },
-            { key: 'tablet', label: 'iPad & Android Tablet', sub: 'Synced Daily Alerts', icon: Tablet },
-          ].map((plat) => {
-            const Icon = plat.icon;
-            return (
-              <div
-                key={plat.key}
-                className="p-2.5 rounded-xl bg-slate-950 border border-amber-500/20 flex items-center gap-2.5"
-              >
-                <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-300 shrink-0">
-                  <Icon className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <span className="font-bold text-amber-100 block truncate text-[11px]">{plat.label}</span>
-                  <span className="text-[10px] text-emerald-400 block truncate">● {plat.sub}</span>
-                </div>
-              </div>
-            );
-          })}
         </div>
 
         {pushStatusToast && (

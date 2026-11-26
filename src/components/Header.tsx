@@ -153,7 +153,6 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'transits', label: t('tab_transits'), icon: Moon },
     { id: 'calendar', label: t('tab_calendar'), icon: Calendar },
     { id: 'islamic-remedies', label: t('tab_islamic', 'Islamic-Vedic Remedies'), icon: BookOpen },
-    { id: 'ai-consultant', label: t('tab_ai'), icon: Bot },
   ];
 
   return (

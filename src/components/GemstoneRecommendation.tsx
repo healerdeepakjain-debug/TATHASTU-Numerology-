@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Gem,
   Sparkles,
@@ -27,6 +27,7 @@ import {
 import {
   calculateVedicAstrologyFromBirth,
 } from '../utils/astrologyAndCities';
+import { useTathastu } from '../utils/tathastuStore';
 
 interface GemstoneRecommendationProps {
   profile: BirthProfile;
@@ -767,14 +768,46 @@ export function calculatePartnerMilanRatnaRecommendations(
 }
 
 export const GemstoneRecommendation: React.FC<GemstoneRecommendationProps> = ({ profile }) => {
-  const [bodyWeightKg, setBodyWeightKg] = useState<number>(68);
+  const { activeProfile, adminUpdateProfile } = useTathastu();
+  const initialWeight = activeProfile?.bodyWeightKg || profile.bodyWeightKg || 65;
+  const [bodyWeightInput, setBodyWeightInput] = useState<string>(String(initialWeight));
   const [copiedMantraKey, setCopiedMantraKey] = useState<string | null>(null);
   const [selectedCardKey, setSelectedCardKey] = useState<'life' | 'destiny' | 'rashi' | 'transit'>('life');
 
+  useEffect(() => {
+    const nextW = activeProfile?.bodyWeightKg || profile.bodyWeightKg || 65;
+    setBodyWeightInput(String(nextW));
+  }, [profile.id]);
+
+  const parsedWeight = Number(bodyWeightInput);
+  const effectiveBodyWeightKg =
+    Number.isFinite(parsedWeight) && parsedWeight >= 10 && parsedWeight <= 250
+      ? parsedWeight
+      : 65;
+
   const gemData = useMemo(
-    () => calculateGemstoneRecommendationsForProfile(profile, bodyWeightKg),
-    [profile, bodyWeightKg]
+    () => calculateGemstoneRecommendationsForProfile(profile, effectiveBodyWeightKg),
+    [profile, effectiveBodyWeightKg]
   );
+
+  const handleWeightChange = (rawVal: string) => {
+    const cleaned = rawVal.replace(/[^\d.]/g, '');
+    setBodyWeightInput(cleaned);
+    const num = Number(cleaned);
+    if (
+      cleaned !== '' &&
+      Number.isFinite(num) &&
+      num >= 10 &&
+      num <= 250 &&
+      activeProfile &&
+      activeProfile.id === profile.id
+    ) {
+      adminUpdateProfile({
+        ...activeProfile,
+        bodyWeightKg: Math.round(num * 10) / 10,
+      });
+    }
+  };
 
   const handleCopyMantra = (key: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -857,14 +890,12 @@ export const GemstoneRecommendation: React.FC<GemstoneRecommendationProps> = ({ 
               </label>
               <div className="flex items-center gap-2 mt-0.5">
                 <input
-                  type="number"
-                  min={30}
-                  max={150}
-                  value={bodyWeightKg}
-                  onChange={(e) =>
-                    setBodyWeightKg(Math.max(30, Math.min(150, Number(e.target.value) || 68)))
-                  }
-                  className="w-16 bg-slate-900 border border-amber-500/40 rounded-lg px-2 py-1 text-xs font-mono font-bold text-amber-100 focus:outline-none focus:border-amber-400"
+                  type="text"
+                  inputMode="decimal"
+                  value={bodyWeightInput}
+                  placeholder="e.g. 65"
+                  onChange={(e) => handleWeightChange(e.target.value)}
+                  className="w-20 bg-slate-900 border border-amber-500/40 rounded-lg px-2 py-1 text-xs font-mono font-bold text-amber-100 focus:outline-none focus:border-amber-400"
                 />
                 <span className="text-xs text-slate-400">kg</span>
               </div>

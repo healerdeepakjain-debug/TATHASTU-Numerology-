@@ -8,7 +8,9 @@ import {
   generateNameCorrections,
   calculateLoShuGrid,
   reduceToSingleDigit,
+  calculateCompatibility,
 } from './numerology';
+import { calculateParivarMilanReport } from './parivarMilan';
 import {
   calculateVedicAstrologyFromBirth,
   calculateCareerAndAuraProfile,
@@ -179,6 +181,28 @@ export function calculateParashar10YearTimeline(
   };
 }
 
+function formatMissingLoShuWithPlanet(
+  item: { number: number; planet?: string } | number | string
+): string {
+  if (typeof item === 'string') {
+    const trimmed = item.trim();
+    if (!trimmed || trimmed === '[object Object]') return '';
+    return trimmed;
+  }
+  const num = typeof item === 'number' ? item : Number(item?.number);
+  if (!Number.isFinite(num) || num < 1 || num > 9) return '';
+  const profile = PLANETARY_PROFILES[num];
+  const rawPlanet = (typeof item === 'object' && item?.planet) || profile?.planet || 'Planet';
+  const sanskrit = profile?.sanskritName || '';
+  const cleanPlanet = rawPlanet.replace(/\s*\([^)]*\)/g, '').trim();
+  const cleanSanskrit = sanskrit.split('/')[0].trim();
+  const planetLabel =
+    cleanSanskrit && cleanSanskrit.toLowerCase() !== cleanPlanet.toLowerCase()
+      ? `${cleanPlanet} / ${cleanSanskrit}`
+      : cleanPlanet;
+  return `${num} (${planetLabel})`;
+}
+
 /**
  * Builds the comprehensive Vedic + Parashar Astrology + Numerology payload for AI synthesis.
  */
@@ -207,8 +231,72 @@ export function buildAiReportSummaryPayload(input: AiReportSummaryRequestInput) 
     b,
     nameAnalysis.chaldeanSingle
   );
-  const gems = calculateGemstoneRecommendationsForProfile(profile);
+  const gems = calculateGemstoneRecommendationsForProfile(profile, profile.bodyWeightKg || 68);
   const parashar = calculateParashar10YearTimeline(profile);
+
+  // Partner Milan 9-Chakra Remedy Count (when Partner Milan is enabled)
+  let partnerMilanChakraSummary = '';
+  let partnerChakrasNeedingRemediesCount: number | null = null;
+  let partnerChakraOverallScore: number | null = null;
+  if (profile.includePartnerMilan) {
+    const isFemale = profile.gender === 'female';
+    const clientBirth = {
+      id: profile.id,
+      name: profile.name || 'Client',
+      dob,
+      tob,
+      pob: profile.pob || 'New Delhi, India',
+      lat,
+      lng,
+    };
+    const partnerBirth = {
+      id: `${profile.id}-partner`,
+      name: (profile.partnerName || '').trim() || (isFemale ? 'Groom' : 'Bride'),
+      dob: profile.partnerDob || '1990-11-24',
+      tob: profile.partnerTob || '11:15',
+      pob: profile.partnerPob || 'Mumbai, Maharashtra, India',
+      lat: profile.partnerLat ?? 19.076,
+      lng: profile.partnerLng ?? 72.8777,
+    };
+    const pCompat = isFemale
+      ? calculateCompatibility(partnerBirth, clientBirth)
+      : calculateCompatibility(clientBirth, partnerBirth);
+    const needRem = pCompat.chakraChallenges.filter(
+      (c) => c.status !== 'Harmonious' || c.alignmentScore < 75
+    );
+    partnerChakrasNeedingRemediesCount = needRem.length;
+    partnerChakraOverallScore = Math.round(
+      pCompat.chakraChallenges.reduce((sum, c) => sum + c.alignmentScore, 0) /
+        Math.max(1, pCompat.chakraChallenges.length)
+    );
+    const needNames = needRem.map((c) => c.chakraName).join(', ');
+    partnerMilanChakraSummary = `Partner Milan (${pCompat.totalPoints}/36 Gunas, 9-Chakra Overall Harmony ${partnerChakraOverallScore}%): ${needRem.length} out of 9 chakras need remedies${needNames ? ` (${needNames})` : ' (all 9 chakras naturally balanced)'}.`;
+  }
+
+  // Parivar Milan 9-Chakra Remedy Summary (when Parivar Milan members exist)
+  let parivarMilanChakraSummary = '';
+  if (profile.includeParivarMilan !== false && Array.isArray(profile.parivarMembers) && profile.parivarMembers.length > 0) {
+    const parivarRep = calculateParivarMilanReport(
+      {
+        name: profile.name || 'Client',
+        dob,
+        tob,
+        pob: profile.pob || 'New Delhi, India',
+        lat,
+        lng,
+      },
+      profile.parivarMembers
+    );
+    const memberNotes = parivarRep.memberResults.slice(0, 4).map((mr) => {
+      const remCount = mr.nineChakraDiagnostics.filter((c) => c.status !== 'Harmonious' || c.alignmentScore < 75).length;
+      return `${mr.member.name} (${mr.member.relation}): ${remCount}/9 chakras need remedies (${mr.overallHarmonyScore}% harmony)`;
+    });
+    parivarMilanChakraSummary = `Parivar Milan Overall Harmony ${parivarRep.averageFamilyHarmony}% — ${memberNotes.join('; ')}.`;
+  }
+
+  const formattedMissingLoShuNumbers = (loShu.missingNumbers || [])
+    .map((item) => formatMissingLoShuWithPlanet(item))
+    .filter(Boolean);
 
   return {
     name: profile.name || 'Seeker',
@@ -232,11 +320,15 @@ export function buildAiReportSummaryPayload(input: AiReportSummaryRequestInput) 
     sunSign: astro.sunSign,
     nakshatra: `${astro.nakshatra} (Pada ${astro.pada})`,
     nakshatraLord: astro.nakshatraLord,
-    missingLoShuNumbers: loShu.missingNumbers,
+    missingLoShuNumbers: formattedMissingLoShuNumbers,
     presentLoShuNumbers: loShu.presentNumbers,
     careerDomains: career.favorableProfessions.slice(0, 5),
-    lifeStone: `${gems.lifeStone.primaryGem} (${gems.lifeStone.sanskritGem})`,
-    destinyStone: `${gems.destinyStone.primaryGem} (${gems.destinyStone.sanskritGem})`,
+    lifeStone: `${gems.lifeStone.primaryGem} (${gems.lifeStone.sanskritGem} • ${gems.idealCaratRange} / ${gems.idealRattiRange})`,
+    destinyStone: `${gems.destinyStone.primaryGem} (${gems.destinyStone.sanskritGem} • ${gems.idealCaratRange} / ${gems.idealRattiRange})`,
+    partnerMilanChakraSummary,
+    partnerChakrasNeedingRemediesCount,
+    partnerChakraOverallScore,
+    parivarMilanChakraSummary,
     beejMantra: bPlanet.beejMantra,
     deity: bPlanet.deity,
     luckyDays: mPlanet.luckyDays.join(', '),
@@ -281,6 +373,8 @@ export function buildClassicalFallbackSummary(
     careerDomains,
     lifeStone,
     destinyStone,
+    partnerMilanChakraSummary,
+    parivarMilanChakraSummary,
     beejMantra,
     deity,
     luckyDays,
@@ -297,9 +391,12 @@ export function buildClassicalFallbackSummary(
     language,
   } = payload;
 
+  const missingFormattedList = (missingLoShuNumbers || [])
+    .map((item) => formatMissingLoShuWithPlanet(item))
+    .filter(Boolean);
   const missingLabel =
-    missingLoShuNumbers.length > 0
-      ? missingLoShuNumbers.join(', ')
+    missingFormattedList.length > 0
+      ? missingFormattedList.join(', ')
       : 'none (naturally balanced Lo-Shu grid)';
   const peakYearsLabel =
     peakYears.length > 0 ? peakYears.join(', ') : `${startYear + 2}, ${startYear + 5}, ${startYear + 8}`;
@@ -307,6 +404,9 @@ export function buildClassicalFallbackSummary(
     cautionYears.length > 0 ? cautionYears.join(', ') : `${startYear + 1}, ${startYear + 4}`;
   const topDomains = careerDomains.slice(0, 3).join(', ');
   const nameNeedsTuning = recommendedName.trim().toLowerCase() !== name.trim().toLowerCase();
+  const chakraRemedySummaryNote = [partnerMilanChakraSummary, parivarMilanChakraSummary]
+    .filter(Boolean)
+    .join(' ');
 
   return {
     source: 'classical-fallback',
@@ -318,7 +418,7 @@ export function buildClassicalFallbackSummary(
     next10YearDashaSummary,
     executiveSummaryParagraphs: [
       `Dear ${name}, this complete spiritual report brings together the timeless wisdom of Vedic Astrology, Maharishi Parashara's Jyotish Shastra, and Vedic-Chaldean Numerology to give you a clear mirror of your life journey. Your birth chart is guided by Mulank ${mulank} (${mulankPlanet}), which shapes your everyday personality and confidence, and Bhagyank ${bhagyank} (${bhagyankPlanet}), which leads your long-term destiny and wealth path. Under Vedic Astrology, your Moon resides in ${rashi} ruled by ${rashiLord} within ${nakshatra} Nakshatra (ruled by ${nakshatraLord}), gifting you natural inner strength, sincere intentions, and strong potential in fields like ${topDomains}.`,
-      `Your current name carries Chaldean Compound #${nameCompound} (Root #${namank}), and your mobile vibration reduces to Root #${mobileRoot} (${mobileVerdict}). While your birth chart carries genuine blessings for respect and steady progress, missing Lo-Shu numbers (${missingLabel}) and planetary timing cycles can sometimes create avoidable delays right when success is close. The good news in this entire report is simple: your destiny has strong upward energy waiting to be unlocked through easy, practical alignment of your name spelling${nameNeedsTuning ? ` (such as "${recommendedName}")` : ''}, daily prayer, supportive colors (${luckyColor}), and balanced planetary remedies.`,
+      `Your current name carries Chaldean Compound #${nameCompound} (Root #${namank}), and your mobile vibration reduces to Root #${mobileRoot} (${mobileVerdict}). While your birth chart carries genuine blessings for respect and steady progress, missing Lo-Shu numbers (${missingLabel}) and planetary timing cycles can sometimes create avoidable delays right when success is close.${chakraRemedySummaryNote ? ` In your 9-Chakra Harmony diagnostics, ${chakraRemedySummaryNote}` : ''} The good news in this entire report is simple: your destiny has strong upward energy waiting to be unlocked through easy, practical alignment of your name spelling${nameNeedsTuning ? ` (such as "${recommendedName}")` : ''}, daily prayer, supportive colors (${luckyColor}), and balanced planetary and chakra remedies.`,
     ],
     parasharVedicFoundationParagraph: `According to Maharishi Parashara's classical Brihat Parashara Hora Shastra (Vimshottari Dasha system) combined with your 10-year Numerology Personal Year cycle from ${startYear} to ${endYear}, you are moving through ${next10YearDashaSummary}. In simple words, a Mahadasha acts like the weather season of your life, while your yearly numerology numbers act like the open windows of opportunity. Your naturally strong breakthrough years in this decade are ${peakYearsLabel}, while ${cautionYearsLabel} are years where patience, calm decision-making, and spiritual protection will save you from unnecessary stress or financial leakage.`,
     withoutRemedies10YearParagraphs: [
@@ -329,7 +429,7 @@ export function buildClassicalFallbackSummary(
       `When you lovingly apply the simple remedies recommended in this report over the next 10 years (${startYear}–${endYear}), your Parashari Dasha energy and Numerology vibrations begin working together like wind behind your sails. In the first 1 to 3 years, daily chanting of your planetary Beej Mantra, using auspicious days (${luckyDays}) and numbers (${friendlyNumbers}), and harmonizing your name${nameNeedsTuning ? ` toward "${recommendedName}"` : ''} and mobile energy gradually clear hidden blocks, calm your mind, and stop unnecessary financial leaks so your confidence and cash flow stabilize.`,
       `Across Years 4 to 7 — especially around your golden growth windows (${peakYearsLabel}) — aligned planetary grace from ${mulankPlanet}, ${bhagyankPlanet}, and ${rashiLord} opens doors to career promotions, trusted business expansion, stronger assets or property stability, and deeper respect in society. By Years 8 to 10 (approaching ${endYear}), consistent faith and planetary balance help you stand in a much higher place of financial security, healthier vitality, peaceful family harmony, and true spiritual fulfillment.`,
     ],
-    simpleRemedyRoadmapParagraph: `You do not need complicated rituals to see real change — start gently from tomorrow morning. First, recite your sacred mantra "${beejMantra}" (27 or 108 times) facing East or North-East while remembering ${deity}, and keep your work desk and home North-East corner clean and bright. Second, start important conversations, signings, and savings on your lucky days (${luckyDays}) using friendly numbers (${friendlyNumbers}) and shades of ${luckyColor}. Third, consider wearing your verified primary Ratna (${lifeStone} or ${destinyStone}) after proper consultation with Healer ${healerName}, and gradually align your signature, name spelling, and mobile vibration with your favorable numbers.`,
+    simpleRemedyRoadmapParagraph: `You do not need complicated rituals to see real change — start gently from tomorrow morning. First, recite your sacred mantra "${beejMantra}" (27 or 108 times) facing East or North-East while remembering ${deity}, and keep your work desk and home North-East corner clean and bright. Second, start important conversations, signings, and savings on your lucky days (${luckyDays}) using friendly numbers (${friendlyNumbers}) and shades of ${luckyColor}. Third, consider wearing your verified primary Ratna (${lifeStone} or ${destinyStone}) after proper consultation with Healer ${healerName}, and gradually align your signature, name spelling, and mobile vibration with your favorable numbers.${chakraRemedySummaryNote ? ` Also prioritize the highlighted chakra remedies (${chakraRemedySummaryNote}) for lasting relationship and family peace.` : ''}`,
     tathastuThankYouParagraph: `From the bottom of our hearts, thank you, dear ${name}, for choosing ${TATHASTU_BRAND_NAME} ("${TATHASTU_TAGLINE}") and becoming a cherished member of the TATHASTU Family. It has been an honor for Healer ${healerName} and the entire ${brandTitle} family to prepare this sacred roadmap for your next decade. Remember that planets show the path, remedies remove the stones, and your own pure karma and devotion create miracles — we are always here beside you whenever you need guidance.`,
     spiritualBlessings: [
       `May the Supreme Divine Light ("Tathastu Divya Jyoti") remove every hidden obstacle from your path and turn every honest effort of ${name} into lasting prosperity and peace.`,
@@ -344,12 +444,17 @@ const CLIENT_SUMMARY_CACHE = new Map<string, AiReportSummaryData>();
 function buildCacheKey(input: AiReportSummaryRequestInput): string {
   const lang = input.language || getCurrentLanguage();
   return [
+    'v3-partner-chakras',
     input.profile.id || '',
     input.profile.name || '',
     input.profile.dob || '',
     input.profile.tob || '',
     input.profile.pob || '',
     input.profile.mobile || '',
+    String(input.profile.bodyWeightKg || ''),
+    String(Boolean(input.profile.includePartnerMilan)),
+    input.profile.partnerDob || '',
+    String((input.profile.parivarMembers || []).length),
     input.healerName || '',
     lang,
   ].join('||');

@@ -16,7 +16,6 @@ import { PartnerCompatibility } from './components/PartnerCompatibility';
 import { ParivarMilan } from './components/ParivarMilan';
 import { IndianFestivalsCalendar } from './components/IndianFestivalsCalendar';
 import { TransitsAndMoon } from './components/TransitsAndMoon';
-import { AiConsultant } from './components/AiConsultant';
 import { ProfileModal } from './components/ProfileModal';
 import { TathastuAuthPortal } from './components/TathastuAuthPortal';
 import { A4SpiritualReportFrame } from './components/A4SpiritualReportFrame';
@@ -62,7 +61,6 @@ const SECTION_TITLES: Record<string, string> = {
   calendar: 'PERSONALIZED COSMIC CALENDAR & 12-MONTH MUHURATS',
   'islamic-remedies': 'ISLAMIC-VEDIC REMEDIES, ILM-UL-ADAD & DAILY DHIKR',
   validator: 'AUSPICIOUS NUMERIC VALIDATOR',
-  'ai-consultant': 'VEDIC AI ORACLE',
 };
 
 function TathastuMainApp() {
@@ -463,6 +461,7 @@ function TathastuMainApp() {
       lng: activeProfile.lng ?? 77.209,
       mobile: activeProfile.mobile,
       gender: activeProfile.gender || 'male',
+      bodyWeightKg: activeProfile.bodyWeightKg,
       includePartnerMilan: Boolean(activeProfile.includePartnerMilan),
       includeParivarMilan: activeProfile.includeParivarMilan !== false,
       healthConcerns: activeProfile.healthConcerns || [],
@@ -508,6 +507,7 @@ function TathastuMainApp() {
         lng: updated.lng ?? activeProfile.lng,
         mobile: updated.mobile || activeProfile.mobile,
         gender: updated.gender || activeProfile.gender,
+        bodyWeightKg: updated.bodyWeightKg ?? activeProfile.bodyWeightKg,
         includePartnerMilan:
           updated.includePartnerMilan !== undefined
             ? updated.includePartnerMilan
@@ -831,10 +831,6 @@ function TathastuMainApp() {
 
             {activeTab === 'islamic-remedies' && (
               <IslamicVedicRemedies profile={profile} />
-            )}
-
-            {activeTab === 'ai-consultant' && (
-              <AiConsultant profile={profile} />
             )}
           </A4SpiritualReportFrame>
         )}

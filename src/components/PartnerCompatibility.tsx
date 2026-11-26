@@ -32,6 +32,117 @@ interface PartnerCompatibilityProps {
   profile: BirthProfile;
 }
 
+export interface PartnerMilanHarmonyInsights {
+  overallNineChakraScore: number;
+  chakrasNeedingRemediesCount: number;
+  chakrasNeedingRemediesNames: string[];
+  harmoniousChakrasCount: number;
+  keyStrengths: string[];
+  keyFrictions: string[];
+  rudrakshaRemedies: {
+    coupleUnityRudraksha: string;
+    groomRudraksha: string;
+    brideRudraksha: string;
+    wearingMethod: string;
+    rudrakshaMantra: string;
+  };
+}
+
+const RUDRAKSHA_BY_MULANK: Record<number, string> = {
+  1: '1-Mukhi or 12-Mukhi (Surya — Authority, Clarity & Warmth)',
+  2: '2-Mukhi (Ardhanareshwar — Emotional Union & Marital Peace)',
+  3: '5-Mukhi (Devguru Brihaspati — Wisdom, Grace & Trust)',
+  4: '8-Mukhi (Lord Ganesha — Dissolving Sudden Obstacles)',
+  5: '4-Mukhi (Lord Brahma / Budha — Clear Communication & Speech)',
+  6: '6-Mukhi or 13-Mukhi (Shukra / Kartikeya — Love, Romance & Luxury)',
+  7: '9-Mukhi (Maa Durga — Intuition & Spiritual Protection)',
+  8: '7-Mukhi (Maa Mahalakshmi — Financial Stability & Patience)',
+  9: '3-Mukhi (Agni / Mangal — Courage & Anger Neutralization)',
+};
+
+export function buildPartnerMilanHarmonyInsights(
+  analysis: CompatibilityAnalysis,
+  groomName: string,
+  brideName: string
+): PartnerMilanHarmonyInsights {
+  const totalChakras = Math.max(1, analysis.chakraChallenges.length);
+  const overallNineChakraScore = Math.round(
+    analysis.chakraChallenges.reduce((sum, ch) => sum + ch.alignmentScore, 0) / totalChakras
+  );
+  const needRemedies = analysis.chakraChallenges.filter(
+    (ch) => ch.status !== 'Harmonious' || ch.alignmentScore < 75
+  );
+  const harmonious = analysis.chakraChallenges.filter(
+    (ch) => ch.status === 'Harmonious' && ch.alignmentScore >= 75
+  );
+
+  const topKootas = [...analysis.dimensions]
+    .sort((a, b) => b.obtainedPoints / Math.max(1, b.maxPoints) - a.obtainedPoints / Math.max(1, a.maxPoints))
+    .slice(0, 3);
+  const weakKootas = [...analysis.dimensions]
+    .sort((a, b) => a.obtainedPoints / Math.max(1, a.maxPoints) - b.obtainedPoints / Math.max(1, b.maxPoints))
+    .slice(0, 3);
+
+  const keyStrengths: string[] = [
+    ...topKootas.map(
+      (k) =>
+        `Strong ${k.name} (${k.sanskritName} • ${k.obtainedPoints}/${k.maxPoints} Gunas): ${k.description} naturally binds ${groomName} & ${brideName}.`
+    ),
+    ...(harmonious.length > 0
+      ? [
+          `${harmonious.length} of 9 Chakras naturally harmonious (${harmonious
+            .slice(0, 3)
+            .map((c) => c.chakraName)
+            .join(', ')}), creating steady emotional & spiritual bonding.`,
+        ]
+      : [
+          `Shared Moon-Rashi & Numerology bridge (${analysis.p1Astrology.rashi} & ${analysis.p2Astrology.rashi}) supports conscious mutual growth.`,
+        ]),
+  ];
+
+  const keyFrictions: string[] = [
+    ...(needRemedies.length > 0
+      ? [
+          `${needRemedies.length} of 9 Chakras require remedial balancing: ${needRemedies
+            .slice(0, 4)
+            .map((c) => `${c.chakraName} (${c.alignmentScore}%)`)
+            .join(', ')}.`,
+        ]
+      : [
+          `All 9 Chakras are well balanced; focus on maintaining gentle communication during planetary transit peaks.`,
+        ]),
+    ...weakKootas
+      .filter((k) => k.obtainedPoints / Math.max(1, k.maxPoints) < 0.75)
+      .slice(0, 2)
+      .map(
+        (k) =>
+          `${k.name} (${k.sanskritName} • ${k.obtainedPoints}/${k.maxPoints} Gunas): Needs conscious empathy & Vedic harmonization for ${k.description.toLowerCase()}.`
+      ),
+  ];
+
+  const coupleUnityRudraksha =
+    needRemedies.length >= 4 || analysis.totalPoints < 22
+      ? 'Gauri-Shankar Rudraksha (Sacred Conjoined Shiva-Parvati Bead for Unbreakable Marital Union)'
+      : '2-Mukhi Ardhanareshwar Rudraksha + Gauri-Shankar Rudraksha (Marital Harmony & Emotional Resonance)';
+
+  return {
+    overallNineChakraScore,
+    chakrasNeedingRemediesCount: needRemedies.length,
+    chakrasNeedingRemediesNames: needRemedies.map((c) => c.chakraName),
+    harmoniousChakrasCount: harmonious.length,
+    keyStrengths,
+    keyFrictions,
+    rudrakshaRemedies: {
+      coupleUnityRudraksha,
+      groomRudraksha: RUDRAKSHA_BY_MULANK[analysis.p1Mulank] || RUDRAKSHA_BY_MULANK[1],
+      brideRudraksha: RUDRAKSHA_BY_MULANK[analysis.p2Mulank] || RUDRAKSHA_BY_MULANK[2],
+      wearingMethod:
+        'Energize on Monday or Friday morning in raw milk & Gangajal, touch to Shiva-Parvati altar, and wear in red silk thread or silver pendant.',
+      rudrakshaMantra: 'Om Namah Shivaya • Om Gauri Shankaraya Namah (108x)',
+    },
+  };
+}
+
 function buildInitialGroomAndBrideForm(prof: BirthProfile) {
   const isFemale = prof.gender === 'female';
   const rawPartnerName = (prof.partnerName || '').trim();
@@ -54,7 +165,7 @@ function buildInitialGroomAndBrideForm(prof: BirthProfile) {
       ? ''
       : prof.partnerPob || '';
 
-  // Keep Groom form blank by default unless explicit Groom details were saved
+  // Auto-fill Bride details when client is Female, and auto-fill Groom details when client is Male
   if (isFemale) {
     return {
       groom: {
@@ -78,10 +189,10 @@ function buildInitialGroomAndBrideForm(prof: BirthProfile) {
 
   return {
     groom: {
-      name: '',
-      dob: '',
+      name: prof.name || '',
+      dob: prof.dob || '',
       tob: prof.tob || '09:30',
-      pob: '',
+      pob: prof.pob || '',
       lat: prof.lat ?? 28.6139,
       lng: prof.lng ?? 77.209,
     },
@@ -154,6 +265,22 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
     if (currentGender === newGender) return;
 
     const partnerData = currentGender === 'female' ? partner1 : partner2;
+    const clientData = {
+      name: activeProfile.name || '',
+      dob: activeProfile.dob || '',
+      tob: activeProfile.tob || '09:30',
+      pob: activeProfile.pob || '',
+      lat: activeProfile.lat ?? 28.6139,
+      lng: activeProfile.lng ?? 77.209,
+    };
+
+    if (newGender === 'female') {
+      setPartner2(clientData);
+      setPartner1(partnerData);
+    } else {
+      setPartner1(clientData);
+      setPartner2(partnerData);
+    }
 
     await adminUpdateProfile({
       ...activeProfile,
@@ -168,8 +295,8 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
 
     setSaveSuccessMessage(
       newGender === 'female'
-        ? `Profile role set to Female (Bride).`
-        : `Profile role set to Male (Groom).`
+        ? `Profile role set to Female (Bride). Bride details auto-filled from client profile.`
+        : `Profile role set to Male (Groom). Groom details auto-filled from client profile.`
     );
     setTimeout(() => setSaveSuccessMessage(null), 4000);
   };
@@ -262,6 +389,11 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
     safePartner2,
     analysis
   );
+  const partnerInsights = buildPartnerMilanHarmonyInsights(
+    analysis,
+    safePartner1.name,
+    safePartner2.name
+  );
 
   return (
     <div className="space-y-6 pb-12 animate-fade-in">
@@ -330,28 +462,47 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <div className="flex flex-col items-stretch sm:items-end gap-2.5 shrink-0">
             {isPartnerMilanActive && (
               <button
                 type="button"
                 onClick={handleSavePartnerMilanToReport}
-                className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
               >
                 <Save className="w-4 h-4" />
                 <span>Save Groom & Bride Details</span>
               </button>
             )}
 
-            <div className="flex items-center gap-4 bg-slate-950/90 px-5 py-3 rounded-2xl border border-amber-500/30 text-center">
-              <div>
-                <span className="text-[10px] text-amber-400 uppercase font-semibold block">Ashtakoot Score</span>
-                <span className="text-2xl font-black font-mono text-amber-200">
-                  {analysis.totalPoints} / 36
-                </span>
-                <span className="text-xs text-emerald-400 font-bold block">
-                  {analysis.overallPercentage}% Resonance
-                </span>
-              </div>
+            <div className="bg-slate-950/90 px-5 py-3 rounded-2xl border border-amber-500/35 text-center min-w-[205px]">
+              <span className="text-[10px] text-amber-400 uppercase font-semibold block">Ashtakoot Score</span>
+              <span className="text-2xl font-black font-mono text-amber-200">
+                {analysis.totalPoints} / 36
+              </span>
+              <span className="text-xs text-emerald-400 font-bold block">
+                {analysis.overallPercentage}% Resonance
+              </span>
+            </div>
+
+            {/* 9-Chakra Harmony Overall Score Box directly below Ashtakoot Score */}
+            <div className="bg-slate-950/90 px-5 py-3 rounded-2xl border border-purple-400/45 text-center min-w-[205px]">
+              <span className="text-[10px] text-purple-300 uppercase font-bold block">
+                9-Chakra Harmony Overall Score
+              </span>
+              <span className="text-2xl font-black font-mono text-amber-100">
+                {partnerInsights.overallNineChakraScore}%
+              </span>
+              <span
+                className={`text-[11px] font-extrabold block mt-0.5 ${
+                  partnerInsights.chakrasNeedingRemediesCount === 0
+                    ? 'text-emerald-300'
+                    : partnerInsights.chakrasNeedingRemediesCount <= 3
+                    ? 'text-amber-300'
+                    : 'text-rose-300'
+                }`}
+              >
+                {partnerInsights.chakrasNeedingRemediesCount} / 9 Chakras Need Remedies
+              </span>
             </div>
           </div>
         </div>
@@ -1173,6 +1324,64 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Key Partner Strengths & Key Karmic Frictions & Focus Areas (Mirroring Parivar Milan) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-2xl bg-emerald-950/30 border border-emerald-500/35 p-4 space-y-2">
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-emerald-300">
+              <Check className="w-4 h-4 text-emerald-400" />
+              <span>Key Partner Strengths ({safePartner1.name} &amp; {safePartner2.name})</span>
+            </div>
+            <ul className="space-y-1.5 text-xs text-slate-200 list-disc list-inside leading-relaxed">
+              {partnerInsights.keyStrengths.map((str, i) => (
+                <li key={i}>{str}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-2xl bg-rose-950/30 border border-rose-500/35 p-4 space-y-2">
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-rose-300">
+              <HeartHandshake className="w-4 h-4 text-rose-400" />
+              <span>Key Karmic Frictions &amp; Focus Areas ({partnerInsights.chakrasNeedingRemediesCount}/9 Chakras Need Remedies)</span>
+            </div>
+            <ul className="space-y-1.5 text-xs text-slate-200 list-disc list-inside leading-relaxed">
+              {partnerInsights.keyFrictions.map((fr, i) => (
+                <li key={i}>{fr}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Sacred Rudraksha Remedies for Partner Harmony */}
+        <div className="p-4 rounded-2xl bg-amber-950/25 border border-amber-500/40 text-xs space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/20 pb-2">
+            <span className="font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+              <Gem className="w-4 h-4 text-amber-400" />
+              <span>Sacred Rudraksha Remedies for Marital &amp; 9-Chakra Harmony</span>
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-200 font-bold text-[10px]">
+              INCLUDED IN REPORT PDF
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-[11px] text-slate-200">
+            <div className="p-2.5 rounded-xl bg-slate-950/85 border border-amber-500/25">
+              <strong className="text-amber-300 block uppercase text-[10px]">Couple Unity Rudraksha</strong>
+              {partnerInsights.rudrakshaRemedies.coupleUnityRudraksha}
+            </div>
+            <div className="p-2.5 rounded-xl bg-slate-950/85 border border-sky-500/25">
+              <strong className="text-sky-300 block uppercase text-[10px]">Groom ({safePartner1.name}) Rudraksha</strong>
+              {partnerInsights.rudrakshaRemedies.groomRudraksha}
+            </div>
+            <div className="p-2.5 rounded-xl bg-slate-950/85 border border-rose-500/25">
+              <strong className="text-rose-300 block uppercase text-[10px]">Bride ({safePartner2.name}) Rudraksha</strong>
+              {partnerInsights.rudrakshaRemedies.brideRudraksha}
+            </div>
+          </div>
+          <div className="text-[11px] text-emerald-200">
+            <strong className="text-emerald-300">Wearing Method &amp; Mantra:</strong>{' '}
+            {partnerInsights.rudrakshaRemedies.wearingMethod} ({partnerInsights.rudrakshaRemedies.rudrakshaMantra})
+          </div>
         </div>
 
         {/* Joint Couple Harmony Stone Note */}

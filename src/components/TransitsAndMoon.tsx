@@ -348,16 +348,19 @@ export const TransitsAndMoon: React.FC<TransitsAndMoonProps> = ({ profile }) => 
 
       {/* Moon Phases (Lunar Celebrations & Tithis with Exact Start & End Timings) */}
       <div className="bg-slate-900/90 border border-amber-500/25 rounded-2xl p-6 shadow-xl space-y-4">
-        <h2 className="font-serif text-lg font-bold text-amber-100 flex items-center gap-2">
-          <Moon className="w-5 h-5 text-amber-400" />
-          <span>Sacred Lunar Phases & Tithi Timings (Start & End IST)</span>
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-serif text-lg font-bold text-amber-100 flex items-center gap-2">
+            <Moon className="w-5 h-5 text-amber-400" />
+            <span>Sacred Lunar Phases &amp; Tithi Timings (Start &amp; End IST)</span>
+          </h2>
+          <span className="md:hidden text-[11px] font-semibold text-amber-300/80 shrink-0">Swipe →</span>
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="report-snap-deck grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
           {UPCOMING_MOON_PHASES.map((moon, idx) => (
             <div
               key={idx}
-              className="p-5 rounded-2xl bg-slate-950 border border-amber-500/20 flex flex-col justify-between space-y-3"
+              className="p-4 rounded-2xl bg-slate-950 border border-amber-500/20 flex flex-col justify-between space-y-3 h-full"
             >
               <div>
                 <div className="flex items-center justify-between mb-2">

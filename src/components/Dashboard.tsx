@@ -17,6 +17,9 @@ import {
   FolderOpen,
   ArrowLeft,
   HeartPulse,
+  CheckSquare,
+  Printer,
+  MessageCircle,
 } from 'lucide-react';
 import { BirthProfile } from '../types';
 import {
@@ -32,6 +35,7 @@ import { useTathastu } from '../utils/tathastuStore';
 import { InteractiveLoShuGrid } from './InteractiveLoShuGrid';
 import { GemstoneRecommendation } from './GemstoneRecommendation';
 import { TransitAlertsWidget } from './TransitAlertsWidget';
+import { useReportToolbar } from './A4SpiritualReportFrame';
 
 interface DashboardProps {
   profile: BirthProfile;
@@ -45,6 +49,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenProfileModal,
 }) => {
   const { clearActiveProfile } = useTathastu();
+  const reportToolbar = useReportToolbar();
 
   const mulank = calculateMulank(profile.dob);
   const bhagyank = calculateBhagyank(profile.dob);
@@ -66,10 +71,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="space-y-6 pb-12 animate-fade-in">
-      {/* Sacred Client Cosmic Status Hero */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-amber-950/30 to-slate-950 border border-amber-500/30 p-6 sm:p-8 shadow-2xl shadow-amber-950/30">
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="space-y-2">
+      {/* Sacred Client Cosmic Status Hero (Namaste Box with Healer Details & Report Actions) */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-amber-950/30 to-slate-950 border border-amber-500/30 p-5 sm:p-7 shadow-2xl shadow-amber-950/30">
+        <div className="relative z-10 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5">
+          <div className="space-y-2.5 flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -85,15 +90,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </button>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold uppercase tracking-wider">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span>Complete Vedic & Chaldean Report: {profile.name}</span>
+                <span>Complete Vedic &amp; Chaldean Report: {profile.name}</span>
               </div>
+              <span className="px-2.5 py-1 rounded-full bg-slate-950/80 border border-amber-500/30 text-amber-300 text-xs font-mono font-bold">
+                DOB: {profile.dob}
+              </span>
             </div>
+
             <h1 className="font-serif text-2xl sm:text-3xl lg:text-4xl font-extrabold text-amber-100 tracking-tight">
               Namaste, <span className="bg-gradient-to-r from-amber-200 via-amber-400 to-amber-500 bg-clip-text text-transparent">{profile.name}</span>
             </h1>
-            <p className="text-sm text-amber-200/70 max-w-2xl">
+
+            <p className="text-sm text-amber-200/75 max-w-2xl">
               Born under the vibration of <strong className="text-amber-200">{mulankData?.planet} ({mulankData?.sanskritName})</strong>, guided by the karmic destiny of <strong className="text-amber-200">{bhagyankData?.planet} ({bhagyankData?.sanskritName})</strong>.
             </p>
+
+            {reportToolbar && (
+              <div className="flex flex-wrap items-center gap-2 pt-0.5 text-[11px] font-mono">
+                <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-400/50 text-amber-200 font-bold">
+                  Healer: {reportToolbar.healerDisplayName}
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-950/70 border border-emerald-500/35 text-emerald-300">
+                  {reportToolbar.brandTitle} • {reportToolbar.healerDisplayMobile} · Detailed A4 Dossier ({reportToolbar.totalPageCount} Pages)
+                </span>
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-amber-300/90 font-mono">
               <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-amber-500/30">
                 Moon Sign: <strong className="text-amber-100">{profile.rashi || 'Kanya (Virgo)'}</strong>
@@ -112,48 +134,53 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={onOpenProfileModal}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Edit & Save Report / Bride Details</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('name-corrector')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-lg shadow-amber-500/25 transition-all cursor-pointer"
-            >
-              <Flame className="w-4 h-4" />
-              <span>Name & Business Guide</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('yoga-pranayama')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
-            >
-              <HeartPulse className="w-4 h-4" />
-              <span>Yoga & Pranayama Planner</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('parivar-milan')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 text-white shadow-lg shadow-indigo-500/25 transition-all cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 text-amber-300" />
-              <span>Parivar Milan (9 Chakras)</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('festivals')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-medium bg-slate-900/90 hover:bg-slate-800 text-amber-200 border border-amber-500/40 transition-all cursor-pointer"
-            >
-              <Sun className="w-4 h-4 text-amber-400" />
-              <span>Indian Festivals & Puja</span>
-            </button>
-          </div>
+          {reportToolbar && (
+            <div className="flex flex-wrap xl:flex-col items-stretch sm:items-center xl:items-stretch gap-2 w-full xl:w-auto xl:min-w-[240px] no-print">
+              <button
+                type="button"
+                onClick={reportToolbar.toggleExportOptionsPanel}
+                className={`px-3.5 py-2.5 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                  reportToolbar.showExportOptionsPanel
+                    ? 'bg-amber-500/25 border-amber-400 text-amber-100'
+                    : 'bg-slate-950/90 border-amber-500/40 text-amber-300 hover:bg-slate-800'
+                }`}
+              >
+                <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
+                <span>Quick Checkboxes ({reportToolbar.selectedCount}/{reportToolbar.totalModulesCount})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={reportToolbar.openPrintPreview}
+                className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer"
+                title="Preview, Print or Download Full A4 PDF Report"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print / Download PDF ({reportToolbar.totalPageCount}p)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={reportToolbar.sendWhatsAppPdfReport}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>WhatsApp PDF Report</span>
+              </button>
+            </div>
+          )}
         </div>
+
+        {reportToolbar?.renderQuickCheckboxesPanel()}
       </div>
 
       {/* Primary Trinity Cards: Mulank, Bhagyank, Namank */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div className="space-y-2">
+        <div className="flex md:hidden items-center justify-between text-[11px] font-semibold text-amber-300/80 px-1">
+          <span>Primary Trinity (Mulank · Bhagyank · Namank)</span>
+          <span>Swipe cards →</span>
+        </div>
+        <div className="report-snap-deck grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Mulank Card */}
         <div className="relative group bg-slate-900/80 hover:bg-slate-900 border border-amber-500/30 hover:border-amber-400/60 rounded-2xl p-5 shadow-lg transition-all">
           <div className="flex items-center justify-between mb-3">
@@ -265,6 +292,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <ArrowRight className="w-3 h-3" />
             </button>
           </div>
+        </div>
         </div>
       </div>
 
@@ -505,21 +533,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </h4>
           <p className="text-xs text-slate-400">
             36-point Guna Milan, 9-Chakra challenges & Bride/Groom remedies.
-          </p>
-        </div>
-
-        <div
-          onClick={() => setActiveTab('ai-consultant')}
-          className="p-5 rounded-2xl bg-slate-900/80 hover:bg-slate-900 border border-amber-500/20 hover:border-amber-400/50 cursor-pointer transition-all group"
-        >
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-3 group-hover:scale-105 transition-transform">
-            <Bot className="w-5 h-5" />
-          </div>
-          <h4 className="font-serif font-bold text-sm text-amber-100 mb-1">
-            Vedic AI Cosmic Oracle
-          </h4>
-          <p className="text-xs text-slate-400">
-            Ask detailed questions regarding signatures, baby names, or remedies.
           </p>
         </div>
       </div>

@@ -19,47 +19,14 @@ export const DEFAULT_PROFILE: BirthProfile = {
   nakshatraPada: defaultAstro.pada,
 };
 
-export const INITIAL_CALENDAR_EVENTS: CalendarEvent[] = [
-  {
-    id: 'evt-1',
-    title: 'Commercial Client Contract Signing',
-    date: new Date().toISOString().split('T')[0],
-    time: '11:15',
-    category: 'contract',
-    notes: 'Signing high-value software partnership agreement.',
-    auspiciousScore: 92,
-    auspiciousTag: 'Highly Auspicious',
-    choghadiya: 'Shubh / Labh (Gainful)',
-    hora: 'Jupiter Hora (Guru)',
-    recommendation: 'Supremely favorable. Sign with green or gold ink facing North-East.',
-  },
-  {
-    id: 'evt-2',
-    title: 'New Vehicle Delivery & Puja',
-    date: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
-    time: '10:00',
-    category: 'property',
-    notes: 'Taking delivery of family vehicle.',
-    auspiciousScore: 88,
-    auspiciousTag: 'Favorable',
-    choghadiya: 'Amrit (Nectar)',
-    hora: 'Venus Hora (Shukra)',
-    recommendation: 'Perform Ganesha and Hanuman Puja before driving out.',
-  },
-  {
-    id: 'evt-3',
-    title: 'Property Investment Discussion',
-    date: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0],
-    time: '14:30',
-    category: 'property',
-    notes: 'Meeting real estate developers.',
-    auspiciousScore: 45,
-    auspiciousTag: 'Caution Advised',
-    choghadiya: 'Rog / Kaal',
-    hora: 'Saturn Hora',
-    recommendation: 'Overlaps with challenging planetary period. Reschedule to morning 10:30 or ensure legal scrutiny on documents.',
-  },
-];
+export const INITIAL_CALENDAR_EVENTS: CalendarEvent[] = [];
+
+const LEGACY_SEED_EVENT_IDS = new Set(['evt-1', 'evt-2', 'evt-3']);
+
+function getEventsStorageKey(profileId?: string): string {
+  const cleanId = (profileId || '').trim();
+  return cleanId ? `vedic_calendar_events_v2_${cleanId}` : 'vedic_calendar_events_v2';
+}
 
 export function getSavedProfile(): BirthProfile {
   try {
@@ -95,19 +62,27 @@ export function saveProfile(profile: BirthProfile): void {
   }
 }
 
-export function getSavedEvents(): CalendarEvent[] {
+export function getSavedEvents(profileId?: string): CalendarEvent[] {
   try {
-    const raw = localStorage.getItem('vedic_calendar_events');
-    if (raw) return JSON.parse(raw);
+    const key = getEventsStorageKey(profileId);
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed: CalendarEvent[] = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((evt) => evt && !LEGACY_SEED_EVENT_IDS.has(evt.id));
+      }
+    }
   } catch (e) {
     console.error(e);
   }
-  return INITIAL_CALENDAR_EVENTS;
+  return [];
 }
 
-export function saveEvents(events: CalendarEvent[]): void {
+export function saveEvents(events: CalendarEvent[], profileId?: string): void {
   try {
-    localStorage.setItem('vedic_calendar_events', JSON.stringify(events));
+    const key = getEventsStorageKey(profileId);
+    const cleaned = (events || []).filter((evt) => evt && !LEGACY_SEED_EVENT_IDS.has(evt.id));
+    localStorage.setItem(key, JSON.stringify(cleaned));
   } catch (e) {
     console.error(e);
   }

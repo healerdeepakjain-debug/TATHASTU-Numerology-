@@ -18,6 +18,7 @@ export interface BirthProfile {
   lat?: number;
   lng?: number;
   gender?: 'male' | 'female' | 'other';
+  bodyWeightKg?: number;
   mobile?: string;
   rashi?: string; // Moon sign (Auto-calculated or custom)
   sunSign?: string; // Vedic Surya Rashi (Auto-calculated)
@@ -202,6 +203,7 @@ export interface ChoghadiyaPeriod {
 
 export interface CalendarEvent {
   id: string;
+  profileId?: string;
   title: string;
   date: string; // YYYY-MM-DD
   time: string; // HH:mm
@@ -211,7 +213,10 @@ export interface CalendarEvent {
   auspiciousTag: 'Highly Auspicious' | 'Favorable' | 'Neutral' | 'Caution Advised' | 'Rahu Kaal Alert';
   choghadiya: string;
   hora: string;
+  rahuKaalLabel?: string;
   recommendation: string;
+  sameDateBestWindows?: { windowLabel: string; start24: string; score: number; choghadiya: string; hora: string }[];
+  precautionsAndRemedies?: string[];
 }
 
 export interface ChakraMaritalChallenge {
