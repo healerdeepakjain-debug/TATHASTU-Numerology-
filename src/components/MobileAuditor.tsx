@@ -1346,12 +1346,17 @@ export const MobileAuditor: React.FC<MobileAuditorProps> = ({
                         {vimPresent?.planet} ({vimPresent?.sanskritName}) Maha Dasha — {vimPresent?.durationLabel}
                       </strong>
                       <span className="text-[11px] font-mono text-emerald-300 block mt-0.5">
-                        Active: {vimPresent?.startDate} to {vimPresent?.endDate}
+                        Active: {vimPresent?.startDate} to {vimPresent?.endDate} • Harmony: {vimPresent?.harmonyPercent}% ({vimPresent?.harmonyVerdict})
                       </span>
                       {vimPresent?.activeAntardasha && (
                         <span className="text-[10px] font-mono text-amber-200 bg-slate-900/90 px-2 py-0.5 rounded border border-amber-500/30 inline-block mt-1">
                           Sub-Period: {vimPresent.activeAntardasha}
                         </span>
+                      )}
+                      {vimPresent?.remedy && (
+                        <p className="text-[10.5px] text-amber-100/90 mt-1.5 leading-snug">
+                          <strong className="text-amber-300">Remedy:</strong> {vimPresent.remedy}
+                        </p>
                       )}
                     </div>
 
@@ -1408,17 +1413,30 @@ export const MobileAuditor: React.FC<MobileAuditorProps> = ({
                           {dasha.planet} ({dasha.sanskritName}) • {dasha.durationLabel || `${dasha.durationYears} Yrs`}
                         </span>
                       </div>
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider border ${
-                          dasha.isCurrent
-                            ? 'bg-emerald-500 text-slate-950 border-emerald-300 shadow-md'
-                            : 'bg-indigo-950 text-indigo-200 border-indigo-400/50'
-                        }`}
-                      >
-                        {dasha.isCurrent
-                          ? `★ PRESENT CYCLE (Active Now • ${dasha.startYear}–${dasha.endYear})`
-                          : `UPCOMING CYCLE (${dasha.startYear}–${dasha.endYear})`}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`px-2 py-0.5 rounded-full font-mono font-black text-[10px] border ${
+                            dasha.harmonyPercent >= 80
+                              ? 'bg-emerald-950 text-emerald-300 border-emerald-500/50'
+                              : dasha.harmonyPercent >= 65
+                                ? 'bg-amber-950 text-amber-200 border-amber-500/50'
+                                : 'bg-rose-950 text-rose-200 border-rose-500/50'
+                          }`}
+                        >
+                          Harmony: {dasha.harmonyPercent}% ({dasha.harmonyVerdict})
+                        </span>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider border ${
+                            dasha.isCurrent
+                              ? 'bg-emerald-500 text-slate-950 border-emerald-300 shadow-md'
+                              : 'bg-indigo-950 text-indigo-200 border-indigo-400/50'
+                          }`}
+                        >
+                          {dasha.isCurrent
+                            ? `★ PRESENT CYCLE (Active Now • ${dasha.startYear}–${dasha.endYear})`
+                            : `UPCOMING CYCLE (${dasha.startYear}–${dasha.endYear})`}
+                        </span>
+                      </div>
                     </div>
                     {dasha.activeAntardasha && (
                       <div className="px-2.5 py-1 rounded-lg bg-emerald-950/50 border border-emerald-500/35 text-[11px] font-mono text-emerald-200">
@@ -1429,6 +1447,10 @@ export const MobileAuditor: React.FC<MobileAuditorProps> = ({
                       {dasha.paragraphs.map((p, i) => (
                         <p key={i}>{p}</p>
                       ))}
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-amber-950/35 border border-amber-500/35 text-[11px] text-amber-100 leading-relaxed">
+                      <strong className="text-amber-300 uppercase tracking-wide">Vedic Maha Dasha Remedy:</strong>{' '}
+                      {dasha.remedy}
                     </div>
                   </div>
                 ))}
@@ -1474,12 +1496,17 @@ export const MobileAuditor: React.FC<MobileAuditorProps> = ({
                       Dasha {presentCycle?.dashaNumber} — {presentCycle?.planet} ({presentCycle?.sanskritName})
                     </strong>
                     <span className="text-[11px] font-mono text-emerald-300 block mt-0.5">
-                      Active Period: {presentCycle?.startDate} to {presentCycle?.endDate} ({presentCycle?.durationYears} Yrs)
+                      Active Period: {presentCycle?.startDate} to {presentCycle?.endDate} ({presentCycle?.durationYears} Yrs) • Harmony: {presentCycle?.harmonyPercent}% ({presentCycle?.harmonyVerdict})
                     </span>
                     {presentCycle?.activeAntardasha && (
                       <span className="text-[10px] font-mono text-amber-200 bg-slate-900/90 px-2 py-0.5 rounded border border-amber-500/30 inline-block mt-1">
                         {presentCycle.activeAntardasha}
                       </span>
+                    )}
+                    {presentCycle?.remedy && (
+                      <p className="text-[10.5px] text-amber-100/90 mt-1.5 leading-snug">
+                        <strong className="text-amber-300">Remedy:</strong> {presentCycle.remedy}
+                      </p>
                     )}
                   </div>
 
@@ -1537,21 +1564,34 @@ export const MobileAuditor: React.FC<MobileAuditorProps> = ({
                           {dasha.planet} ({dasha.sanskritName}) • {dasha.durationYears} Yrs
                         </span>
                       </div>
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider border ${
-                          dasha.isCurrent
-                            ? 'bg-emerald-500 text-slate-950 border-emerald-300 shadow-md'
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`px-2 py-0.5 rounded-full font-mono font-black text-[10px] border ${
+                            dasha.harmonyPercent >= 80
+                              ? 'bg-emerald-950 text-emerald-300 border-emerald-500/50'
+                              : dasha.harmonyPercent >= 65
+                                ? 'bg-amber-950 text-amber-200 border-amber-500/50'
+                                : 'bg-rose-950 text-rose-200 border-rose-500/50'
+                          }`}
+                        >
+                          Harmony: {dasha.harmonyPercent}% ({dasha.harmonyVerdict})
+                        </span>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full font-black text-[10px] uppercase tracking-wider border ${
+                            dasha.isCurrent
+                              ? 'bg-emerald-500 text-slate-950 border-emerald-300 shadow-md'
+                              : isPast
+                                ? 'bg-slate-800 text-slate-300 border-slate-600'
+                                : 'bg-indigo-950 text-indigo-200 border-indigo-400/50'
+                          }`}
+                        >
+                          {dasha.isCurrent
+                            ? `★ PRESENT CYCLE (Active Now • ${dasha.startYear}–${dasha.endYear})`
                             : isPast
-                              ? 'bg-slate-800 text-slate-300 border-slate-600'
-                              : 'bg-indigo-950 text-indigo-200 border-indigo-400/50'
-                        }`}
-                      >
-                        {dasha.isCurrent
-                          ? `★ PRESENT CYCLE (Active Now • ${dasha.startYear}–${dasha.endYear})`
-                          : isPast
-                            ? `PAST CYCLE (Completed • ${dasha.startYear}–${dasha.endYear})`
-                            : `UPCOMING CYCLE (Future • ${dasha.startYear}–${dasha.endYear})`}
-                      </span>
+                              ? `PAST CYCLE (Completed • ${dasha.startYear}–${dasha.endYear})`
+                              : `UPCOMING CYCLE (Future • ${dasha.startYear}–${dasha.endYear})`}
+                        </span>
+                      </div>
                     </div>
                     {dasha.activeAntardasha && (
                       <div className="px-2.5 py-1 rounded-lg bg-amber-950/50 border border-amber-500/35 text-[11px] font-mono text-amber-200">
@@ -1562,6 +1602,10 @@ export const MobileAuditor: React.FC<MobileAuditorProps> = ({
                       {dasha.paragraphs.map((p, i) => (
                         <p key={i}>{p}</p>
                       ))}
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-amber-950/35 border border-amber-500/35 text-[11px] text-amber-100 leading-relaxed">
+                      <strong className="text-amber-300 uppercase tracking-wide">Vedic Maha Dasha Remedy:</strong>{' '}
+                      {dasha.remedy}
                     </div>
                   </div>
                 );

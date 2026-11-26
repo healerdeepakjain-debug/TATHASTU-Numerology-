@@ -195,8 +195,13 @@ export function buildClientStatusAndAuspiciousUpdateBlock(profile: AstroProfileR
   const fmt = (d: Date) =>
     d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
-  const goodSlots = panchang.choghadiyaPeriods
-    .filter((c) => c.quality === 'Excellent' || c.quality === 'Good' || c.quality === 'Gainful')
+  const daySlots = panchang.dayChoghadiyaPeriods || panchang.choghadiyaPeriods;
+  const goodSlots = daySlots
+    .filter(
+      (c) =>
+        !c.isRahuKaalOverlap &&
+        (c.quality === 'Excellent' || c.quality === 'Good' || c.quality === 'Gainful')
+    )
     .map((c) => `${c.name} (${c.startTime}–${c.endTime})`)
     .join(', ');
 
@@ -211,9 +216,9 @@ export function buildClientStatusAndAuspiciousUpdateBlock(profile: AstroProfileR
   ];
 
   const auspiciousTimeSummary = [
-    `⏰ *LIVE AUSPICIOUS TIME & RAHU KAAL UPDATE (${panchang.date}):*`,
-    `• Good Time (Shubh/Amrit/Labh): *${goodSlots}*`,
-    `• Bad Time to Avoid (Rahu Kaal): *${panchang.rahuKaalWindow.start} – ${panchang.rahuKaalWindow.end}*`,
+    `⏰ *LIVE AUSPICIOUS TIME & RAHU KAAL UPDATE (${panchang.dateStr} IST):*`,
+    `• Good Time (Rahu Kaal Excluded): *${goodSlots || panchang.auspiciousTimings.join(', ')}*`,
+    `• Bad Time to Avoid (Rahu Kaal): *${panchang.rahuKaalWindow.start} – ${panchang.rahuKaalWindow.end} IST*`,
     `• Active Planetary Hora: *${panchang.currentHora}* | Lucky Color: *${panchang.luckyColor}*`,
     `• Daily Vedic Planetary Mantra: *"${panchang.todayBeejMantra}"*`,
     `• Personal Mulank & Bhagyank Mantra: *"${mPlanet.beejMantra}"* & *"${bPlanet.beejMantra}"* (108x)`,
@@ -501,8 +506,10 @@ export async function sendWhatsAppAuspiciousTimeAndColor(
 ): Promise<{ ok: boolean }> {
   const m = calculateMulank(profile.dob);
   const b = calculateBhagyank(profile.dob);
-  const panchang = getDailyPanchang(new Date(), m, b);
-  const dateLabel = new Date().toLocaleDateString('en-IN', {
+  const now = new Date();
+  const panchang = getDailyPanchang(now, m, b);
+  const dateLabel = now.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     weekday: 'long',
     day: '2-digit',
     month: 'short',
@@ -515,16 +522,18 @@ export async function sendWhatsAppAuspiciousTimeAndColor(
 
   const auspiciousWindowText =
     panchang.auspiciousTimings.length > 0
-      ? panchang.auspiciousTimings.slice(0, 3).join(' | ')
-      : 'Amrit / Shubh Choghadiya (Morning & Midday)';
+      ? panchang.auspiciousTimings.slice(0, 4).join(' | ')
+      : 'Shubh / Labh Choghadiya (Non-Rahu Kaal Hours)';
 
   const lines = [
     `🕉️ *${brandTitle}*`,
     `Namaste *${profile.name}* Ji (${dateLabel})`,
     ``,
-    `⏰ *TODAY'S AUSPICIOUS TIME (IST):*`,
-    `• Brahma Muhurat: 04:45 – 05:33 IST`,
-    `• Abhijit Muhurat: 11:51 – 12:39 IST`,
+    `⏰ *TODAY'S AUSPICIOUS TIME (IST — Rahu Kaal Excluded):*`,
+    `• Brahma Muhurat: ${panchang.brahmaMuhurat}`,
+    ...(panchang.hasAbhijitMuhurat
+      ? [`• Abhijit Muhurat: ${panchang.abhijitMuhurat}`]
+      : [`• Abhijit Muhurat: ${panchang.abhijitMuhurat}`]),
     `• Shubh Choghadiya: ${auspiciousWindowText}`,
     `• Avoid Rahu Kaal: ${panchang.rahuKaalWindow.start} – ${panchang.rahuKaalWindow.end} IST`,
     ``,
@@ -541,7 +550,7 @@ export async function sendWhatsAppAuspiciousTimeAndColor(
  * Strictly includes:
  * 1. Vedic Beej Mantra
  * 2. Daily Karmic Ritual & Daan
- * 3. Maha Dasha Mantra
+ * 3. Maha Dasha Mantra & Remedies (Both 120-Yr Parashari Vimshottari & 45-Yr Vedic Numerology)
  * 4. Bhagyank & Missing Number Siddhi Mantra
  * 5. Natal Soul & Janma Rashi Siddhi Mantra
  * 6. Today's Siddhi Mantra
@@ -554,7 +563,8 @@ export async function sendWhatsAppDayRemediesDigest(
   const b = calculateBhagyank(profile.dob);
   const mulankInfo = PLANETARY_PROFILES[m] || PLANETARY_PROFILES[1];
   const bhagyankInfo = PLANETARY_PROFILES[b] || PLANETARY_PROFILES[3];
-  const panchang = getDailyPanchang(new Date(), m, b);
+  const today = new Date();
+  const panchang = getDailyPanchang(today, m, b);
   const astro = calculateVedicAstrologyFromBirth(
     profile.dob,
     profile.tob || '09:30',
@@ -565,19 +575,38 @@ export async function sendWhatsAppDayRemediesDigest(
     profile.dob,
     profile.mobile || '8899444444',
     m,
-    b
+    b,
+    profile.tob || '09:30',
+    profile.lat ?? 28.6139,
+    profile.lng ?? 77.209
   );
   const activeDasha =
     advReport.dashaTimeline.find((d) => d.isCurrent) || advReport.dashaTimeline[0];
+  const activeVimshottari =
+    advReport.vimshottariDashaTimeline?.find((d) => d.isCurrent) ||
+    advReport.vimshottariDashaTimeline?.[0];
   const dashaNum = activeDasha?.dashaNumber || 6;
   const dashaInfo = PLANETARY_PROFILES[dashaNum] || mulankInfo;
   const mulankDev = SANSKRit_BEEJ_DEVANAGARI[m] || SANSKRit_BEEJ_DEVANAGARI[1];
   const dashaDev = SANSKRit_BEEJ_DEVANAGARI[dashaNum] || SANSKRit_BEEJ_DEVANAGARI[6];
   const bhagyankDev = SANSKRit_BEEJ_DEVANAGARI[b] || SANSKRit_BEEJ_DEVANAGARI[3];
 
-  const today = new Date();
-  const weekdayIndex = today.getDay();
+  const istWeekdayName = today.toLocaleDateString('en-US', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'short',
+  });
+  const weekdayMap: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+  const weekdayIndex = weekdayMap[istWeekdayName] ?? today.getDay();
   const dateLabel = today.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     weekday: 'long',
     day: '2-digit',
     month: 'short',
@@ -693,8 +722,13 @@ export async function sendWhatsAppDayRemediesDigest(
     `2. *Daily Karmic Ritual & Daan:*`,
     `${DAY_KARMIC_RITUAL_AND_DAAN[weekdayIndex]}`,
     ``,
-    `3. *Maha Dasha Mantra (${activeDasha.planet} ${activeDasha.startYear}–${activeDasha.endYear}):*`,
-    `${dashaDev.devanagari} (${dashaInfo.beejMantra})`,
+    `3. *Maha Dasha Mantra & Vedic Remedies:*`,
+    ...(activeVimshottari
+      ? [
+          `• *120-Yr Parashari Vimshottari (${activeVimshottari.planet} ${activeVimshottari.startDate}–${activeVimshottari.endDate} | Harmony: ${activeVimshottari.harmonyPercent}% — ${activeVimshottari.harmonyVerdict}):* ${activeVimshottari.remedy}`,
+        ]
+      : []),
+    `• *45-Yr Vedic Numerology (Dasha #${activeDasha.dashaNumber} ${activeDasha.planet} ${activeDasha.startDate}–${activeDasha.endDate} | Harmony: ${activeDasha.harmonyPercent}% — ${activeDasha.harmonyVerdict}):* ${dashaDev.devanagari} (${dashaInfo.beejMantra}) • Remedy: ${activeDasha.remedy}`,
     ``,
     `4. *Bhagyank (${b}) & Missing Number (${missingLabel}) Siddhi Mantra:*`,
     `${bhagyankDev.devanagari} (${bhagyankInfo.beejMantra})`,

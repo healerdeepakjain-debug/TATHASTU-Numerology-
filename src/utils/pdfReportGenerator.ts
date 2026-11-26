@@ -89,6 +89,10 @@ export interface PdfExportContext {
     periodRange: string;
     personalMonthNum: number;
     rulingPlanet: string;
+    harmonyPercent?: number;
+    harmonyVerdict?: string;
+    challenges?: string;
+    remedy?: string;
     forecastSummary: string;
     transitHighlight: string;
     moonPhaseDates: string;
@@ -1500,11 +1504,11 @@ function build18PageMasterDossier(
         {
           heading: '2. COMPLETE 6-PILLAR VEDIC, PRANIC, SOUND FREQUENCY (HZ) & FORTUNE REMEDIES (ALL 6 LIFE DOMAINS)',
           subheading: 'Complete Prescriptions with Solfeggio & Planetary Sound Frequencies (Hz) for Career, Business, Health, Relationships, Vastu & Spiritual Protection',
-          gridItems: career.fortuneReadingRemedies.map((rem) => ({
-            title: `[${rem.category.toUpperCase()}] ${rem.title} • Sound Frequency: ${rem.frequencyHz}`,
-            subtitle: `Issue Addressed: ${rem.issueAddressed} | Tuning: ${rem.frequencyHz}`,
+          gridItems: career.fortuneReadingRemedies.map((rem, idx) => ({
+            title: `${idx + 1}. [${rem.category.toUpperCase()}] ${rem.title}`,
+            subtitle: `Issue Addressed: ${rem.issueAddressed}`,
             body: rem.prescription,
-            highlight: `Sound Therapy (${rem.frequencyHz}) + 43-day disciplined practice stabilizes ${career.primaryChakra} (${career.auraColor}).`,
+            highlight: `Sound Frequency: ${rem.frequencyHz} | 43-day disciplined practice stabilizes ${career.primaryChakra} (${career.auraColor}).`,
           })),
           bullets: clientOrAdminRemedyBullets,
         },
@@ -2050,17 +2054,17 @@ function build18PageMasterDossier(
                   headers: [
                     'Vimshottari Maha Dasha Lord',
                     'Exact Start Date -> End Date (Duration)',
-                    'Status & Active Antardasha (Bhukti)',
-                    'Vedic Parashari Planetary Period Interpretation',
+                    'Status, Harmony % & Antardasha',
+                    'Vedic Parashari Interpretation & Remedy',
                   ],
-                  colWidths: [40, 44, 46, 64],
+                  colWidths: [38, 42, 48, 66],
                   rows: advMobile.vimshottariDashaTimeline.map((vd, idx) => [
                     `${vd.isCurrent ? '★ ' : `${idx + 1}. `}${vd.planet}\n(${vd.sanskritName} • #${vd.dashaNumber})`,
                     `${vd.startDate} to ${vd.endDate}\n(${vd.durationYears} Years)`,
                     vd.isCurrent
-                      ? `★ PRESENT ACTIVE CYCLE\n${vd.activeAntardasha || 'Current Bhukti Active'}`
-                      : `UPCOMING CYCLE #${idx + 1}`,
-                    vd.paragraphs.join(' ') || '',
+                      ? `★ PRESENT ACTIVE CYCLE\nHarmony: ${vd.harmonyPercent}% (${vd.harmonyVerdict})\n${vd.activeAntardasha || 'Current Bhukti Active'}`
+                      : `UPCOMING CYCLE #${idx + 1}\nHarmony: ${vd.harmonyPercent}% (${vd.harmonyVerdict})`,
+                    `${vd.paragraphs.join(' ')}\nVedic Remedy: ${vd.remedy}`,
                   ]),
                 },
               },
@@ -2068,18 +2072,18 @@ function build18PageMasterDossier(
           : []),
         {
           heading: `2. 45-YEAR VEDIC NUMEROLOGY PROGRESSIVE MAHA DASHA TIMELINE — STARTING FROM ★ PRESENT ACTIVE CYCLE (${new Date().getFullYear()})`,
-          subheading: `★ 1. Present Active Cycle: Dasha #${activeDasha.dashaNumber} ${activeDasha.planet} (${activeDasha.startDate} to ${activeDasha.endDate} • ${activeDasha.durationYears} Yrs${activeDasha.activeAntardasha ? ` • ${activeDasha.activeAntardasha}` : ''}) • 2. Next Upcoming: Dasha #${advMobile.dashaTimeline[1]?.dashaNumber || activeDasha.dashaNumber} ${advMobile.dashaTimeline[1]?.planet || ''} (${advMobile.dashaTimeline[1]?.startDate || ''} Onward) • 3. Past Completed Since Birth (${activeProfile.dob}): ${(advMobile.pastDashaCycles || []).map((d) => `#${d.dashaNumber} (${d.startDate} to ${d.endDate})`).join(', ') || 'Current Cycle is First Since Birth'}`,
+          subheading: `★ 1. Present Active Cycle: Dasha #${activeDasha.dashaNumber} ${activeDasha.planet} (${activeDasha.startDate} to ${activeDasha.endDate} • ${activeDasha.durationYears} Yrs • Harmony: ${activeDasha.harmonyPercent}% ${activeDasha.harmonyVerdict}${activeDasha.activeAntardasha ? ` • ${activeDasha.activeAntardasha}` : ''}) • 2. Next Upcoming: Dasha #${advMobile.dashaTimeline[1]?.dashaNumber || activeDasha.dashaNumber} ${advMobile.dashaTimeline[1]?.planet || ''} (${advMobile.dashaTimeline[1]?.startDate || ''} Onward) • 3. Past Completed Since Birth (${activeProfile.dob}): ${(advMobile.pastDashaCycles || []).map((d) => `#${d.dashaNumber} (${d.startDate} to ${d.endDate})`).join(', ') || 'Current Cycle is First Since Birth'}`,
           gridItems: advMobile.dashaTimeline.map((dasha, idx) => ({
             title: `Cycle #${idx + 1}: Dasha #${dasha.dashaNumber} — ${dasha.planet} (${dasha.sanskritName}) [${dasha.durationYears} Years]`,
-            subtitle: `${dasha.startDate} to ${dasha.endDate} • ${
+            subtitle: `${dasha.startDate} to ${dasha.endDate} • Harmony: ${dasha.harmonyPercent}% (${dasha.harmonyVerdict}) • ${
               dasha.isCurrent
-                ? '★ PRESENT CYCLE (ACTIVE NOW — TIMELINE START)'
-                : 'UPCOMING CYCLE (FUTURE PROGRESSION)'
+                ? '★ PRESENT CYCLE (ACTIVE NOW)'
+                : 'UPCOMING CYCLE'
             }`,
             body: dasha.paragraphs.join(' '),
             highlight: dasha.isCurrent
-              ? `★ Active Now (${dasha.startDate} to ${dasha.endDate}): ${dasha.activeAntardasha || 'Primary planetary period governing current career, wealth & life decisions.'}`
-              : `Upcoming Period (${dasha.startDate} to ${dasha.endDate}): Sequential ${dasha.planet} Maha Dasha activation.`,
+              ? `★ Active Now (${dasha.harmonyPercent}% Harmony): ${dasha.activeAntardasha || 'Primary active planetary period.'} | Vedic Remedy: ${dasha.remedy}`
+              : `Harmony: ${dasha.harmonyPercent}% (${dasha.harmonyVerdict}) | Vedic Remedy: ${dasha.remedy}`,
           })),
         },
       ],
@@ -2105,9 +2109,9 @@ function build18PageMasterDossier(
           ],
           gridItems: twelveMonths.slice(0, 6).map((item) => ({
             title: `${item.monthLabel} (${item.periodRange})`,
-            subtitle: `Personal Month ${item.personalMonthNum} • ${item.rulingPlanet} • Lucky: ${item.luckyDays}`,
-            body: `${item.forecastSummary} ${item.transitHighlight}`,
-            highlight: `${item.moonPhaseDates}`,
+            subtitle: `PM #${item.personalMonthNum} • ${item.rulingPlanet} • Harmony: ${item.harmonyPercent ?? 82}% (${item.harmonyVerdict || 'Balanced'})`,
+            body: `${item.forecastSummary} Challenges: ${item.challenges || 'Avoid impulsive commitments during Rahu Kaal.'} Lucky Days: ${item.luckyDays}.`,
+            highlight: `Monthly Remedy: ${item.remedy || item.moonPhaseDates}`,
           })),
           bullets: [
             `Shukla Purnima & Monthly Sankalpa Remedy (Months 1-6): On every Purnima window listed above, light a pure cow-ghee lamp in the North-East corner at sunset, chant "${mPlanet.beejMantra}" 108 times, and offer white sweets or grain charity.`,
@@ -2133,9 +2137,9 @@ function build18PageMasterDossier(
           ],
           gridItems: twelveMonths.slice(6, 12).map((item) => ({
             title: `${item.monthLabel} (${item.periodRange})`,
-            subtitle: `Personal Month ${item.personalMonthNum} • ${item.rulingPlanet} • Lucky: ${item.luckyDays}`,
-            body: `${item.forecastSummary} ${item.transitHighlight}`,
-            highlight: `${item.moonPhaseDates}`,
+            subtitle: `PM #${item.personalMonthNum} • ${item.rulingPlanet} • Harmony: ${item.harmonyPercent ?? 80}% (${item.harmonyVerdict || 'Balanced'})`,
+            body: `${item.forecastSummary} Challenges: ${item.challenges || 'Guard against delays and stay disciplined in contracts.'} Lucky Days: ${item.luckyDays}.`,
+            highlight: `Monthly Remedy: ${item.remedy || item.moonPhaseDates}`,
           })),
           bullets: [
             `Annual Wealth & Protection Siddha Protocol (Months 7-12): Keep an energized Bhojpatra or copper ${bPlanet.planet} Yantra in your cash locker/wallet and recite "${bPlanet.beejMantra}" (108x) & "${mPlanet.beejMantra}" (27x) daily before starting work.`,
@@ -2426,27 +2430,27 @@ function build18PageMasterDossier(
           gridItems: [
             {
               title: `1. Morning Brahma Muhurat (05:30 AM - 07:30 AM): Natal Soul & Rashi Mantra`,
-              subtitle: `Planet: ${mPlanet.planet} (${mPlanet.sanskritName}) • Sound: ${mPlanet.soundFrequencyHz || '126.22 Hz'} • 108 Beads`,
-              body: `Mantra: "${mPlanet.beejMantra}". Meaning: ${mulankDevanagari.englishMeaning} Why Prescribed: Tailored to Mulank ${m}, ${astro.rashi}, and ${astro.nakshatra} (Pada ${astro.pada}).`,
-              highlight: `Sound Frequency: ${mPlanet.soundFrequencyHz || '126.22 Hz'} | Mala: ${mulankDevanagari.mala} | Mudra: ${mulankDevanagari.mudra}`,
+              subtitle: `Planet: ${mPlanet.planet} (${mPlanet.sanskritName}) • 108 Beads • Mala: ${mulankDevanagari.mala}`,
+              body: `Mantra: "${mPlanet.beejMantra}". Meaning: ${mulankDevanagari.englishMeaning} Mudra: ${mulankDevanagari.mudra}. Tailored to Mulank ${m}, ${astro.rashi}, and ${astro.nakshatra} (Pada ${astro.pada}).`,
+              highlight: `Sound Frequency (Hz): ${mPlanet.soundFrequencyHz || '126.22 Hz'}`,
             },
             {
               title: `2. Morning Work Initiation (08:15 AM - 10:30 AM): Active Maha Dasha Mantra`,
-              subtitle: `Active Dasha: ${activeDasha.planet} (${activeDasha.startYear}-${activeDasha.endYear}) • Sound: ${activeDashaPlanet.soundFrequencyHz || '221.23 Hz'} • 27 Beads`,
-              body: `Mantra: "${activeDashaPlanet.beejMantra}". Meaning: ${dashaDevanagari.englishMeaning} Why Prescribed: Unlocks wealth and career elevation during your active ${activeDasha.planet} Maha Dasha.`,
-              highlight: `Sound Frequency: ${activeDashaPlanet.soundFrequencyHz || '221.23 Hz'} | Mala: ${dashaDevanagari.mala} | Mudra: ${dashaDevanagari.mudra}`,
+              subtitle: `Active Dasha: ${activeDasha.planet} (${activeDasha.startYear}-${activeDasha.endYear}) • 27 Beads • Mala: ${dashaDevanagari.mala}`,
+              body: `Mantra: "${activeDashaPlanet.beejMantra}". Meaning: ${dashaDevanagari.englishMeaning} Mudra: ${dashaDevanagari.mudra}. Unlocks wealth and career elevation during active ${activeDasha.planet} Maha Dasha.`,
+              highlight: `Sound Frequency (Hz): ${activeDashaPlanet.soundFrequencyHz || '221.23 Hz'}`,
             },
             {
               title: `3. Midday Planetary Transit Kavach (12:00 PM - 01:30 PM): Gochar Shanti Mantra`,
-              subtitle: `Harmonizes Saturn in Pisces, Jupiter in Gemini & Rahu-Ketu Axis • Sound: 432 Hz & 528 Hz • 11 Beads`,
-              body: `Mantra: "Om Brahma Muraris Tripurantakari Bhanuh Shashi Bhumisuto Budhashcha | Gurushcha Shukrah Shani Rahu Ketavah Kurvantu Sarve Mama Suprabhatam ||" Also recite "${panchang.todayBeejMantra}" (27x).`,
-              highlight: `Sound Frequency: 432 Hz Cosmic Tuning & 528 Hz Shield | Mala: 5-Mukhi Rudraksha | Mudra: Anjali Mudra • Face East`,
+              subtitle: `Harmonizes Saturn in Pisces, Jupiter in Gemini & Rahu-Ketu Axis • 11 Beads • 5-Mukhi Rudraksha`,
+              body: `Mantra: "Om Brahma Muraris Tripurantakari Bhanuh Shashi Bhumisuto Budhashcha | Gurushcha Shukrah Shani Rahu Ketavah Kurvantu Sarve Mama Suprabhatam ||" Recite "${panchang.todayBeejMantra}" (27x) with Anjali Mudra facing East.`,
+              highlight: `Sound Frequency (Hz): 432 Hz Cosmic Tuning & 528 Hz Shield`,
             },
             {
               title: `4. Evening Sandhya (06:00 PM - 07:45 PM): Destiny & Missing Grid Mantra`,
-              subtitle: `Bhagyank ${b} (${bPlanet.planet}) & Missing Numbers (${advMobile.missingNumbersList.join(', ') || 'None'}) • Sound: ${bPlanet.soundFrequencyHz || '183.58 Hz'} • 54 Beads`,
-              body: `Mantra: "${bPlanet.beejMantra}". Meaning: ${bhagyankDevanagari.englishMeaning} Why Prescribed: Harmonizes Life Path Bhagyank ${b} and bridges missing vibrational planes.`,
-              highlight: `Sound Frequency: ${bPlanet.soundFrequencyHz || '183.58 Hz'} | Mala: ${bhagyankDevanagari.mala} | Mudra: ${bhagyankDevanagari.mudra}`,
+              subtitle: `Bhagyank ${b} (${bPlanet.planet}) & Missing Numbers (${advMobile.missingNumbersList.join(', ') || 'None'}) • 54 Beads`,
+              body: `Mantra: "${bPlanet.beejMantra}". Meaning: ${bhagyankDevanagari.englishMeaning} Mala: ${bhagyankDevanagari.mala} • Mudra: ${bhagyankDevanagari.mudra}.`,
+              highlight: `Sound Frequency (Hz): ${bPlanet.soundFrequencyHz || '183.58 Hz'}`,
             },
           ],
         },
@@ -2482,9 +2486,9 @@ function build18PageMasterDossier(
       bannerKey: 'chakra',
       sections: [
         {
-          heading: `1. VISUAL YOGA POSTURE CARD GALLERY (BIRTH CHART & HEALTH PRESCRIPTIONS — ALL ${yogaPlan.dailyAsanas.length} ASANAS)`,
+          heading: `1. VISUAL YOGA POSTURE CARD GALLERY (BIRTH CHART & HEALTH PRESCRIPTIONS — ALL ${Math.min(6, yogaPlan.dailyAsanas.length)} ASANAS)`,
           subheading: `Constitutional Dosha Tendency: ${yogaPlan.dominantDoshaConstitution} • Selected Health Focus: ${yogaPlan.selectedHealthConcerns.length > 0 ? yogaPlan.selectedHealthConcerns.map((hc) => hc.label).join(' • ') : 'Holistic Pranic Vitality & 9-Chakra Balance'}`,
-          yogaAsanaGallery: yogaPlan.dailyAsanas,
+          yogaAsanaGallery: yogaPlan.dailyAsanas.slice(0, 6),
         },
         {
           heading: '2. DAILY VEDIC PRANAYAMA (BREATHWORK) & HASTA MUDRA PROTOCOLS',
@@ -2670,9 +2674,9 @@ function build18PageMasterDossier(
           subheading: `Width-Wise 2-Column Layout: Groom (${groomProfile.name}) & Bride (${brideProfile.name}) Patterns, Sound Frequency (Hz), Crystal, Mantra & Remedies`,
           gridItems: partnerMilan.chakraChallenges.slice(0, 5).map((ch, idx) => ({
             title: `${idx + 1}. ${ch.chakraName} (${ch.sanskritName} • ${ch.element}) — ${ch.alignmentScore}% [${ch.status}]`,
-            subtitle: `Carrier: ${ch.affectedPartner} (${ch.primaryCarrierName}) • Sound: ${ch.soundFrequencyHz || '528 Hz'} • Crystal: ${ch.healingCrystal} • Mantra: ${ch.beejMantra}`,
-            body: `Groom (${groomProfile.name}): ${ch.groomChallengeDetail} | Bride (${brideProfile.name}): ${ch.brideChallengeDetail} | Joint Issue: ${ch.postMarriageIssue} | Diagnosis: ${ch.fortuneReadingDiagnosis} | Aura Scan: ${ch.auraScanRemedy}`,
-            highlight: `Groom Remedy: ${ch.groomRemedy} | Bride Remedy: ${ch.brideRemedy} | Joint Remedy: ${ch.bothRemedy}`,
+            subtitle: `Carrier: ${ch.affectedPartner} (${ch.primaryCarrierName}) • Crystal: ${ch.healingCrystal}`,
+            body: `Challenge: ${ch.postMarriageIssue}\nDiagnosis: ${ch.fortuneReadingDiagnosis}\nGroom (${groomProfile.name}): ${ch.groomChallengeDetail}\nBride (${brideProfile.name}): ${ch.brideChallengeDetail}\nAura Scan: ${ch.auraScanRemedy}`,
+            highlight: `Groom Remedy: ${ch.groomRemedy} • Bride Remedy: ${ch.brideRemedy} • Joint: ${ch.bothRemedy} • Sound: ${ch.soundFrequencyHz || '528 Hz'} • Mantra: ${ch.beejMantra}`,
           })),
         },
       ],
@@ -2693,9 +2697,9 @@ function build18PageMasterDossier(
           gridItems: [
             ...partnerMilan.chakraChallenges.slice(5, 9).map((ch, idx) => ({
               title: `${idx + 6}. ${ch.chakraName} (${ch.sanskritName} • ${ch.element}) — ${ch.alignmentScore}% [${ch.status}]`,
-              subtitle: `Carrier: ${ch.affectedPartner} (${ch.primaryCarrierName}) • Sound: ${ch.soundFrequencyHz || '852 Hz'} • Crystal: ${ch.healingCrystal} • Mantra: ${ch.beejMantra}`,
-              body: `Groom (${groomProfile.name}): ${ch.groomChallengeDetail} | Bride (${brideProfile.name}): ${ch.brideChallengeDetail} | Joint Issue: ${ch.postMarriageIssue} | Diagnosis: ${ch.fortuneReadingDiagnosis} | Aura Scan: ${ch.auraScanRemedy}`,
-              highlight: `Groom Remedy: ${ch.groomRemedy} | Bride Remedy: ${ch.brideRemedy} | Joint Remedy: ${ch.bothRemedy}`,
+              subtitle: `Carrier: ${ch.affectedPartner} (${ch.primaryCarrierName}) • Crystal: ${ch.healingCrystal}`,
+              body: `Challenge: ${ch.postMarriageIssue}\nDiagnosis: ${ch.fortuneReadingDiagnosis}\nGroom (${groomProfile.name}): ${ch.groomChallengeDetail}\nBride (${brideProfile.name}): ${ch.brideChallengeDetail}\nAura Scan: ${ch.auraScanRemedy}`,
+              highlight: `Groom Remedy: ${ch.groomRemedy} • Bride Remedy: ${ch.brideRemedy} • Joint: ${ch.bothRemedy} • Sound: ${ch.soundFrequencyHz || '852 Hz'} • Mantra: ${ch.beejMantra}`,
             })),
             {
               title: `10. Master Marital Compatibility Verdict & Bedroom Vastu Shield (${partnerMilan.totalPoints}/36 Gunas)`,
@@ -6896,9 +6900,9 @@ export async function generateAndExport18PagePdf(
     doc.roundedRect(centerPageX - badgeW / 2, badgeY, badgeW, badgeH, 1.3, 1.3, 'FD');
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.2);
+    doc.setFontSize(7.4);
     doc.setTextColor(255, 251, 235);
-    doc.text(`Page ${p} of ${actualTotalPages}`, centerPageX, badgeY + 4.0, {
+    doc.text(`Page ${p}`, centerPageX, badgeY + 4.0, {
       align: 'center',
     });
 

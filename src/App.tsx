@@ -23,7 +23,7 @@ import { DailySixNotificationsCenter } from './components/DailySixNotificationsC
 import { AdminAndProfilesPortal } from './components/AdminAndProfilesPortal';
 import { IslamicVedicRemedies } from './components/IslamicVedicRemedies';
 import { YogaPranayamaModule } from './components/YogaPranayamaModule';
-import { OfflineIndicator, PWAInstallButton } from './components/PWAInstallButton';
+import { OfflineIndicator } from './components/PWAInstallButton';
 import { GlobalTapFeedback } from './components/GlobalTapFeedback';
 import { TathastuIntroSplash } from './components/TathastuIntroSplash';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -690,7 +690,6 @@ function TathastuMainApp() {
                   <span>Mobile / Tablet</span>
                 </button>
               </div>
-              <PWAInstallButton compact />
               <div
                 data-no-translate="true"
                 className="flex items-center gap-1.5 bg-slate-950 border border-amber-500/35 rounded-lg px-2.5 py-1"
@@ -712,7 +711,6 @@ function TathastuMainApp() {
             </div>
           </div>
           <TathastuAuthPortal
-            onReplayIntro={() => setShowIntroSplash(true)}
             onAuthenticated={() => {
               setIsAuthPortalOpen(false);
               setActiveTab('profiles-portal');
@@ -731,7 +729,6 @@ function TathastuMainApp() {
             profile={profile}
             onOpenProfileModal={() => setIsProfileModalOpen(true)}
             onLogout={handleLogout}
-            onReplayIntro={() => setShowIntroSplash(true)}
             onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
           />
 
@@ -847,7 +844,6 @@ function TathastuMainApp() {
               activeProfileName={activeProfile?.name}
               activeProfileDob={activeProfile?.dob}
               onClearActiveProfile={clearActiveProfile}
-              onReplayIntro={() => setShowIntroSplash(true)}
               onLogout={handleLogout}
               forceVisible={isMobileAppMode}
               isOpen={isMobileSidebarOpen}

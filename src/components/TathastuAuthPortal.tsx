@@ -49,12 +49,10 @@ import spiritualReportBanner from '../assets/images/spiritual_energy_report_bann
 
 interface TathastuAuthPortalProps {
   onAuthenticated?: (role?: UserRole) => void;
-  onReplayIntro?: () => void;
 }
 
 export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
   onAuthenticated,
-  onReplayIntro,
 }) => {
   const {
     accounts,
@@ -79,13 +77,17 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
 
   const livePanchang = getDailyPanchang(nowDate, 9, 9);
   const currentChoghadiya = livePanchang.currentChoghadiya;
+  const isRahuBlockedNow =
+    livePanchang.isRahuKaalNow || Boolean(currentChoghadiya.isRahuKaalOverlap);
   const isGoodTimeNow =
-    !livePanchang.isRahuKaalNow &&
+    !isRahuBlockedNow &&
     (currentChoghadiya.quality === 'Excellent' ||
       currentChoghadiya.quality === 'Good' ||
-      currentChoghadiya.quality === 'Gainful' ||
-      currentChoghadiya.quality === 'Neutral/Travel');
+      currentChoghadiya.quality === 'Gainful');
+  const isNeutralTimeNow =
+    !isRahuBlockedNow && currentChoghadiya.quality === 'Neutral/Travel';
   const liveClockStr = nowDate.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -493,33 +495,44 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
             </span>
           </div>
 
-          {/* LIVE PRESENT TIME CLOCK */}
+          {/* LIVE PRESENT TIME CLOCK (IST) */}
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-amber-400/40 bg-amber-500/15 text-amber-200 font-mono font-bold">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
             <Clock className="w-3.5 h-3.5 text-amber-400" />
-            <span>LIVE: {liveClockStr}</span>
+            <span>LIVE: {liveClockStr} IST</span>
           </div>
 
-          {/* LIVE GOOD / BAD TIME (CHOGHADIYA) */}
+          {/* LIVE GOOD / NEUTRAL / BAD TIME (CHOGHADIYA — RAHU KAAL STRICTLY OVERRIDES) */}
           <div
             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border font-semibold ${
               isGoodTimeNow
                 ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
-                : 'bg-rose-950/80 border-rose-500/50 text-rose-300'
+                : isNeutralTimeNow
+                  ? 'bg-amber-950/80 border-amber-500/50 text-amber-200'
+                  : 'bg-rose-950/80 border-rose-500/50 text-rose-300'
             }`}
           >
             {isGoodTimeNow ? (
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
             ) : (
-              <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${isNeutralTimeNow ? 'text-amber-400' : 'text-rose-400'}`} />
             )}
             <span>
               Good/Bad Time (Now):{' '}
-              <strong className="uppercase">
-                {isGoodTimeNow ? 'GOOD TIME' : 'BAD TIME'} • {currentChoghadiya.name} (
-                {currentChoghadiya.quality})
-              </strong>{' '}
-              [{currentChoghadiya.startTime}–{currentChoghadiya.endTime}]
+              {isRahuBlockedNow ? (
+                <>
+                  <strong className="uppercase">BAD TIME • RAHU KAAL (AVOID)</strong>{' '}
+                  [{livePanchang.rahuKaalWindow.start}–{livePanchang.rahuKaalWindow.end} IST]
+                </>
+              ) : (
+                <>
+                  <strong className="uppercase">
+                    {isGoodTimeNow ? 'GOOD TIME' : isNeutralTimeNow ? 'NEUTRAL TIME' : 'BAD TIME'} • {currentChoghadiya.name} (
+                    {currentChoghadiya.quality})
+                  </strong>{' '}
+                  [{currentChoghadiya.startTime}–{currentChoghadiya.endTime} IST]
+                </>
+              )}
             </span>
           </div>
 
@@ -537,9 +550,9 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
               }`}
             />
             <span>
-              Rahu Kaal (Live):{' '}
+              Rahu Kaal (Live IST):{' '}
               <strong>
-                {livePanchang.rahuKaalWindow.start}–{livePanchang.rahuKaalWindow.end}
+                {livePanchang.rahuKaalWindow.start}–{livePanchang.rahuKaalWindow.end} IST
               </strong>{' '}
               ({livePanchang.isRahuKaalNow ? 'ACTIVE NOW — AVOID' : 'Safe Now'})
             </span>

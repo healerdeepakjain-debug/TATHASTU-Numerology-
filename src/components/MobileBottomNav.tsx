@@ -14,10 +14,8 @@ import {
   Moon,
   Calendar,
   BookOpen,
-  Bot,
   X,
   FolderOpen,
-  Play,
   LogOut,
   Menu,
   ChevronRight,
@@ -38,7 +36,6 @@ interface MobileBottomNavProps {
   activeProfileName?: string;
   activeProfileDob?: string;
   onClearActiveProfile: () => void;
-  onReplayIntro: () => void;
   onLogout: () => void;
   forceVisible?: boolean;
   isOpen?: boolean;
@@ -48,7 +45,7 @@ interface MobileBottomNavProps {
 
 /**
  * Mobile / Tablet Side Panel Navigation Drawer
- * Places ALL 15 Vedic & Chaldean modules cleanly in a slide-out side panel
+ * Places ALL Vedic & Chaldean modules cleanly in a slide-out side panel
  * so the mobile screen & report viewport stay 100% uncluttered and aligned.
  */
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -59,7 +56,6 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   activeProfileName,
   activeProfileDob,
   onClearActiveProfile,
-  onReplayIntro,
   onLogout,
   forceVisible = false,
   isOpen,
@@ -95,12 +91,16 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         { id: 'dashboard', label: t('tab_dashboard'), icon: Sparkles, requiresProfile: true },
         { id: 'name-corrector', label: t('tab_name'), icon: Flame, requiresProfile: true },
         { id: 'mobile-auditor', label: t('tab_mobile'), icon: Phone, requiresProfile: true },
-        {
-          id: 'profiles-portal',
-          label: t('tab_profiles', 'Saved Profiles & Portals'),
-          icon: userRole === 'admin' ? Crown : Users,
-          requiresProfile: false,
-        },
+        ...(!hasActiveProfile
+          ? [
+              {
+                id: 'profiles-portal',
+                label: t('tab_profiles', 'Saved Profiles & Portals'),
+                icon: userRole === 'admin' ? Crown : Users,
+                requiresProfile: false,
+              },
+            ]
+          : []),
       ],
     },
     {
@@ -262,25 +262,14 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             </div>
 
             {/* Side Panel Footer Quick Actions */}
-            <div className="p-3 bg-slate-900/95 border-t border-amber-500/30 grid grid-cols-3 gap-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] shrink-0">
+            <div className="p-3 bg-slate-900/95 border-t border-amber-500/30 grid grid-cols-2 gap-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] shrink-0">
               <button
                 type="button"
                 onClick={() => selectModule('profiles-portal')}
-                className="min-h-[40px] px-2 py-2 rounded-xl bg-amber-500 text-slate-950 font-black text-[11px] flex items-center justify-center gap-1 cursor-pointer"
+                className="min-h-[40px] px-2 py-2 rounded-xl bg-amber-500 text-slate-950 font-black text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <FolderOpen className="w-3.5 h-3.5 shrink-0" />
-                <span>Profiles</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  closeDrawer();
-                  onReplayIntro();
-                }}
-                className="min-h-[40px] px-2 py-2 rounded-xl bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <Play className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>Intro</span>
+                <span>Saved Profiles</span>
               </button>
               <button
                 type="button"
@@ -288,7 +277,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                   closeDrawer();
                   onLogout();
                 }}
-                className="min-h-[40px] px-2 py-2 rounded-xl bg-rose-600/25 border border-rose-400/60 text-rose-200 font-black text-[11px] flex items-center justify-center gap-1 cursor-pointer"
+                className="min-h-[40px] px-2 py-2 rounded-xl bg-rose-600/25 border border-rose-400/60 text-rose-200 font-black text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5 text-rose-300 shrink-0" />
                 <span>Logout</span>

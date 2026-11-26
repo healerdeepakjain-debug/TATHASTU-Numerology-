@@ -547,6 +547,43 @@ const LANGUAGE_INSTRUCTION_MAP: Record<string, string> = {
   en: 'Clean, articulate English.',
 };
 
+const modelCooldownUntil = new Map<string, number>();
+
+function isQuotaExceededError(err: any): boolean {
+  const status = Number(err?.status ?? err?.statusCode ?? err?.error?.code ?? 0);
+  const msg = String(err?.message || err || '').toUpperCase();
+  return (
+    status === 429 ||
+    msg.includes('429') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('QUOTA EXCEEDED') ||
+    msg.includes('RATE-LIMIT')
+  );
+}
+
+function parseRetryDelayMs(err: any): number {
+  const msg = String(err?.message || err || '');
+  const retryMatch = msg.match(/"retryDelay"\s*:\s*"(\d+)s"/i);
+  if (retryMatch) {
+    const secs = Number(retryMatch[1]);
+    if (Number.isFinite(secs) && secs > 0) {
+      return Math.min(Math.max(secs * 1000, 5 * 60 * 1000), 3 * 60 * 60 * 1000);
+    }
+  }
+  return 30 * 60 * 1000;
+}
+
+function getAvailableGeminiModels(preferredOrder: string[]): string[] {
+  const now = Date.now();
+  return preferredOrder.filter((m) => (modelCooldownUntil.get(m) || 0) <= now);
+}
+
+function recordModelQuotaCooldown(modelName: string, err: any): number {
+  const delayMs = parseRetryDelayMs(err);
+  modelCooldownUntil.set(modelName, Date.now() + delayMs);
+  return delayMs;
+}
+
 // Vedic Astro-Numerology Deep AI Consultation Endpoint
 app.post('/api/gemini/consult', async (req, res) => {
   const { prompt, profileData, analysisType, language = 'en-hi' } = req.body;
@@ -578,29 +615,40 @@ User profile details:
 Provide authentic, articulate, compassionate, and precise guidance adhering to classical texts (Brihat Parashara Hora Shastra, Brihat Samhita, Cheiro Book of Numbers).
 Format your response with clean markdown headings, bullet points, planetary mantra prescriptions, lucky gemstone, and auspicious action steps. Keep it focused, dignified, and grammatically spotless.`;
 
-    const aiPromise = ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents:
-        prompt ||
-        'Analyze my birth vibrations and provide sacred recommendations for name harmony and life path success.',
-      config: {
-        systemInstruction,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-      },
-    });
+    const availableModels = getAvailableGeminiModels(['gemini-3.1-flash-lite', 'gemini-4-hydrogen']);
+    for (const modelName of availableModels) {
+      try {
+        const aiPromise = ai.models.generateContent({
+          model: modelName,
+          contents:
+            prompt ||
+            'Analyze my birth vibrations and provide sacred recommendations for name harmony and life path success.',
+          config: {
+            systemInstruction,
+            ...(modelName === 'gemini-4-hydrogen'
+              ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+              : {}),
+          },
+        });
 
-    const timeoutPromise = new Promise<null>((resolve) =>
-      setTimeout(() => resolve(null), 4500)
-    );
+        const timeoutPromise = new Promise<null>((resolve) =>
+          setTimeout(() => resolve(null), 5500)
+        );
 
-    const response = await Promise.race([aiPromise, timeoutPromise]);
+        const response = await Promise.race([aiPromise, timeoutPromise]);
 
-    if (response && response.text) {
-      return res.json({
-        available: true,
-        source: 'gemini',
-        text: response.text,
-      });
+        if (response && response.text) {
+          return res.json({
+            available: true,
+            source: 'gemini',
+            text: response.text,
+          });
+        }
+      } catch (err: any) {
+        if (isQuotaExceededError(err)) {
+          recordModelQuotaCooldown(modelName, err);
+        }
+      }
     }
 
     return res.json({
@@ -608,7 +656,7 @@ Format your response with clean markdown headings, bullet points, planetary mant
       source: 'classical-engine',
       text: fallbackText,
     });
-  } catch (error: any) {
+  } catch {
     return res.json({
       available: true,
       source: 'classical-engine',
@@ -646,18 +694,41 @@ Include:
 4. Best Auspicious Hora / Time Window to make decisions
 5. Today's Beej Mantra and Lucky Color`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        systemInstruction: `You are an authentic Vedic Jyotishi and Numerology oracle. Respond in ${langDirective} with high spiritual precision, grammatical accuracy, and warmth.`,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-      },
-    });
+    const availableModels = getAvailableGeminiModels(['gemini-3.1-flash-lite', 'gemini-4-hydrogen']);
+    let lastErr: any = null;
+    for (const modelName of availableModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: {
+            systemInstruction: `You are an authentic Vedic Jyotishi and Numerology oracle. Respond in ${langDirective} with high spiritual precision, grammatical accuracy, and warmth.`,
+            ...(modelName === 'gemini-4-hydrogen'
+              ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+              : {}),
+          },
+        });
+        if (response.text) {
+          return res.json({
+            available: true,
+            text: response.text,
+          });
+        }
+      } catch (err: any) {
+        lastErr = err;
+        if (isQuotaExceededError(err)) {
+          recordModelQuotaCooldown(modelName, err);
+        }
+      }
+    }
 
-    return res.json({
-      available: true,
-      text: response.text,
+    const isQuota = isQuotaExceededError(lastErr) || availableModels.length === 0;
+    return res.status(isQuota ? 429 : 500).json({
+      available: false,
+      code: isQuota ? 'QUOTA_EXHAUSTED' : 'ERROR',
+      error: isQuota
+        ? 'Daily free-tier AI quota reached. Classical ephemeris mode active.'
+        : lastErr?.message || 'Unable to generate daily horoscope.',
     });
   } catch (error: any) {
     return res.status(500).json({ available: false, error: error.message });
@@ -669,7 +740,40 @@ Include:
 // Synthesizes Vedic Astrology + Numerology & Parashar Astrology + Numerology
 // into simple, easy-to-understand paragraph format (strictly calibrated for 1–2 A4 pages)
 // ============================================================================
+const SUMMARY_CACHE_FILE = path.resolve(__dirname, '.tathastu-summary-cache.json');
 const reportSummaryServerCache = new Map<string, { summary: Record<string, any>; cachedAt: number }>();
+
+function loadSummaryCacheFromDisk(): void {
+  try {
+    if (!fs.existsSync(SUMMARY_CACHE_FILE)) return;
+    const parsed = JSON.parse(fs.readFileSync(SUMMARY_CACHE_FILE, 'utf-8'));
+    if (parsed && typeof parsed === 'object') {
+      const now = Date.now();
+      for (const [k, v] of Object.entries(parsed)) {
+        const entry = v as { summary?: Record<string, any>; cachedAt?: number };
+        if (entry?.summary && typeof entry.cachedAt === 'number' && now - entry.cachedAt < 1000 * 60 * 60 * 24 * 7) {
+          reportSummaryServerCache.set(k, { summary: entry.summary, cachedAt: entry.cachedAt });
+        }
+      }
+    }
+  } catch {
+    // Ignore disk read error
+  }
+}
+
+function persistSummaryCacheToDisk(): void {
+  try {
+    const obj: Record<string, { summary: Record<string, any>; cachedAt: number }> = {};
+    for (const [k, v] of reportSummaryServerCache.entries()) {
+      obj[k] = v;
+    }
+    fs.writeFileSync(SUMMARY_CACHE_FILE, JSON.stringify(obj), 'utf-8');
+  } catch {
+    // Ignore disk write error in read-only environments
+  }
+}
+
+loadSummaryCacheFromDisk();
 
 app.post('/api/gemini/report-summary', async (req, res) => {
   try {
@@ -699,7 +803,7 @@ app.post('/api/gemini/report-summary', async (req, res) => {
 
     if (!forceRefresh) {
       const hit = reportSummaryServerCache.get(cacheKey);
-      if (hit && Date.now() - hit.cachedAt < 1000 * 60 * 60 * 6) {
+      if (hit && Date.now() - hit.cachedAt < 1000 * 60 * 60 * 24 * 7) {
         return res.json({
           ok: true,
           source: 'gemini',
@@ -841,9 +945,30 @@ Return valid JSON matching the exact schema with:
       ],
     };
 
-    const candidateModels = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
+    // Prefer high-quota fast model first (gemini-3.1-flash-lite), falling back to gemini-4-hydrogen,
+    // and automatically skipping any model currently in 429 quota cooldown.
+    const preferredModels = ['gemini-3.1-flash-lite', 'gemini-4-hydrogen'];
+    const candidateModels = getAvailableGeminiModels(preferredModels);
+
+    if (candidateModels.length === 0) {
+      const soonestAvailableAt = Math.min(
+        ...preferredModels.map((m) => modelCooldownUntil.get(m) || Date.now() + 15 * 60 * 1000)
+      );
+      const retryAfterMs = Math.max(60 * 1000, soonestAvailableAt - Date.now());
+      return res.status(429).json({
+        ok: false,
+        source: 'quota_cooldown',
+        code: 'QUOTA_EXHAUSTED',
+        retryAfterMs,
+        error:
+          'Daily Free Tier AI quota reached. You can upgrade to a billing-enabled API key in Settings > Secrets for higher quota, or wait for the quota window to reset.',
+      });
+    }
+
     let rawText = '';
     let lastError: any = null;
+    let allQuotaErrors = true;
+    let maxCooldownMs = 15 * 60 * 1000;
 
     for (const modelName of candidateModels) {
       try {
@@ -860,16 +985,36 @@ Return valid JSON matching the exact schema with:
           },
         });
         rawText = (response.text || '').trim();
-        if (rawText) break;
+        if (rawText) {
+          allQuotaErrors = false;
+          break;
+        }
       } catch (err: any) {
         lastError = err;
-        console.warn(`AI report summary attempt failed on ${modelName}:`, err?.message || err);
+        if (isQuotaExceededError(err)) {
+          maxCooldownMs = Math.max(maxCooldownMs, recordModelQuotaCooldown(modelName, err));
+        } else {
+          allQuotaErrors = false;
+        }
       }
     }
 
     if (!rawText) {
-      if (lastError) throw lastError;
-      return res.status(502).json({ ok: false, error: 'Empty AI response for report summary.' });
+      if (allQuotaErrors && lastError && isQuotaExceededError(lastError)) {
+        return res.status(429).json({
+          ok: false,
+          source: 'quota_cooldown',
+          code: 'QUOTA_EXHAUSTED',
+          retryAfterMs: maxCooldownMs,
+          error:
+            'Daily Free Tier AI quota reached. You can upgrade to a billing-enabled API key in Settings > Secrets for higher quota, or wait for the quota window to reset.',
+        });
+      }
+      return res.status(502).json({
+        ok: false,
+        source: 'error',
+        error: lastError?.message || 'Empty AI response for report summary.',
+      });
     }
 
     const parsed = JSON.parse(rawText);
@@ -878,6 +1023,7 @@ Return valid JSON matching the exact schema with:
       if (oldestKey) reportSummaryServerCache.delete(oldestKey);
     }
     reportSummaryServerCache.set(cacheKey, { summary: parsed, cachedAt: Date.now() });
+    persistSummaryCacheToDisk();
 
     return res.json({
       ok: true,
@@ -886,11 +1032,14 @@ Return valid JSON matching the exact schema with:
       summary: parsed,
     });
   } catch (error: any) {
-    console.warn('AI report summary generation error:', error?.message || error);
-    return res.status(500).json({
+    const isQuota = isQuotaExceededError(error);
+    return res.status(isQuota ? 429 : 500).json({
       ok: false,
-      source: 'error',
-      error: error?.message || 'Failed to generate AI report summary.',
+      source: isQuota ? 'quota_cooldown' : 'error',
+      code: isQuota ? 'QUOTA_EXHAUSTED' : 'ERROR',
+      error: isQuota
+        ? 'Daily Free Tier AI quota reached. You can upgrade to a billing-enabled API key in Settings > Secrets for higher quota.'
+        : error?.message || 'Failed to generate AI report summary.',
     });
   }
 });

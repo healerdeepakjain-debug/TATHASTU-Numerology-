@@ -368,29 +368,44 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </p>
             </div>
 
-            {/* Active Choghadiya Window */}
+            {/* Active Choghadiya Window (IST — Rahu Kaal strictly overrides) */}
             <div className="p-4 rounded-xl bg-slate-950 border border-amber-500/20 flex flex-col justify-between">
               <div>
                 <span className="text-[11px] text-amber-400/80 uppercase font-semibold block mb-1">
-                  Active Choghadiya Muhurat
+                  Active Choghadiya Muhurat (IST)
                 </span>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`font-bold text-sm px-2 py-0.5 rounded ${
-                      panchang.currentChoghadiya.quality === 'Excellent'
-                        ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
-                        : 'bg-amber-950 text-amber-300 border border-amber-500/40'
-                    }`}
-                  >
-                    {panchang.currentChoghadiya.name}
-                  </span>
-                  <span className="text-xs text-slate-300 font-mono">
-                    {panchang.currentChoghadiya.startTime} - {panchang.currentChoghadiya.endTime}
-                  </span>
-                </div>
+                {panchang.isRahuKaalNow || panchang.currentChoghadiya.isRahuKaalOverlap ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold text-sm px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-500/50">
+                      Rahu Kaal — Avoid
+                    </span>
+                    <span className="text-xs text-rose-200 font-mono">
+                      {panchang.rahuKaalWindow.start} - {panchang.rahuKaalWindow.end} IST
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`font-bold text-sm px-2 py-0.5 rounded ${
+                        panchang.currentChoghadiya.quality === 'Excellent' ||
+                        panchang.currentChoghadiya.quality === 'Good' ||
+                        panchang.currentChoghadiya.quality === 'Gainful'
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                          : panchang.currentChoghadiya.quality === 'Neutral/Travel'
+                            ? 'bg-amber-950 text-amber-300 border border-amber-500/40'
+                            : 'bg-rose-950 text-rose-300 border border-rose-500/40'
+                      }`}
+                    >
+                      {panchang.currentChoghadiya.name} ({panchang.currentChoghadiya.quality})
+                    </span>
+                    <span className="text-xs text-slate-300 font-mono">
+                      {panchang.currentChoghadiya.startTime} - {panchang.currentChoghadiya.endTime} IST
+                    </span>
+                  </div>
+                )}
               </div>
               <p className="text-[11px] text-amber-300/60 mt-2">
-                Ruler: {panchang.currentChoghadiya.ruler}
+                Ruler: {panchang.currentChoghadiya.ruler} • Rahu Kaal: {panchang.rahuKaalWindow.start}–{panchang.rahuKaalWindow.end} IST
               </p>
             </div>
           </div>

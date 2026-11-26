@@ -440,6 +440,61 @@ export function buildClassicalFallbackSummary(
 }
 
 const CLIENT_SUMMARY_CACHE = new Map<string, AiReportSummaryData>();
+const IN_FLIGHT_SUMMARY_REQUESTS = new Map<string, Promise<AiReportSummaryData>>();
+const LOCAL_STORAGE_CACHE_KEY = 'tathastu_ai_report_summary_cache_v3';
+const QUOTA_COOLDOWN_STORAGE_KEY = 'tathastu_ai_summary_quota_cooldown_until_v1';
+const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+
+function loadStoredSummaryCache(key: string): AiReportSummaryData | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem(LOCAL_STORAGE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, { data: AiReportSummaryData; savedAt: number }>;
+    const entry = parsed?.[key];
+    if (entry?.data && typeof entry.savedAt === 'number' && Date.now() - entry.savedAt < CACHE_TTL_MS) {
+      return entry.data;
+    }
+  } catch {
+    // Ignore storage read errors
+  }
+  return null;
+}
+
+function saveStoredSummaryCache(key: string, data: AiReportSummaryData): void {
+  try {
+    if (typeof window === 'undefined' || data.source !== 'gemini') return;
+    const raw = window.localStorage.getItem(LOCAL_STORAGE_CACHE_KEY);
+    const parsed: Record<string, { data: AiReportSummaryData; savedAt: number }> = raw ? JSON.parse(raw) : {};
+    parsed[key] = { data, savedAt: Date.now() };
+    const entries = Object.entries(parsed)
+      .sort((a, b) => (b[1]?.savedAt || 0) - (a[1]?.savedAt || 0))
+      .slice(0, 25);
+    window.localStorage.setItem(LOCAL_STORAGE_CACHE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function getQuotaCooldownUntil(): number {
+  try {
+    if (typeof window === 'undefined') return 0;
+    const val = Number(window.sessionStorage.getItem(QUOTA_COOLDOWN_STORAGE_KEY) || '0');
+    return Number.isFinite(val) ? val : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function setQuotaCooldown(retryAfterMs: number): void {
+  try {
+    if (typeof window === 'undefined') return;
+    const until = Date.now() + Math.min(Math.max(retryAfterMs, 60 * 1000), 2 * 60 * 60 * 1000);
+    window.sessionStorage.setItem(QUOTA_COOLDOWN_STORAGE_KEY, String(until));
+  } catch {
+    // Ignore sessionStorage errors
+  }
+}
 
 function buildCacheKey(input: AiReportSummaryRequestInput): string {
   const lang = input.language || getCurrentLanguage();
@@ -463,7 +518,15 @@ function buildCacheKey(input: AiReportSummaryRequestInput): string {
 export function getCachedAiReportSummary(
   input: AiReportSummaryRequestInput
 ): AiReportSummaryData | null {
-  return CLIENT_SUMMARY_CACHE.get(buildCacheKey(input)) || null;
+  const key = buildCacheKey(input);
+  const memHit = CLIENT_SUMMARY_CACHE.get(key);
+  if (memHit) return memHit;
+  const storedHit = loadStoredSummaryCache(key);
+  if (storedHit) {
+    CLIENT_SUMMARY_CACHE.set(key, storedHit);
+    return storedHit;
+  }
+  return null;
 }
 
 /**
@@ -476,91 +539,121 @@ export async function fetchAiReportSummary(
 ): Promise<AiReportSummaryData> {
   const key = buildCacheKey(input);
   if (!input.forceRefresh) {
-    const cached = CLIENT_SUMMARY_CACHE.get(key);
+    const cached = getCachedAiReportSummary(input);
     if (cached && cached.source === 'gemini') {
       return cached;
     }
+    if (Date.now() < getQuotaCooldownUntil()) {
+      const fallbackNow = cached || buildClassicalFallbackSummary(input);
+      CLIENT_SUMMARY_CACHE.set(key, fallbackNow);
+      return fallbackNow;
+    }
+    const pending = IN_FLIGHT_SUMMARY_REQUESTS.get(key);
+    if (pending) return pending;
   }
 
-  const fallback = buildClassicalFallbackSummary(input);
-  const payload = buildAiReportSummaryPayload(input);
+  const runFetch = async (): Promise<AiReportSummaryData> => {
+    const fallback = buildClassicalFallbackSummary(input);
+    const payload = buildAiReportSummaryPayload(input);
 
-  const controller = new AbortController();
-  const timeoutId =
-    typeof window !== 'undefined' ? window.setTimeout(() => controller.abort(), 18000) : null;
+    const controller = new AbortController();
+    const timeoutId =
+      typeof window !== 'undefined' ? window.setTimeout(() => controller.abort(), 18000) : null;
 
-  try {
-    const res = await fetch('/api/gemini/report-summary', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        profileSummary: payload,
-        forceRefresh: Boolean(input.forceRefresh),
-      }),
-      signal: controller.signal,
-    });
+    try {
+      const res = await fetch('/api/gemini/report-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profileSummary: payload,
+          forceRefresh: Boolean(input.forceRefresh),
+        }),
+        signal: controller.signal,
+      });
 
-    if (res.ok) {
-      const json = await res.json();
-      const s = json?.summary;
-      if (
-        s &&
-        Array.isArray(s.executiveSummaryParagraphs) &&
-        s.executiveSummaryParagraphs.length > 0 &&
-        Array.isArray(s.withoutRemedies10YearParagraphs) &&
-        s.withoutRemedies10YearParagraphs.length > 0 &&
-        Array.isArray(s.withRemedies10YearParagraphs) &&
-        s.withRemedies10YearParagraphs.length > 0
-      ) {
-        const normalized: AiReportSummaryData = {
-          source: json.source === 'gemini' ? 'gemini' : 'classical-fallback',
-          generatedAtIso: new Date().toISOString(),
-          language: payload.language,
-          startYear: payload.startYear,
-          endYear: payload.endYear,
-          parasharMahadashaLabel: payload.currentMahadasha,
-          next10YearDashaSummary: payload.next10YearDashaSummary,
-          executiveSummaryParagraphs: s.executiveSummaryParagraphs
-            .map((p: unknown) => String(p || '').trim())
-            .filter(Boolean)
-            .slice(0, 2),
-          parasharVedicFoundationParagraph:
-            String(s.parasharVedicFoundationParagraph || '').trim() ||
-            fallback.parasharVedicFoundationParagraph,
-          withoutRemedies10YearParagraphs: s.withoutRemedies10YearParagraphs
-            .map((p: unknown) => String(p || '').trim())
-            .filter(Boolean)
-            .slice(0, 2),
-          withRemedies10YearParagraphs: s.withRemedies10YearParagraphs
-            .map((p: unknown) => String(p || '').trim())
-            .filter(Boolean)
-            .slice(0, 2),
-          simpleRemedyRoadmapParagraph:
-            String(s.simpleRemedyRoadmapParagraph || '').trim() ||
-            fallback.simpleRemedyRoadmapParagraph,
-          tathastuThankYouParagraph:
-            String(s.tathastuThankYouParagraph || '').trim() ||
-            fallback.tathastuThankYouParagraph,
-          spiritualBlessings:
-            Array.isArray(s.spiritualBlessings) && s.spiritualBlessings.length > 0
-              ? s.spiritualBlessings
-                  .map((b: unknown) => String(b || '').trim())
-                  .filter(Boolean)
-                  .slice(0, 4)
-              : fallback.spiritualBlessings,
-        };
-        CLIENT_SUMMARY_CACHE.set(key, normalized);
-        return normalized;
+      if (res.status === 429) {
+        let retryAfterMs = 15 * 60 * 1000;
+        try {
+          const errJson = await res.json();
+          if (typeof errJson?.retryAfterMs === 'number' && errJson.retryAfterMs > 0) {
+            retryAfterMs = errJson.retryAfterMs;
+          }
+        } catch {
+          // Use default cooldown
+        }
+        setQuotaCooldown(retryAfterMs);
+        CLIENT_SUMMARY_CACHE.set(key, fallback);
+        return fallback;
       }
-    }
-  } catch {
-    // Offline or timeout -> graceful classical fallback
-  } finally {
-    if (timeoutId !== null && typeof window !== 'undefined') {
-      window.clearTimeout(timeoutId);
-    }
-  }
 
-  CLIENT_SUMMARY_CACHE.set(key, fallback);
-  return fallback;
+      if (res.ok) {
+        const json = await res.json();
+        const s = json?.summary;
+        if (
+          s &&
+          Array.isArray(s.executiveSummaryParagraphs) &&
+          s.executiveSummaryParagraphs.length > 0 &&
+          Array.isArray(s.withoutRemedies10YearParagraphs) &&
+          s.withoutRemedies10YearParagraphs.length > 0 &&
+          Array.isArray(s.withRemedies10YearParagraphs) &&
+          s.withRemedies10YearParagraphs.length > 0
+        ) {
+          const normalized: AiReportSummaryData = {
+            source: json.source === 'gemini' ? 'gemini' : 'classical-fallback',
+            generatedAtIso: new Date().toISOString(),
+            language: payload.language,
+            startYear: payload.startYear,
+            endYear: payload.endYear,
+            parasharMahadashaLabel: payload.currentMahadasha,
+            next10YearDashaSummary: payload.next10YearDashaSummary,
+            executiveSummaryParagraphs: s.executiveSummaryParagraphs
+              .map((p: unknown) => String(p || '').trim())
+              .filter(Boolean)
+              .slice(0, 2),
+            parasharVedicFoundationParagraph:
+              String(s.parasharVedicFoundationParagraph || '').trim() ||
+              fallback.parasharVedicFoundationParagraph,
+            withoutRemedies10YearParagraphs: s.withoutRemedies10YearParagraphs
+              .map((p: unknown) => String(p || '').trim())
+              .filter(Boolean)
+              .slice(0, 2),
+            withRemedies10YearParagraphs: s.withRemedies10YearParagraphs
+              .map((p: unknown) => String(p || '').trim())
+              .filter(Boolean)
+              .slice(0, 2),
+            simpleRemedyRoadmapParagraph:
+              String(s.simpleRemedyRoadmapParagraph || '').trim() ||
+              fallback.simpleRemedyRoadmapParagraph,
+            tathastuThankYouParagraph:
+              String(s.tathastuThankYouParagraph || '').trim() ||
+              fallback.tathastuThankYouParagraph,
+            spiritualBlessings:
+              Array.isArray(s.spiritualBlessings) && s.spiritualBlessings.length > 0
+                ? s.spiritualBlessings
+                    .map((b: unknown) => String(b || '').trim())
+                    .filter(Boolean)
+                    .slice(0, 4)
+                : fallback.spiritualBlessings,
+          };
+          CLIENT_SUMMARY_CACHE.set(key, normalized);
+          saveStoredSummaryCache(key, normalized);
+          return normalized;
+        }
+      }
+    } catch {
+      // Offline or timeout -> graceful classical fallback
+    } finally {
+      if (timeoutId !== null && typeof window !== 'undefined') {
+        window.clearTimeout(timeoutId);
+      }
+      IN_FLIGHT_SUMMARY_REQUESTS.delete(key);
+    }
+
+    CLIENT_SUMMARY_CACHE.set(key, fallback);
+    return fallback;
+  };
+
+  const promise = runFetch();
+  IN_FLIGHT_SUMMARY_REQUESTS.set(key, promise);
+  return promise;
 }

@@ -964,12 +964,43 @@ export function calculateYogaPranayamaPlan(profile: BirthProfile): PersonalizedY
   for (const hc of selectedHealthConcerns) {
     const mapped = HEALTH_CONCERN_THERAPEUTIC_MAP[hc.id];
     if (mapped) {
-      dailyAsanas.push(mapped.asana);
+      if (!usedAsanaNames.has(mapped.asana.sanskritName)) {
+        dailyAsanas.push(mapped.asana);
+        usedAsanaNames.add(mapped.asana.sanskritName);
+      }
       if (!dailyPranayamas.some((p) => p.sanskritName === mapped.pranayama.sanskritName)) {
         dailyPranayamas.push(mapped.pranayama);
       }
       ayurvedicAharaTips.push(mapped.aharaTip);
     }
+  }
+
+  // Ensure the Visual Yoga Posture Card Gallery always has 6 distinct balanced Asanas (2x3 grid)
+  const planetaryFallbackOrder = [3, 5, 6, 1, 2, 7, 8, 9, 4];
+  for (const pNum of planetaryFallbackOrder) {
+    if (dailyAsanas.length >= 6) break;
+    const extraMaster = PLANET_ASANA_MASTER[pNum];
+    if (!extraMaster || usedAsanaNames.has(extraMaster.sanskritName)) continue;
+    const extraPlanet = PLANETARY_PROFILES[pNum] || mPlanet;
+    dailyAsanas.push({
+      id: `balance-asana-${pNum}`,
+      sanskritName: extraMaster.sanskritName,
+      englishName: extraMaster.englishName,
+      hindiName: extraMaster.hindiName,
+      category: 'Core Birth Chart Asana',
+      governingPlanet: `${extraPlanet.planet} (Graha #${pNum} — ${extraPlanet.sanskritName})`,
+      targetChakra: extraMaster.targetChakra,
+      chakraColor: extraMaster.chakraColor,
+      diagramType: extraMaster.diagramType,
+      durationOrReps: extraMaster.durationOrReps,
+      bestTimeAndDirection: `Daily Morning Sadhana • Face East or North-East`,
+      breathingCue: extraMaster.breathingCue,
+      stepByStepAlignment: extraMaster.steps,
+      astrologicalReason: `Complementary Navagraha balancing posture activating ${extraMaster.targetChakra} and supporting Mulank ${mulank} (${mPlanet.planet}) & Bhagyank ${bhagyank} (${bPlanet.planet}) pranic harmony.`,
+      therapeuticBenefits: extraMaster.benefits,
+      precaution: extraMaster.precaution,
+    });
+    usedAsanaNames.add(extraMaster.sanskritName);
   }
 
   // Ensure at least 3 distinct Pranayamas

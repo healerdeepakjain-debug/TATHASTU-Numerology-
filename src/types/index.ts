@@ -199,6 +199,8 @@ export interface ChoghadiyaPeriod {
   startTime: string;
   endTime: string;
   isCurrent: boolean;
+  isRahuKaalOverlap?: boolean;
+  periodSession?: 'Day' | 'Night';
 }
 
 export interface CalendarEvent {

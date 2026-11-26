@@ -1313,11 +1313,106 @@ export function calculateLoShuGrid(
   return { grid, presentNumbers, kuaNumber, planes, completedPlanes, missingNumbers };
 }
 
-// Vedic Choghadiya (Day & Night 24-Hour Live) & Rahu Kaal calculations for any present time
-export function getDailyPanchang(dateObj: Date = new Date(), mulank: number, bhagyank: number) {
-  const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 1 = Monday, ... 6 = Saturday
+// Helper: Extract exact India Standard Time (Asia/Kolkata, UTC+05:30) components from any Date
+function getIstDateParts(dateObj: Date): {
+  year: number;
+  month: number;
+  day: number;
+  dayOfWeek: number; // 0 = Sun ... 6 = Sat
+  hour: number;
+  minute: number;
+  second: number;
+  isoDate: string;
+  displayDate: string;
+} {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(dateObj);
 
-  // Classical Day Choghadiya orders for each weekday (06:00 to 18:00)
+    const getVal = (type: string) => parts.find((p) => p.type === type)?.value || '';
+    const year = parseInt(getVal('year'), 10) || dateObj.getFullYear();
+    const month = parseInt(getVal('month'), 10) || dateObj.getMonth() + 1;
+    const day = parseInt(getVal('day'), 10) || dateObj.getDate();
+    const rawHour = parseInt(getVal('hour'), 10);
+    const hour = Number.isFinite(rawHour) ? rawHour % 24 : dateObj.getHours();
+    const minute = parseInt(getVal('minute'), 10) || 0;
+    const second = parseInt(getVal('second'), 10) || 0;
+    const weekdayStr = getVal('weekday').slice(0, 3).toLowerCase();
+    const wkMap: Record<string, number> = {
+      sun: 0,
+      mon: 1,
+      tue: 2,
+      wed: 3,
+      thu: 4,
+      fri: 5,
+      sat: 6,
+    };
+    const dayOfWeek = wkMap[weekdayStr] ?? dateObj.getDay();
+    const monthShort = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ][Math.max(0, Math.min(11, month - 1))];
+
+    return {
+      year,
+      month,
+      day,
+      dayOfWeek,
+      hour,
+      minute,
+      second,
+      isoDate: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      displayDate: `${String(day).padStart(2, '0')} ${monthShort} ${year}`,
+    };
+  } catch {
+    // Fallback to UTC+5:30 math
+    const istDate = new Date(dateObj.getTime() + 330 * 60000);
+    const year = istDate.getUTCFullYear();
+    const month = istDate.getUTCMonth() + 1;
+    const day = istDate.getUTCDate();
+    const hour = istDate.getUTCHours();
+    const minute = istDate.getUTCMinutes();
+    const second = istDate.getUTCSeconds();
+    const dayOfWeek = istDate.getUTCDay();
+    return {
+      year,
+      month,
+      day,
+      dayOfWeek,
+      hour,
+      minute,
+      second,
+      isoDate: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      displayDate: dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+    };
+  }
+}
+
+function formatHourFloat12h(hFloat: number): string {
+  const normalized = ((hFloat % 24) + 24) % 24;
+  const totalMins = Math.round(normalized * 60) % (24 * 60);
+  const h24 = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  const period = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+// Vedic Choghadiya (Day & Night 24-Hour Live IST) & Rahu Kaal calculations with strict Rahu Kaal override
+export function getDailyPanchang(dateObj: Date = new Date(), mulank: number, bhagyank: number) {
+  const ist = getIstDateParts(dateObj);
+  const dayOfWeek = ist.dayOfWeek; // 0 = Sunday, 1 = Monday, ... 6 = Saturday
+
+  // Classical Day Choghadiya orders for each weekday (06:00 AM to 06:00 PM IST)
   const dayChoghadiyaOrder: Record<number, ChoghadiyaPeriod['name'][]> = {
     0: ['Udveg', 'Char', 'Labh', 'Amrit', 'Kaal', 'Shubh', 'Rog', 'Udveg'], // Sun
     1: ['Amrit', 'Kaal', 'Shubh', 'Rog', 'Udveg', 'Char', 'Labh', 'Amrit'], // Mon
@@ -1328,7 +1423,7 @@ export function getDailyPanchang(dateObj: Date = new Date(), mulank: number, bha
     6: ['Kaal', 'Shubh', 'Rog', 'Udveg', 'Char', 'Labh', 'Amrit', 'Kaal'], // Sat
   };
 
-  // Classical Night (Ratri) Choghadiya orders for each weekday (18:00 to 06:00)
+  // Classical Night (Ratri) Choghadiya orders for each weekday (06:00 PM to 06:00 AM IST)
   const nightChoghadiyaOrder: Record<number, ChoghadiyaPeriod['name'][]> = {
     0: ['Shubh', 'Amrit', 'Char', 'Rog', 'Kaal', 'Labh', 'Udveg', 'Shubh'], // Sun Night
     1: ['Char', 'Rog', 'Kaal', 'Labh', 'Udveg', 'Shubh', 'Amrit', 'Char'], // Mon Night
@@ -1339,15 +1434,23 @@ export function getDailyPanchang(dateObj: Date = new Date(), mulank: number, bha
     6: ['Labh', 'Udveg', 'Shubh', 'Amrit', 'Char', 'Rog', 'Kaal', 'Labh'], // Sat Night
   };
 
-  // Rahu Kaal standard time windows (1.5 hr slots based on 06:00 sunrise)
-  const rahuKaalMap: Record<number, { start: string; end: string }> = {
-    0: { start: '16:30', end: '18:00' }, // Sun (8th part)
-    1: { start: '07:30', end: '09:00' }, // Mon (2nd part)
-    2: { start: '15:00', end: '16:30' }, // Tue (7th part)
-    3: { start: '12:00', end: '13:30' }, // Wed (5th part)
-    4: { start: '13:30', end: '15:00' }, // Thu (6th part)
-    5: { start: '10:30', end: '12:00' }, // Fri (4th part)
-    6: { start: '09:00', end: '10:30' }, // Sat (3rd part)
+  // Classical Rahu Kaal windows (1.5 hr slots based on 06:00 AM sunrise — Drik Panchang standard)
+  const rahuKaalSlotIndex: Record<number, number> = {
+    0: 7, // Sun: 8th slot -> 04:30 PM – 06:00 PM
+    1: 1, // Mon: 2nd slot -> 07:30 AM – 09:00 AM
+    2: 6, // Tue: 7th slot -> 03:00 PM – 04:30 PM
+    3: 4, // Wed: 5th slot -> 12:00 PM – 01:30 PM
+    4: 5, // Thu: 6th slot -> 01:30 PM – 03:00 PM
+    5: 3, // Fri: 4th slot -> 10:30 AM – 12:00 PM
+    6: 2, // Sat: 3rd slot -> 09:00 AM – 10:30 AM
+  };
+
+  const rahuIdx = rahuKaalSlotIndex[dayOfWeek] ?? 5;
+  const rahuStartH = 6 + rahuIdx * 1.5;
+  const rahuEndH = rahuStartH + 1.5;
+  const rahuWindow = {
+    start: formatHourFloat12h(rahuStartH),
+    end: formatHourFloat12h(rahuEndH),
   };
 
   const choghadiyaQualities: Record<ChoghadiyaPeriod['name'], { quality: ChoghadiyaPeriod['quality']; ruler: string }> = {
@@ -1360,72 +1463,73 @@ export function getDailyPanchang(dateObj: Date = new Date(), mulank: number, bha
     Udveg: { quality: 'Anxiety/Avoid', ruler: 'Sun (Surya)' },
   };
 
-  const nowHours = dateObj.getHours() + dateObj.getMinutes() / 60 + dateObj.getSeconds() / 3600;
+  const nowHours = ist.hour + ist.minute / 60 + ist.second / 3600;
   const isDaytime = nowHours >= 6 && nowHours < 18;
+  const isRahuKaalNow = nowHours >= rahuStartH && nowHours < rahuEndH;
 
-  // Format hour float (0-24+) to HH:MM
-  const formatHourFloat = (hFloat: number) => {
-    const normalized = ((hFloat % 24) + 24) % 24;
-    const h = Math.floor(normalized);
-    const m = Math.round((normalized - h) * 60);
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-  };
-
-  const periods: ChoghadiyaPeriod[] = [];
-
-  if (isDaytime) {
-    const order = dayChoghadiyaOrder[dayOfWeek];
-    for (let i = 0; i < 8; i++) {
-      const startH = 6 + i * 1.5;
-      const endH = startH + 1.5;
-      const isCurrent = nowHours >= startH && nowHours < endH;
-      const name = order[i];
-      const meta = choghadiyaQualities[name];
-      periods.push({
-        name,
-        ruler: meta.ruler,
-        quality: meta.quality,
-        startTime: formatHourFloat(startH),
-        endTime: formatHourFloat(endH),
-        isCurrent,
-      });
-    }
-  } else {
-    // Nighttime (18:00 to 06:00 next morning); if before 06:00, use previous weekday's night order
-    const nightDayIdx = nowHours < 6 ? (dayOfWeek + 6) % 7 : dayOfWeek;
-    const order = nightChoghadiyaOrder[nightDayIdx];
-    const adjNowHours = nowHours < 6 ? nowHours + 24 : nowHours;
-
-    for (let i = 0; i < 8; i++) {
-      const startH = 18 + i * 1.5;
-      const endH = startH + 1.5;
-      const isCurrent = adjNowHours >= startH && adjNowHours < endH;
-      const name = order[i];
-      const meta = choghadiyaQualities[name];
-      periods.push({
-        name,
-        ruler: meta.ruler,
-        quality: meta.quality,
-        startTime: formatHourFloat(startH),
-        endTime: formatHourFloat(endH),
-        isCurrent,
-      });
-    }
+  // Build ALL 8 Daytime Choghadiya periods with STRICT Rahu Kaal override
+  // (e.g., Thursday 01:30 PM – 03:00 PM Amrit & Tuesday 03:00 PM – 04:30 PM Shubh overlap Rahu Kaal and MUST be marked Avoid!)
+  const dayOrder = dayChoghadiyaOrder[dayOfWeek];
+  const dayPeriods: ChoghadiyaPeriod[] = [];
+  for (let i = 0; i < 8; i++) {
+    const startH = 6 + i * 1.5;
+    const endH = startH + 1.5;
+    const isCurrent = isDaytime && nowHours >= startH && nowHours < endH;
+    const overlapsRahu = i === rahuIdx;
+    const name = dayOrder[i];
+    const meta = choghadiyaQualities[name];
+    dayPeriods.push({
+      name,
+      ruler: overlapsRahu ? `${meta.ruler} • Rahu Kaal Override` : meta.ruler,
+      quality: overlapsRahu ? 'Loss/Avoid' : meta.quality,
+      startTime: formatHourFloat12h(startH),
+      endTime: formatHourFloat12h(endH),
+      isCurrent,
+      isRahuKaalOverlap: overlapsRahu,
+      periodSession: 'Day',
+    });
   }
 
-  // Active Hora calculation (Planetary hour)
+  // Build ALL 8 Nighttime Choghadiya periods (06:00 PM to 06:00 AM IST)
+  const nightDayIdx = nowHours < 6 ? (dayOfWeek + 6) % 7 : dayOfWeek;
+  const nightOrder = nightChoghadiyaOrder[nightDayIdx];
+  const adjNowHours = nowHours < 6 ? nowHours + 24 : nowHours;
+  const nightPeriods: ChoghadiyaPeriod[] = [];
+  for (let i = 0; i < 8; i++) {
+    const startH = 18 + i * 1.5;
+    const endH = startH + 1.5;
+    const isCurrent = !isDaytime && adjNowHours >= startH && adjNowHours < endH;
+    const name = nightOrder[i];
+    const meta = choghadiyaQualities[name];
+    nightPeriods.push({
+      name,
+      ruler: meta.ruler,
+      quality: meta.quality,
+      startTime: formatHourFloat12h(startH),
+      endTime: formatHourFloat12h(endH),
+      isCurrent,
+      isRahuKaalOverlap: false,
+      periodSession: 'Night',
+    });
+  }
+
+  const periods: ChoghadiyaPeriod[] = isDaytime ? dayPeriods : nightPeriods;
+  const activeChoghadiya = periods.find((p) => p.isCurrent) || periods[0];
+
+  // Active Hora calculation (Planetary hour based on IST sunrise 06:00 AM)
   const dayLordByWeekday = [1, 2, 9, 5, 3, 6, 8];
   const horaCycle = [1, 6, 5, 2, 8, 3, 9];
-  const currentLord = dayLordByWeekday[dayOfWeek];
+  const vedicDayOfWeek = nowHours < 6 ? (dayOfWeek + 6) % 7 : dayOfWeek;
+  const currentLord = dayLordByWeekday[vedicDayOfWeek];
   const startIndex = horaCycle.indexOf(currentLord);
   const hourSince6 = Math.max(0, Math.floor((nowHours - 6 + 24) % 24));
   const currentHoraPlanetNum = horaCycle[(startIndex + hourSince6) % horaCycle.length];
   const currentHora = PLANETARY_PROFILES[currentHoraPlanetNum]?.planet || 'Jupiter';
 
-  // Daily Lucky Numbers for user
-  const dayNumber = reduceToSingleDigit(dateObj.getDate());
-  const monthNumber = reduceToSingleDigit(dateObj.getMonth() + 1);
-  const universalDayNumber = reduceToSingleDigit(dayNumber + monthNumber + reduceToSingleDigit(dateObj.getFullYear()));
+  // Daily Lucky Numbers for user (based on IST calendar date)
+  const dayNumber = reduceToSingleDigit(ist.day);
+  const monthNumber = reduceToSingleDigit(ist.month);
+  const universalDayNumber = reduceToSingleDigit(dayNumber + monthNumber + reduceToSingleDigit(ist.year));
   const personalDayNumber = reduceToSingleDigit(universalDayNumber + mulank + bhagyank);
 
   const luckyNumbers = Array.from(
@@ -1437,16 +1541,6 @@ export function getDailyPanchang(dateObj: Date = new Date(), mulank: number, bha
       PLANETARY_PROFILES[bhagyank]?.friendlyNumbers[0] || 5,
     ])
   ).slice(0, 4);
-
-  const activeChoghadiya = periods.find((p) => p.isCurrent) || periods[0];
-  const rahuWindow = rahuKaalMap[dayOfWeek];
-
-  const nowMinutes = dateObj.getHours() * 60 + dateObj.getMinutes();
-  const [rStartH, rStartM] = rahuWindow.start.split(':').map(Number);
-  const [rEndH, rEndM] = rahuWindow.end.split(':').map(Number);
-  const rahuStartMins = rStartH * 60 + rStartM;
-  const rahuEndMins = rEndH * 60 + rEndM;
-  const isRahuKaalNow = nowMinutes >= rahuStartMins && nowMinutes < rahuEndMins;
 
   const weekdayNames = [
     'Sunday (Ravivar)',
@@ -1475,10 +1569,30 @@ export function getDailyPanchang(dateObj: Date = new Date(), mulank: number, bha
     'Shukla Chaturdashi',
     'Purnima Tithi',
   ];
-  const tithi = tithiNames[dateObj.getDate() % tithiNames.length];
-  const auspiciousTimings = periods
+  const tithi = tithiNames[ist.day % tithiNames.length];
+
+  // Strictly non-Rahu-Kaal Daytime Auspicious Choghadiya windows (plus Evening non-Rahu-Kaal Amrit/Shubh/Labh)
+  const dayAuspicious = dayPeriods
+    .filter(
+      (p) =>
+        !p.isRahuKaalOverlap &&
+        (p.quality === 'Excellent' || p.quality === 'Good' || p.quality === 'Gainful')
+    )
+    .map((p) => `${p.name} (${p.startTime} – ${p.endTime})`);
+
+  const eveningAuspicious = nightPeriods
+    .slice(0, 3) // 06:00 PM – 10:30 PM practical evening windows
     .filter((p) => p.quality === 'Excellent' || p.quality === 'Good' || p.quality === 'Gainful')
-    .map((p) => `${p.name} (${p.startTime}–${p.endTime})`);
+    .map((p) => `${p.name} Eve (${p.startTime} – ${p.endTime})`);
+
+  const auspiciousTimings = [...dayAuspicious, ...eveningAuspicious];
+
+  // Classical Vedic rule: Wednesday Rahu Kaal (12:00 PM – 01:30 PM) cancels Abhijit Muhurat!
+  const hasAbhijitMuhurat = dayOfWeek !== 3;
+  const abhijitMuhurat = hasAbhijitMuhurat
+    ? '11:51 AM – 12:39 PM IST'
+    : 'Not auspicious on Wednesday (overlaps Rahu Kaal 12:00 PM – 01:30 PM IST)';
+  const brahmaMuhurat = '04:45 AM – 05:33 AM IST';
 
   const horaRel = getPlanetaryRelationship(mulank, currentHoraPlanetNum);
   const horaStatus =
@@ -1496,11 +1610,13 @@ export function getDailyPanchang(dateObj: Date = new Date(), mulank: number, bha
   const luckyColor = PLANETARY_PROFILES[mulank]?.luckyColor || 'Golden Amber';
 
   return {
-    date: dateObj.toISOString().split('T')[0],
-    dateStr: dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+    date: ist.isoDate,
+    dateStr: ist.displayDate,
     tithi,
     vara,
     choghadiyaPeriods: periods,
+    dayChoghadiyaPeriods: dayPeriods,
+    nightChoghadiyaPeriods: nightPeriods,
     currentChoghadiya: activeChoghadiya,
     currentHora,
     currentHoraPlanet: currentHora,
@@ -1508,6 +1624,9 @@ export function getDailyPanchang(dateObj: Date = new Date(), mulank: number, bha
     horaAdvice,
     rahuKaalWindow: rahuWindow,
     isRahuKaalNow,
+    brahmaMuhurat,
+    abhijitMuhurat,
+    hasAbhijitMuhurat,
     auspiciousTimings,
     personalDayNumber,
     luckyNumbers,
@@ -1520,14 +1639,14 @@ export function getDailyPanchang(dateObj: Date = new Date(), mulank: number, bha
     affirmation,
     deity: PLANETARY_PROFILES[mulank]?.deity || 'Lord Ganesha',
     auspiciousVibrationScore: isRahuKaalNow
-      ? 35
+      ? 28
       : activeChoghadiya.quality === 'Excellent'
       ? 95
       : activeChoghadiya.quality === 'Good' || activeChoghadiya.quality === 'Gainful'
       ? 84
       : activeChoghadiya.quality === 'Neutral/Travel'
-      ? 72
-      : 45,
+      ? 70
+      : 42,
   };
 }
 

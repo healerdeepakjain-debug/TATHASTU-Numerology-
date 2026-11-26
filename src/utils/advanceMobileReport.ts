@@ -1,4 +1,10 @@
-import { reduceToSingleDigit, PLANETARY_PROFILES, calculateMulank, calculateBhagyank } from './numerology';
+import {
+  reduceToSingleDigit,
+  PLANETARY_PROFILES,
+  calculateMulank,
+  calculateBhagyank,
+  getPlanetaryRelationship,
+} from './numerology';
 import { calculateVedicAstrologyFromBirth } from './astrologyAndCities';
 
 export interface MissingNumberRemedyDetail {
@@ -43,6 +49,9 @@ export interface NumerologyDashaPeriod {
   systemType?: 'Vedic Numerology (45-Yr Mulank Cycle)' | 'Vedic Astrology Vimshottari (120-Yr Nakshatra Cycle)';
   isCurrent: boolean;
   cycleStatus: 'PAST CYCLE (Completed)' | 'PRESENT CYCLE (Active Now)' | 'UPCOMING CYCLE (Future)';
+  harmonyPercent: number;
+  harmonyVerdict: string;
+  remedy: string;
   paragraphs: string[];
 }
 
@@ -981,6 +990,60 @@ export function generateAdvanceMobileReport(
   const personalYearSanskrit = DASHA_PREDICTIONS_DB[personalYearNum]?.sanskrit || 'Surya';
   const activeNumerologyAntardashaLabel = `Antardasha #${personalYearNum} ${personalYearPlanet} (${personalYearSanskrit}) [${formattedDay}-${formattedMonth}-${activePersonalYearStartYear} to ${formattedDay}-${formattedMonth}-${activePersonalYearStartYear + 1}]`;
 
+  // Planet-specific Vedic Maha Dasha Remedies & Harmony % Calculator
+  const DASHA_REMEDIES_DB: Record<number, string> = {
+    1: 'Offer Surya Arghya in a copper vessel at sunrise, chant "Om Hraam Hreem Hraum Sah Suryaya Namah" (108x) on Sundays, and donate wheat or jaggery.',
+    2: 'Offer raw milk & water on Shivling on Mondays, chant "Om Shraam Shreem Shraum Sah Chandramase Namah" (108x), and drink water from a silver tumbler.',
+    3: 'Apply saffron/haldi tilak on forehead, chant "Om Graam Greem Graum Sah Gurave Namah" (108x) on Thursdays, and donate yellow chana dal or bananas.',
+    4: 'Chant "Om Bhraam Bhreem Bhraum Sah Rahave Namah" (108x) at dusk, keep a silver square/coin in wallet, and feed stray dogs or donate black/blue blankets on Saturdays.',
+    5: 'Offer Durva grass to Lord Ganesha on Wednesdays, chant "Om Braam Breem Braum Sah Budhaya Namah" (108x), and feed green fodder or moong dal to cows.',
+    6: 'Offer white flowers to Goddess Mahalakshmi on Fridays, chant "Om Draam Dreem Draum Sah Shukraya Namah" (108x), wear clean white/pastel attire, and donate kheer/rice.',
+    7: 'Chant "Om Sraam Sreem Sraum Sah Ketave Namah" (108x) & Ganpati Atharvashirsha, feed multi-colored stray dogs on Tuesdays/Thursdays, and practice silent meditation.',
+    8: 'Light a mustard oil diya under a Peepal tree on Saturday evenings, chant "Om Praam Preem Praum Sah Shanaischaraya Namah" (108x), and donate black sesame (til) or footwear to laborers.',
+    9: 'Recite Hanuman Chalisa & chant "Om Kraam Kreem Kraum Sah Bhaumaya Namah" (108x) on Tuesdays, light a jasmine oil diya, and donate red masoor dal or jaggery.',
+  };
+
+  const computeDashaHarmonyAndRemedy = (
+    dashaNum: number,
+    isVimshottari: boolean
+  ): { harmonyPercent: number; harmonyVerdict: string; remedy: string } => {
+    const relM = getPlanetaryRelationship(mulank, dashaNum);
+    const relB = getPlanetaryRelationship(bhagyank, dashaNum);
+    const presentInChart = !missingNumbersList.includes(dashaNum);
+
+    let score = 50;
+    if (dashaNum === mulank) score += 24;
+    else if (relM === 'friendly') score += 21;
+    else if (relM === 'neutral') score += 12;
+    else score += 2;
+
+    if (dashaNum === bhagyank) score += 21;
+    else if (relB === 'friendly') score += 19;
+    else if (relB === 'neutral') score += 11;
+    else score += 2;
+
+    score += presentInChart ? 4 : -3;
+    if (isVimshottari) {
+      // Subtle Nakshatra-lord alignment adjustment
+      score += dashaNum === bhagyank ? 1 : 0;
+    }
+    const harmonyPercent = Math.max(46, Math.min(96, Math.round(score)));
+    const harmonyVerdict =
+      harmonyPercent >= 82
+        ? 'Supremely Harmonious'
+        : harmonyPercent >= 68
+          ? 'Favorable & Balanced'
+          : harmonyPercent >= 56
+            ? 'Moderate (Remedy Advised)'
+            : 'Karmic Friction (Remedy Essential)';
+    const baseRemedy = DASHA_REMEDIES_DB[dashaNum] || DASHA_REMEDIES_DB[3];
+    const remedy =
+      harmonyPercent >= 82
+        ? `Amplification Remedy: ${baseRemedy}`
+        : `Pacification & Protection Remedy: ${baseRemedy}`;
+    return { harmonyPercent, harmonyVerdict, remedy };
+  };
+
   const allNumerologyCycles: NumerologyDashaPeriod[] = [];
   let cursorYear = birthYear;
   let currentDashaNum = mulank >= 1 && mulank <= 9 ? mulank : 1;
@@ -1000,6 +1063,7 @@ export function generateAdvanceMobileReport(
       : cycleEndMs <= nowMs
         ? 'PAST CYCLE (Completed)'
         : 'UPCOMING CYCLE (Future)';
+    const harmonyMeta = computeDashaHarmonyAndRemedy(currentDashaNum, false);
 
     allNumerologyCycles.push({
       dashaNumber: currentDashaNum,
@@ -1015,6 +1079,9 @@ export function generateAdvanceMobileReport(
       systemType: 'Vedic Numerology (45-Yr Mulank Cycle)',
       isCurrent,
       cycleStatus,
+      harmonyPercent: harmonyMeta.harmonyPercent,
+      harmonyVerdict: harmonyMeta.harmonyVerdict,
+      remedy: harmonyMeta.remedy,
       paragraphs: dInfo.paragraphs,
     });
 
@@ -1126,6 +1193,7 @@ export function generateAdvanceMobileReport(
     const dInfo = DASHA_PREDICTIONS_DB[lord.dashaNumber] || DASHA_PREDICTIONS_DB[1];
     const startDt = new Date(vimCursorMs);
     const endDt = new Date(periodEndMs);
+    const vimHarmonyMeta = computeDashaHarmonyAndRemedy(lord.dashaNumber, true);
 
     allVimshottariCycles.push({
       dashaNumber: lord.dashaNumber,
@@ -1144,6 +1212,9 @@ export function generateAdvanceMobileReport(
       systemType: 'Vedic Astrology Vimshottari (120-Yr Nakshatra Cycle)',
       isCurrent,
       cycleStatus,
+      harmonyPercent: vimHarmonyMeta.harmonyPercent,
+      harmonyVerdict: vimHarmonyMeta.harmonyVerdict,
+      remedy: vimHarmonyMeta.remedy,
       paragraphs: dInfo.paragraphs,
     });
 

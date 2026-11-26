@@ -77,12 +77,21 @@ export const DailySixNotificationsCenter: React.FC<DailySixNotificationsCenterPr
   const [channels, setChannels] = useState<SixDailyNotificationChannels>(initialChannels);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  const goodWindows = panchang.choghadiyaPeriods.filter(
-    (c) => c.quality === 'Excellent' || c.quality === 'Good' || c.quality === 'Gainful'
+  const dayPeriods = panchang.dayChoghadiyaPeriods || panchang.choghadiyaPeriods;
+  const goodWindows = dayPeriods.filter(
+    (c) =>
+      !c.isRahuKaalOverlap &&
+      (c.quality === 'Excellent' || c.quality === 'Good' || c.quality === 'Gainful')
   );
-  const badWindows = panchang.choghadiyaPeriods.filter(
-    (c) => c.quality === 'Inauspicious' || c.quality === 'Loss/Avoid' || c.quality === 'Anxiety/Avoid'
+  const badWindows = dayPeriods.filter(
+    (c) =>
+      !c.isRahuKaalOverlap &&
+      (c.quality === 'Inauspicious' || c.quality === 'Loss/Avoid' || c.quality === 'Anxiety/Avoid')
   );
+  const currentActiveLabel =
+    panchang.isRahuKaalNow || panchang.currentChoghadiya.isRahuKaalOverlap
+      ? `Rahu Kaal (${panchang.rahuKaalWindow.start} - ${panchang.rahuKaalWindow.end} IST • Avoid)`
+      : `${panchang.currentChoghadiya.name} (${panchang.currentChoghadiya.quality})`;
 
   const sixNotifications = [
     {
@@ -92,9 +101,13 @@ export const DailySixNotificationsCenter: React.FC<DailySixNotificationsCenterPr
       category: 'Good Time of the Day',
       icon: CheckCircle2,
       accent: 'emerald',
-      message: `✅ GOOD TIME TODAY for ${profile.name}: Best Auspicious Windows are ${goodWindows
+      message: `✅ GOOD TIME TODAY (IST) for ${profile.name}: Best Auspicious Windows (Rahu Kaal Excluded) are ${goodWindows
         .map((g) => `${g.name} (${g.startTime}-${g.endTime})`)
-        .join(', ')}. Abhijit Siddha Window: 11:48 AM - 12:36 PM. Ideal for signing contracts, wealth transactions, and prayers.`,
+        .join(', ')}. ${
+        panchang.hasAbhijitMuhurat
+          ? `Abhijit Siddha Window: ${panchang.abhijitMuhurat}.`
+          : `Abhijit Note: ${panchang.abhijitMuhurat}.`
+      } Ideal for signing contracts, wealth transactions, and prayers.`,
     },
     {
       key: 'badTimeRahuCaution' as keyof SixDailyNotificationChannels,
@@ -103,7 +116,7 @@ export const DailySixNotificationsCenter: React.FC<DailySixNotificationsCenterPr
       category: 'Bad Time Caution',
       icon: ShieldAlert,
       accent: 'rose',
-      message: `⚠️ BAD TIME CAUTION TODAY for ${profile.name}: Avoid new investments or risky travel during Rahu Kaal (${panchang.rahuKaalWindow.start} - ${panchang.rahuKaalWindow.end}) and Inauspicious Choghadiya windows: ${badWindows
+      message: `⚠️ BAD TIME CAUTION TODAY (IST) for ${profile.name}: Avoid new investments or risky travel during Rahu Kaal (${panchang.rahuKaalWindow.start} - ${panchang.rahuKaalWindow.end} IST) and Inauspicious Choghadiya windows: ${badWindows
         .map((b) => `${b.name} (${b.startTime}-${b.endTime})`)
         .join(', ')}.`,
     },
@@ -125,7 +138,7 @@ export const DailySixNotificationsCenter: React.FC<DailySixNotificationsCenterPr
       category: 'Planetary Transit',
       icon: Sun,
       accent: 'sky',
-      message: `🪐 PLANETARY HORA & GOCHAR for ${profile.name}: Current Ruling Hora is ${panchang.currentHora} • Active Choghadiya: ${panchang.currentChoghadiya.name} (${panchang.currentChoghadiya.quality}). Align your high-focus tasks with ${mulankInfo?.planet} and ${personalDayInfo?.planet} hours.`,
+      message: `🪐 PLANETARY HORA & GOCHAR for ${profile.name}: Current Ruling Hora is ${panchang.currentHora} • Active Window: ${currentActiveLabel}. Align your high-focus tasks with ${mulankInfo?.planet} and ${personalDayInfo?.planet} hours.`,
     },
     {
       key: 'dailyVedicMantra' as keyof SixDailyNotificationChannels,
