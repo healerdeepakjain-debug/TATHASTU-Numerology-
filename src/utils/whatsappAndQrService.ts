@@ -498,17 +498,18 @@ export async function sendWhatsAppAuspiciousTimeUpdate(
 }
 
 /**
- * 4) TAB 1 — Focused WhatsApp: Auspicious Time & Lucky Colour of the Day ONLY (Short & Clean)
+ * 4) TAB 1 — Focused WhatsApp: Auspicious Time & Lucky Colour of the Selected Day ONLY (Short & Clean)
  */
 export async function sendWhatsAppAuspiciousTimeAndColor(
   profile: AstroProfileRecord,
-  senderAccount: AccountRecord
+  senderAccount: AccountRecord,
+  targetDate?: Date
 ): Promise<{ ok: boolean }> {
   const m = calculateMulank(profile.dob);
   const b = calculateBhagyank(profile.dob);
-  const now = new Date();
-  const panchang = getDailyPanchang(now, m, b);
-  const dateLabel = now.toLocaleDateString('en-IN', {
+  const dateToUse = targetDate || new Date();
+  const panchang = getDailyPanchang(dateToUse, m, b);
+  const dateLabel = dateToUse.toLocaleDateString('en-IN', {
     timeZone: 'Asia/Kolkata',
     weekday: 'long',
     day: '2-digit',
@@ -529,15 +530,13 @@ export async function sendWhatsAppAuspiciousTimeAndColor(
     `🕉️ *${brandTitle}*`,
     `Namaste *${profile.name}* Ji (${dateLabel})`,
     ``,
-    `⏰ *TODAY'S AUSPICIOUS TIME (IST — Rahu Kaal Excluded):*`,
+    `⏰ *AUSPICIOUS TIME — ${dateLabel} (IST, Rahu Kaal Excluded):*`,
     `• Brahma Muhurat: ${panchang.brahmaMuhurat}`,
-    ...(panchang.hasAbhijitMuhurat
-      ? [`• Abhijit Muhurat: ${panchang.abhijitMuhurat}`]
-      : [`• Abhijit Muhurat: ${panchang.abhijitMuhurat}`]),
+    `• Abhijit Muhurat: ${panchang.abhijitMuhurat}`,
     `• Shubh Choghadiya: ${auspiciousWindowText}`,
     `• Avoid Rahu Kaal: ${panchang.rahuKaalWindow.start} – ${panchang.rahuKaalWindow.end} IST`,
     ``,
-    `🎨 *LUCKY COLOUR TO WEAR TODAY:*`,
+    `🎨 *LUCKY COLOUR TO WEAR (${dateLabel}):*`,
     `• ${panchang.todayLuckyColor}`,
   ];
 
@@ -553,18 +552,19 @@ export async function sendWhatsAppAuspiciousTimeAndColor(
  * 3. Maha Dasha Mantra & Remedies (Both 120-Yr Parashari Vimshottari & 45-Yr Vedic Numerology)
  * 4. Bhagyank & Missing Number Siddhi Mantra
  * 5. Natal Soul & Janma Rashi Siddhi Mantra
- * 6. Today's Siddhi Mantra
+ * 6. Day's Siddhi Mantra
  */
 export async function sendWhatsAppDayRemediesDigest(
   profile: AstroProfileRecord,
-  senderAccount: AccountRecord
+  senderAccount: AccountRecord,
+  targetDate?: Date
 ): Promise<{ ok: boolean }> {
   const m = calculateMulank(profile.dob);
   const b = calculateBhagyank(profile.dob);
   const mulankInfo = PLANETARY_PROFILES[m] || PLANETARY_PROFILES[1];
   const bhagyankInfo = PLANETARY_PROFILES[b] || PLANETARY_PROFILES[3];
-  const today = new Date();
-  const panchang = getDailyPanchang(today, m, b);
+  const dateToUse = targetDate || new Date();
+  const panchang = getDailyPanchang(dateToUse, m, b);
   const astro = calculateVedicAstrologyFromBirth(
     profile.dob,
     profile.tob || '09:30',
@@ -591,7 +591,7 @@ export async function sendWhatsAppDayRemediesDigest(
   const dashaDev = SANSKRit_BEEJ_DEVANAGARI[dashaNum] || SANSKRit_BEEJ_DEVANAGARI[6];
   const bhagyankDev = SANSKRit_BEEJ_DEVANAGARI[b] || SANSKRit_BEEJ_DEVANAGARI[3];
 
-  const istWeekdayName = today.toLocaleDateString('en-US', {
+  const istWeekdayName = dateToUse.toLocaleDateString('en-US', {
     timeZone: 'Asia/Kolkata',
     weekday: 'short',
   });
@@ -604,8 +604,8 @@ export async function sendWhatsAppDayRemediesDigest(
     Fri: 5,
     Sat: 6,
   };
-  const weekdayIndex = weekdayMap[istWeekdayName] ?? today.getDay();
-  const dateLabel = today.toLocaleDateString('en-IN', {
+  const weekdayIndex = weekdayMap[istWeekdayName] ?? dateToUse.getDay();
+  const dateLabel = dateToUse.toLocaleDateString('en-IN', {
     timeZone: 'Asia/Kolkata',
     weekday: 'long',
     day: '2-digit',
@@ -719,7 +719,7 @@ export async function sendWhatsAppDayRemediesDigest(
     `1. *Vedic Beej Mantra:*`,
     `${mulankInfo.beejMantra}`,
     ``,
-    `2. *Daily Karmic Ritual & Daan:*`,
+    `2. *Daily Karmic Ritual & Daan (${panchang.vara}):*`,
     `${DAY_KARMIC_RITUAL_AND_DAAN[weekdayIndex]}`,
     ``,
     `3. *Maha Dasha Mantra & Vedic Remedies:*`,
@@ -736,7 +736,7 @@ export async function sendWhatsAppDayRemediesDigest(
     `5. *Natal Soul & Janma Rashi Siddhi Mantra (${astro.rashi} • ${mulankInfo.planet}):*`,
     `${mulankDev.devanagari} (${mulankInfo.beejMantra})`,
     ``,
-    `6. *Today's Siddhi Mantra (${panchang.vara}):*`,
+    `6. *Day's Siddhi Mantra (${panchang.vara} — ${dateLabel}):*`,
     `${panchang.todayBeejMantra}`,
     ...partnerLines,
     ...parivarLines,

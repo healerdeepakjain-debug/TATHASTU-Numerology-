@@ -252,6 +252,32 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   // Direct WhatsApp API Connection Hub State
   const [whatsAppConfig, setWhatsAppConfig] = useState<WhatsAppApiConfig>(loadWhatsAppApiConfig);
   const [selectedWaClientProfileId, setSelectedWaClientProfileId] = useState<string>('');
+  const [selectedWaDayOffset, setSelectedWaDayOffset] = useState<0 | 1 | 2>(0);
+
+  const waDateOptions = useMemo(() => {
+    const nowMs = Date.now();
+    const offsets: Array<{ offset: 0 | 1 | 2; tag: string }> = [
+      { offset: 0, tag: 'Present Date (Today)' },
+      { offset: 1, tag: 'Tomorrow Date' },
+      { offset: 2, tag: 'Day After Tomorrow Date' },
+    ];
+    return offsets.map(({ offset, tag }) => {
+      const dt = new Date(nowMs + offset * 86400000);
+      const formatted = dt.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+      return {
+        offset,
+        tag,
+        formatted,
+        label: `${tag} — ${formatted}`,
+      };
+    });
+  }, []);
 
   // Master Admin Exclusive App Download Link & QR Code State
   const [copiedAppLink, setCopiedAppLink] = useState(false);
@@ -733,23 +759,27 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
 
   const handleWhatsAppAction = async (
     prof: AstroProfileRecord,
-    actionType: 'time-color' | 'remedies' | 'event' | 'report' | 'goodtime'
+    actionType: 'time-color' | 'remedies' | 'event' | 'report' | 'goodtime',
+    dayOffset: 0 | 1 | 2 = selectedWaDayOffset
   ) => {
     if (!canCurrentAccountDownloadOrShare()) {
       triggerAdminRestrictionPopup('Direct WhatsApp API Messaging to Client');
       return;
     }
+    const targetDate = new Date(Date.now() + dayOffset * 86400000);
+    const chosenDateOption =
+      waDateOptions.find((opt) => opt.offset === dayOffset) || waDateOptions[0];
     if (actionType === 'time-color') {
-      await sendWhatsAppAuspiciousTimeAndColor(prof, currentAccount);
+      await sendWhatsAppAuspiciousTimeAndColor(prof, currentAccount, targetDate);
       setStatusFeedback({
         type: 'success',
-        text: `Dispatched Today's Auspicious Time & Lucky Colour to ${prof.name} on WhatsApp!`,
+        text: `Dispatched Auspicious Time & Lucky Colour (${chosenDateOption.label}) to ${prof.name} on WhatsApp!`,
       });
     } else if (actionType === 'remedies') {
-      await sendWhatsAppDayRemediesDigest(prof, currentAccount);
+      await sendWhatsAppDayRemediesDigest(prof, currentAccount, targetDate);
       setStatusFeedback({
         type: 'success',
-        text: `Dispatched Today's Day-According Remedies (Personal + Partner + Parivar) to ${prof.name} on WhatsApp!`,
+        text: `Dispatched Day-According Remedies (${chosenDateOption.label} — Personal + Partner + Parivar) to ${prof.name} on WhatsApp!`,
       });
     } else if (actionType === 'event') {
       const res = await sendWhatsAppSpecificEventAlert(prof, currentAccount);
@@ -2369,18 +2399,37 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                         ))}
                       </select>
                     </div>
-                    <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="lg:col-span-3">
+                      <label className="text-[11px] font-bold text-amber-300 flex items-center gap-1 mb-1">
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>Select Date (Time / Colour &amp; Remedies)</span>
+                      </label>
+                      <select
+                        value={selectedWaDayOffset}
+                        onChange={(e) =>
+                          setSelectedWaDayOffset(Number(e.target.value) as 0 | 1 | 2)
+                        }
+                        className="w-full bg-slate-950 border border-amber-500/45 rounded-xl px-3 py-2 text-xs text-amber-100 font-semibold"
+                      >
+                        {waDateOptions.map((opt) => (
+                          <option key={opt.offset} value={opt.offset}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       <button
                         type="button"
                         onClick={() => {
                           const target =
                             myProfiles.find((p) => p.id === selectedWaClientProfileId) ||
                             myProfiles[0];
-                          if (target) handleWhatsAppAction(target, 'time-color');
+                          if (target) handleWhatsAppAction(target, 'time-color', selectedWaDayOffset);
                         }}
                         className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                       >
-                        <Clock className="w-3.5 h-3.5" />
+                        <Clock className="w-3.5 h-3.5 shrink-0" />
                         <span>1. Auspicious Time &amp; Lucky Colour</span>
                       </button>
 
@@ -2390,12 +2439,12 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                           const target =
                             myProfiles.find((p) => p.id === selectedWaClientProfileId) ||
                             myProfiles[0];
-                          if (target) handleWhatsAppAction(target, 'remedies');
+                          if (target) handleWhatsAppAction(target, 'remedies', selectedWaDayOffset);
                         }}
                         className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                       >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>2. Day-According Remedies (Personal + Partner + Parivar)</span>
+                        <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                        <span>2. Day-According Remedies</span>
                       </button>
                     </div>
                   </div>
@@ -2880,17 +2929,36 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     ))}
                   </select>
                 </div>
-                <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="lg:col-span-3">
+                  <label className="text-[11px] font-bold text-amber-300 flex items-center gap-1 mb-1">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Select Date (Time / Colour &amp; Remedies)</span>
+                  </label>
+                  <select
+                    value={selectedWaDayOffset}
+                    onChange={(e) =>
+                      setSelectedWaDayOffset(Number(e.target.value) as 0 | 1 | 2)
+                    }
+                    className="w-full bg-slate-900 border border-amber-500/45 rounded-xl px-3 py-2 text-xs text-amber-100 font-semibold"
+                  >
+                    {waDateOptions.map((opt) => (
+                      <option key={opt.offset} value={opt.offset}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <button
                     type="button"
                     onClick={() => {
                       const target =
                         profiles.find((p) => p.id === selectedWaClientProfileId) || profiles[0];
-                      if (target) handleWhatsAppAction(target, 'time-color');
+                      if (target) handleWhatsAppAction(target, 'time-color', selectedWaDayOffset);
                     }}
                     className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Clock className="w-3.5 h-3.5" />
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
                     <span>1. Auspicious Time &amp; Lucky Colour</span>
                   </button>
 
@@ -2899,12 +2967,12 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                     onClick={() => {
                       const target =
                         profiles.find((p) => p.id === selectedWaClientProfileId) || profiles[0];
-                      if (target) handleWhatsAppAction(target, 'remedies');
+                      if (target) handleWhatsAppAction(target, 'remedies', selectedWaDayOffset);
                     }}
                     className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>2. Day-According Remedies (Personal + Partner + Parivar)</span>
+                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                    <span>2. Day-According Remedies</span>
                   </button>
                 </div>
               </div>
