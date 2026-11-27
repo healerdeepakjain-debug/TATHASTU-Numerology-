@@ -82,22 +82,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   clearActiveProfile();
                   setActiveTab('profiles-portal');
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider cursor-pointer transition-all no-print"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider cursor-pointer transition-all no-print shrink-0"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <FolderOpen className="w-3.5 h-3.5" />
+                <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+                <FolderOpen className="w-3.5 h-3.5 shrink-0" />
                 <span>Saved Profiles List</span>
               </button>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold uppercase tracking-wider">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span>Complete Vedic &amp; Chaldean Report: {profile.name}</span>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] sm:text-xs font-semibold uppercase tracking-wider max-w-full">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="break-words">Complete Vedic &amp; Chaldean Report: {profile.name}</span>
               </div>
-              <span className="px-2.5 py-1 rounded-full bg-slate-950/80 border border-amber-500/30 text-amber-300 text-xs font-mono font-bold">
+              <span className="px-2.5 py-1 rounded-full bg-slate-950/80 border border-amber-500/30 text-amber-300 text-xs font-mono font-bold shrink-0">
                 DOB: {profile.dob}
               </span>
             </div>
 
-            <h1 className="font-serif text-2xl sm:text-3xl lg:text-4xl font-extrabold text-amber-100 tracking-tight">
+            <h1 className="font-serif text-2xl sm:text-3xl lg:text-4xl font-extrabold text-amber-100 tracking-tight break-words">
               Namaste, <span className="bg-gradient-to-r from-amber-200 via-amber-400 to-amber-500 bg-clip-text text-transparent">{profile.name}</span>
             </h1>
 
@@ -176,31 +176,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Primary Trinity Cards: Mulank, Bhagyank, Namank */}
       <div className="space-y-2">
-        <div className="flex md:hidden items-center justify-between text-[11px] font-semibold text-amber-300/80 px-1">
-          <span>Primary Trinity (Mulank · Bhagyank · Namank)</span>
-          <span>Swipe cards →</span>
+        <div className="flex md:hidden items-center justify-between gap-2 text-[11px] font-semibold text-amber-300/80 px-1">
+          <span className="min-w-0 truncate">Primary Trinity (Mulank · Bhagyank · Namank)</span>
+          <span className="shrink-0 text-amber-400">Swipe cards →</span>
         </div>
         <div className="report-snap-deck grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Mulank Card */}
         <div className="relative group bg-slate-900/80 hover:bg-slate-900 border border-amber-500/30 hover:border-amber-400/60 rounded-2xl p-5 shadow-lg transition-all">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 min-w-0">
               Mulank (Psychic / Root)
             </span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono shrink-0">
               Day {profile.dob.split('-')[2]}
             </span>
           </div>
 
-          <div className="flex items-baseline gap-3 mb-2">
-            <span className="text-4xl font-extrabold font-mono bg-gradient-to-br from-amber-100 to-amber-400 bg-clip-text text-transparent">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-4xl font-extrabold font-mono leading-none shrink-0 pr-0.5 bg-gradient-to-br from-amber-100 to-amber-400 bg-clip-text text-transparent">
               {mulank}
             </span>
-            <div>
-              <span className="text-lg font-bold text-amber-200 block">
+            <div className="min-w-0 flex-1">
+              <span className="text-base sm:text-lg font-bold text-amber-200 block break-words leading-snug">
                 {mulankData?.planet} ({mulankData?.sanskritName})
               </span>
-              <span className="text-xs text-amber-300/60">{mulankData?.element} Element • {mulankData?.quality}</span>
+              <span className="text-xs text-amber-300/60 block break-words">{mulankData?.element} Element • {mulankData?.quality}</span>
             </div>
           </div>
 
@@ -208,7 +208,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             Governs your core subconscious identity, natural demeanor, youth years, and instinctual decisions.
           </p>
 
-          <div className="pt-3 border-t border-amber-500/10 text-[11px] text-amber-300/80 flex justify-between items-center">
+          <div className="pt-3 border-t border-amber-500/10 text-[11px] text-amber-300/80 flex flex-wrap justify-between items-center gap-1.5">
             <span>Lucky Gem: <strong className="text-amber-200">{mulankData?.gemstone}</strong></span>
             <span>Metal: <strong className="text-amber-200">{mulankData?.metal}</strong></span>
           </div>
@@ -216,24 +216,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Bhagyank Card */}
         <div className="relative group bg-slate-900/80 hover:bg-slate-900 border border-amber-500/30 hover:border-amber-400/60 rounded-2xl p-5 shadow-lg transition-all">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 min-w-0">
               Bhagyank (Destiny / Life Path)
             </span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono shrink-0">
               Full DOB Sum
             </span>
           </div>
 
-          <div className="flex items-baseline gap-3 mb-2">
-            <span className="text-4xl font-extrabold font-mono bg-gradient-to-br from-amber-100 to-amber-400 bg-clip-text text-transparent">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-4xl font-extrabold font-mono leading-none shrink-0 pr-0.5 bg-gradient-to-br from-amber-100 to-amber-400 bg-clip-text text-transparent">
               {bhagyank}
             </span>
-            <div>
-              <span className="text-lg font-bold text-amber-200 block">
+            <div className="min-w-0 flex-1">
+              <span className="text-base sm:text-lg font-bold text-amber-200 block break-words leading-snug">
                 {bhagyankData?.planet} ({bhagyankData?.sanskritName})
               </span>
-              <span className="text-xs text-amber-300/60">{bhagyankData?.element} Element • Karmic Mission</span>
+              <span className="text-xs text-amber-300/60 block break-words">{bhagyankData?.element} Element • Karmic Mission</span>
             </div>
           </div>
 
@@ -241,7 +241,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             Governs your worldly destiny, career fulfillment, mid-to-late life triumphs, and public reputation.
           </p>
 
-          <div className="pt-3 border-t border-amber-500/10 text-[11px] text-amber-300/80 flex justify-between items-center">
+          <div className="pt-3 border-t border-amber-500/10 text-[11px] text-amber-300/80 flex flex-wrap justify-between items-center gap-1.5">
             <span>Friendly: <strong className="text-amber-200">{bhagyankData?.friendlyNumbers.join(', ')}</strong></span>
             <span>Avoid: <strong className="text-rose-300">{bhagyankData?.enemyNumbers.length ? bhagyankData?.enemyNumbers.join(', ') : 'None'}</strong></span>
           </div>
@@ -249,12 +249,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Namank (Chaldean Name) Card */}
         <div className="relative group bg-slate-900/80 hover:bg-slate-900 border border-amber-500/30 hover:border-amber-400/60 rounded-2xl p-5 shadow-lg transition-all">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 min-w-0">
               Namank (Chaldean Compound)
             </span>
             <span
-              className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${
+              className={`text-xs px-2 py-0.5 rounded-full font-semibold border shrink-0 ${
                 nameAnalysis.harmonyScore >= 75
                   ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
                   : 'bg-amber-950/60 text-amber-300 border-amber-500/40'
@@ -264,15 +264,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </span>
           </div>
 
-          <div className="flex items-baseline gap-3 mb-2">
-            <span className="text-4xl font-extrabold font-mono bg-gradient-to-br from-amber-100 to-amber-400 bg-clip-text text-transparent">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-4xl font-extrabold font-mono leading-none shrink-0 pr-0.5 bg-gradient-to-br from-amber-100 to-amber-400 bg-clip-text text-transparent">
               {nameAnalysis.totalChaldeanCompound}
             </span>
-            <div>
-              <span className="text-lg font-bold text-amber-200 block">
+            <div className="min-w-0 flex-1">
+              <span className="text-base sm:text-lg font-bold text-amber-200 block break-words leading-snug">
                 Root {nameAnalysis.chaldeanSingle} ({PLANETARY_PROFILES[nameAnalysis.chaldeanSingle]?.planet})
               </span>
-              <span className="text-xs text-amber-300/80 font-medium">
+              <span className="text-xs text-amber-300/80 font-medium block break-words">
                 {nameAnalysis.compoundInfo.title}
               </span>
             </div>

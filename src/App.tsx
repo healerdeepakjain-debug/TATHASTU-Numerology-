@@ -20,14 +20,14 @@ import { ProfileModal } from './components/ProfileModal';
 import { TathastuAuthPortal } from './components/TathastuAuthPortal';
 import { A4SpiritualReportFrame } from './components/A4SpiritualReportFrame';
 import { DailySixNotificationsCenter } from './components/DailySixNotificationsCenter';
-import { AdminAndProfilesPortal } from './components/AdminAndProfilesPortal';
+import { AdminAndProfilesPortal, AdminPortalViewType } from './components/AdminAndProfilesPortal';
 import { IslamicVedicRemedies } from './components/IslamicVedicRemedies';
 import { YogaPranayamaModule } from './components/YogaPranayamaModule';
 import { OfflineIndicator } from './components/PWAInstallButton';
 import { GlobalTapFeedback } from './components/GlobalTapFeedback';
 import { TathastuIntroSplash } from './components/TathastuIntroSplash';
 import { MobileBottomNav } from './components/MobileBottomNav';
-import { useResponsiveViewport, isMobileDeviceDetected } from './utils/useResponsiveViewport';
+import { useResponsiveViewport } from './utils/useResponsiveViewport';
 import { usePlatformMode } from './utils/platformMode';
 import { BirthProfile } from './types';
 import { getSavedProfile } from './utils/storage';
@@ -43,7 +43,7 @@ import {
   TATHASTU_LOGO_PATH,
 } from './utils/tathastuStore';
 import { PENDING_PAYU_ORDER_STORAGE_KEY } from './components/PayUPaymentModal';
-import { X, Globe, LogOut, CheckCircle2, AlertTriangle, Monitor, Smartphone } from 'lucide-react';
+import { X, Globe, LogOut, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 const SECTION_TITLES: Record<string, string> = {
   dashboard: 'VEDIC & CHALDEAN SPIRITUAL DASHBOARD',
@@ -95,6 +95,7 @@ function TathastuMainApp() {
     logout();
     setIsAuthPortalOpen(false);
     setActiveTab('profiles-portal');
+    setPortalView('welcome');
     if (typeof window !== 'undefined') {
       if (window.location.search) {
         window.history.replaceState({}, '', window.location.pathname);
@@ -115,7 +116,7 @@ function TathastuMainApp() {
     return 'profiles-portal';
   });
   const { isMobile } = useResponsiveViewport();
-  const { isWindowsFullPage, isMobileAppMode, switchPlatformMode } = usePlatformMode();
+  const { isWindowsFullPage, isMobileAppMode } = usePlatformMode();
   const [showIntroSplash, setShowIntroSplash] = useState<boolean>(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -134,6 +135,122 @@ function TathastuMainApp() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isAuthPortalOpen, setIsAuthPortalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [portalView, setPortalView] = useState<AdminPortalViewType>('welcome');
+  const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
+
+  // Mobile Hardware / Browser Back-Button Navigation History Stack
+  const navHistoryRef = React.useRef<
+    Array<{ tab: string; profileId: string | null; portalView: AdminPortalViewType }>
+  >([{ tab: 'profiles-portal', profileId: null, portalView: 'welcome' }]);
+  const isPoppingHistoryRef = React.useRef(false);
+  const allowRealExitRef = React.useRef(false);
+
+  // Always scroll smoothly to top whenever active tab, opened profile, or portal view changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
+  }, [activeTab, activeProfile?.id, portalView]);
+
+  // Push in-app navigation entries into History API so Mobile Back button goes step-by-step to previous page
+  useEffect(() => {
+    if (typeof window === 'undefined' || !currentAccount) return;
+    if (isPoppingHistoryRef.current) {
+      isPoppingHistoryRef.current = false;
+      return;
+    }
+
+    const currentEntry = {
+      tab: activeTab,
+      profileId: activeProfile?.id || null,
+      portalView,
+    };
+    const stack = navHistoryRef.current;
+    const last = stack[stack.length - 1];
+    if (
+      last &&
+      last.tab === currentEntry.tab &&
+      last.profileId === currentEntry.profileId &&
+      last.portalView === currentEntry.portalView
+    ) {
+      return;
+    }
+
+    stack.push(currentEntry);
+    if (stack.length > 40) stack.shift();
+    try {
+      window.history.pushState({ tathastuGuard: true, depth: stack.length }, '');
+    } catch {
+      // Ignore history restrictions in sandboxed frames
+    }
+  }, [activeTab, activeProfile?.id, portalView, currentAccount]);
+
+  // Intercept Mobile Hardware Back / Browser Back button: navigate back through app screens,
+  // and when already at the root screen, show the Exit Confirmation Popup (Yes / No)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (!window.history.state?.tathastuGuard) {
+        window.history.replaceState({ tathastuGuard: true, depth: 0 }, '');
+        window.history.pushState({ tathastuGuard: true, depth: 1 }, '');
+      }
+    } catch {
+      // Ignore history restrictions
+    }
+
+    const onPopState = () => {
+      if (allowRealExitRef.current) return;
+
+      if (isMobileSidebarOpen) {
+        setIsMobileSidebarOpen(false);
+        try {
+          window.history.pushState({ tathastuGuard: true }, '');
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      const stack = navHistoryRef.current;
+      if (currentAccount && stack.length > 1) {
+        stack.pop();
+        const prev = stack[stack.length - 1];
+        isPoppingHistoryRef.current = true;
+        setShowExitConfirmModal(false);
+        if (prev.profileId) {
+          selectActiveProfile(prev.profileId);
+        } else {
+          clearActiveProfile();
+        }
+        setPortalView(prev.portalView);
+        setActiveTab(prev.tab);
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+        return;
+      }
+
+      // Already at the root screen (Welcome / Login) — prompt user to confirm Exit (Yes / No)
+      setShowExitConfirmModal(true);
+      try {
+        window.history.pushState({ tathastuGuard: true, rootPrompt: true }, '');
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [currentAccount, isMobileSidebarOpen, selectActiveProfile, clearActiveProfile]);
+
+  const handleConfirmExitApp = () => {
+    setShowExitConfirmModal(false);
+    allowRealExitRef.current = true;
+    try {
+      window.close();
+      window.history.go(-2);
+    } catch {
+      // Fallback
+    }
+  };
 
   // Listen for instant real-time PayU activation events dispatched by PayUPaymentModal
   useEffect(() => {
@@ -378,8 +495,7 @@ function TathastuMainApp() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
     const applyForcedMobileViewport = () => {
-      const mobileDetected =
-        !isWindowsFullPage && (isMobileAppMode || isMobileDeviceDetected() || isMobile);
+      const mobileDetected = !isWindowsFullPage && (isMobileAppMode || isMobile);
 
       let viewportMeta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
       if (!viewportMeta) {
@@ -662,34 +778,6 @@ function TathastuMainApp() {
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <div className="inline-flex items-center rounded-lg bg-slate-950 border border-amber-500/35 p-0.5">
-                <button
-                  type="button"
-                  onClick={() => switchPlatformMode('windows')}
-                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10.5px] font-bold transition-all cursor-pointer ${
-                    isWindowsFullPage
-                      ? 'bg-amber-500 text-slate-950'
-                      : 'text-amber-200/80 hover:text-amber-100'
-                  }`}
-                  title="Open Dedicated Windows Full-Page Link (/windows)"
-                >
-                  <Monitor className="w-3 h-3" />
-                  <span>Windows</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => switchPlatformMode('mobile')}
-                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10.5px] font-bold transition-all cursor-pointer ${
-                    isMobileAppMode
-                      ? 'bg-emerald-500 text-slate-950'
-                      : 'text-emerald-200/80 hover:text-emerald-100'
-                  }`}
-                  title="Open Dedicated Mobile / Tablet & Play Store Link (/mobile)"
-                >
-                  <Smartphone className="w-3 h-3" />
-                  <span>Mobile / Tablet</span>
-                </button>
-              </div>
               <div
                 data-no-translate="true"
                 className="flex items-center gap-1.5 bg-slate-950 border border-amber-500/35 rounded-lg px-2.5 py-1"
@@ -713,9 +801,11 @@ function TathastuMainApp() {
           <TathastuAuthPortal
             onAuthenticated={() => {
               setIsAuthPortalOpen(false);
+              setPortalView('welcome');
               setActiveTab('profiles-portal');
+              navHistoryRef.current = [{ tab: 'profiles-portal', profileId: null, portalView: 'welcome' }];
               if (typeof window !== 'undefined') {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                window.scrollTo({ top: 0, behavior: 'auto' });
               }
             }}
           />
@@ -747,6 +837,8 @@ function TathastuMainApp() {
           <AdminAndProfilesPortal
             onOpenProfileWorkspace={() => setActiveTab('dashboard')}
             onLogout={handleLogout}
+            controlledView={portalView}
+            onControlledViewChange={setPortalView}
           />
         ) : (
           /* Opened Client Complete Vedic Dashboard & Modules (with Print PDF / Download / Share / Edit / Delete / Direct WhatsApp & 12-Month Section Checkboxes) */
@@ -863,13 +955,13 @@ function TathastuMainApp() {
           {/* Sacred TATHASTU Vedic Footer */}
           <footer className="mt-auto border-t border-amber-500/20 bg-slate-950 py-8 px-4 text-center text-xs text-amber-200/70 no-print">
             <div className={`${isWindowsFullPage ? 'max-w-none px-4' : 'max-w-7xl'} mx-auto space-y-3`}>
-              <div className="flex items-center justify-center gap-3">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 sm:gap-3">
                 <img
                   src={TATHASTU_LOGO_PATH}
                   alt={TATHASTU_BRAND_NAME}
-                  className="w-8 h-8 rounded-lg object-cover border border-amber-500/40"
+                  className="w-10 h-10 sm:w-9 sm:h-9 rounded-xl object-cover border border-amber-500/50 shrink-0 shadow-md"
                 />
-                <span className="text-amber-300 font-serif font-extrabold text-sm tracking-wide">
+                <span className="text-amber-300 font-serif font-extrabold text-sm tracking-wide leading-snug">
                   {TATHASTU_APP_NAME} • {TATHASTU_BRAND_NAME} — {TATHASTU_TAGLINE}
                 </span>
               </div>
@@ -885,6 +977,7 @@ function TathastuMainApp() {
                 <button
                   onClick={() => {
                     clearActiveProfile();
+                    setPortalView('saved-profiles');
                     setActiveTab('profiles-portal');
                   }}
                   className="hover:underline cursor-pointer"
@@ -902,6 +995,51 @@ function TathastuMainApp() {
               </div>
             </div>
           </footer>
+        </div>
+      )}
+
+      {/* Mobile Hardware / Browser Back Button Exit Confirmation Modal (Yes / No) */}
+      {showExitConfirmModal && (
+        <div
+          className="fixed inset-0 z-[10050] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 no-print animate-fade-in"
+          onClick={() => setShowExitConfirmModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl bg-slate-900 border-2 border-amber-500/60 p-6 shadow-2xl space-y-5 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-400/50 mx-auto flex items-center justify-center overflow-hidden">
+              <img
+                src={TATHASTU_LOGO_PATH}
+                alt={TATHASTU_BRAND_NAME}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="font-serif text-lg font-black text-amber-100">
+                Exit {TATHASTU_APP_NAME}?
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Are you sure you want to exit the app? Choose <strong>No</strong> to stay or <strong>Yes</strong> to exit.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowExitConfirmModal(false)}
+                className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-100 font-bold text-xs cursor-pointer transition-all"
+              >
+                No, Stay
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmExitApp}
+                className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-black text-xs shadow-lg cursor-pointer transition-all"
+              >
+                Yes, Exit
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

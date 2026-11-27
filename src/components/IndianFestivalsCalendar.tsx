@@ -183,9 +183,9 @@ export const IndianFestivalsCalendar: React.FC<IndianFestivalsCalendarProps> = (
           </div>
 
           {/* Horizon Dropdown Window Next to Search Bar */}
-          <div className="inline-flex items-center gap-1.5 bg-slate-950 border border-amber-500/40 rounded-xl px-2.5 py-2 shrink-0 w-fit">
+          <div className="flex items-center gap-1.5 bg-slate-950 border border-amber-500/40 rounded-xl px-2.5 py-2 w-full sm:w-auto max-w-full min-w-0 overflow-hidden">
             <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="text-[11px] font-bold uppercase text-amber-300 tracking-wider whitespace-nowrap">
+            <span className="text-[11px] font-bold uppercase text-amber-300 tracking-wider shrink-0">
               Horizon:
             </span>
             <select
@@ -195,7 +195,7 @@ export const IndianFestivalsCalendar: React.FC<IndianFestivalsCalendarProps> = (
                 setSelectedHorizon(v === 'next12m' ? 'next12m' : Number(v));
               }}
               aria-label="Select Festival Horizon"
-              className="bg-slate-950 text-amber-100 font-mono text-xs font-bold focus:outline-none cursor-pointer"
+              className="flex-1 min-w-0 w-full max-w-full bg-slate-950 text-amber-100 font-mono text-xs font-bold focus:outline-none cursor-pointer truncate"
             >
               <option value="next12m" className="bg-slate-950 text-emerald-300">
                 Next 12 Months ({horizonRangeLabel})
@@ -209,7 +209,7 @@ export const IndianFestivalsCalendar: React.FC<IndianFestivalsCalendarProps> = (
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setFilterMode('all')}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all ${

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -1225,12 +1226,12 @@ export const CosmicCalendar: React.FC<CosmicCalendarProps> = ({ profile }) => {
           </div>
 
           {/* Date Picker + Stepper + Quick Presets */}
-          <div className="flex flex-col sm:items-end gap-2 shrink-0">
-            <div className="flex items-center gap-1.5">
+          <div className="flex flex-col sm:items-end gap-2 w-full lg:w-auto shrink-0">
+            <div className="flex items-center gap-1.5 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={() => shiftMuhuratDateByDays(-1)}
-                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/35 text-amber-300 cursor-pointer"
+                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/35 text-amber-300 cursor-pointer shrink-0"
                 title="Previous Day"
                 aria-label="Previous Day"
               >
@@ -1243,12 +1244,12 @@ export const CosmicCalendar: React.FC<CosmicCalendarProps> = ({ profile }) => {
                   if (e.target.value) setSelectedMuhuratDate(e.target.value);
                 }}
                 aria-label="Select Date for Daily Muhurat"
-                className="bg-slate-950 border border-amber-400/55 rounded-xl px-3 py-2 text-xs sm:text-sm font-mono font-bold text-amber-100 focus:outline-none focus:border-amber-300"
+                className="flex-1 min-w-[155px] sm:w-auto bg-slate-950 border border-amber-400/55 rounded-xl px-2.5 sm:px-3 py-2 text-xs sm:text-sm font-mono font-bold text-amber-100 focus:outline-none focus:border-amber-300"
               />
               <button
                 type="button"
                 onClick={() => shiftMuhuratDateByDays(1)}
-                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/35 text-amber-300 cursor-pointer"
+                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/35 text-amber-300 cursor-pointer shrink-0"
                 title="Next Day"
                 aria-label="Next Day"
               >
@@ -1817,55 +1818,63 @@ export const CosmicCalendar: React.FC<CosmicCalendarProps> = ({ profile }) => {
         )}
       </div>
 
-      {/* Add & Audit Custom Event Modal (Category First -> Date & Time -> Live Vedic % Calculator -> Healer Notes -> Multi-Add) */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-fade-in overflow-y-auto">
-          <div className="bg-slate-900 border-2 border-amber-500/45 rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl my-auto max-h-[92vh] overflow-y-auto space-y-4">
-            <div className="flex items-start justify-between gap-3 border-b border-amber-500/25 pb-3">
-              <div>
-                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-950 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold uppercase mb-1">
-                  <MessageCircle className="w-3 h-3" />
-                  <span>Healer Direct WhatsApp Service • Not in Report PDF</span>
+      {/* Add & Audit Custom Event Modal — Portaled to document.body so Sticky Header & Healer Footer NEVER overlap it */}
+      {showAddModal &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9995] flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-fade-in overflow-y-auto no-print"
+            onClick={() => setShowAddModal(false)}
+          >
+            <div
+              className="bg-slate-900 border-2 border-amber-500/50 rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl my-4 sm:my-auto max-h-[90vh] overflow-y-auto space-y-4 relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 border-b border-amber-500/25 pb-3">
+                <div className="min-w-0">
+                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-950 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold uppercase mb-1">
+                    <MessageCircle className="w-3 h-3 shrink-0" />
+                    <span>Healer Direct WhatsApp Service • Not in Report PDF</span>
+                  </div>
+                  <h3 className="font-serif text-base sm:text-xl font-bold text-amber-100 flex items-center gap-2">
+                    <CalendarIcon className="w-5 h-5 text-amber-400 shrink-0" />
+                    <span className="break-words">Audit &amp; Add Custom Event ({profile.name})</span>
+                  </h3>
                 </div>
-                <h3 className="font-serif text-lg sm:text-xl font-bold text-amber-100 flex items-center gap-2">
-                  <CalendarIcon className="w-5 h-5 text-amber-400 shrink-0" />
-                  <span>Audit &amp; Add Custom Event ({profile.name})</span>
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(false)}
-                className="p-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 cursor-pointer"
-                aria-label="Close modal"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {modalAddedNotice && (
-              <div className="p-3 rounded-xl bg-emerald-950/90 border border-emerald-400 text-emerald-200 text-xs font-semibold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>{modalAddedNotice}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleAddEvent} className="space-y-4">
-              {/* 1. CATEGORY ON TOP */}
-              <div>
-                <label className="block text-xs font-bold text-amber-300 uppercase tracking-wider mb-1.5">
-                  1. Event Category / Topic
-                </label>
-                <select
-                  value={newEvent.topicId}
-                  onChange={(e) => setNewEvent({ ...newEvent, topicId: e.target.value })}
-                  className="w-full bg-slate-950 border border-amber-500/40 rounded-xl px-3 py-2.5 text-sm font-semibold text-amber-100 focus:outline-none focus:border-amber-400"
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="p-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 cursor-pointer shrink-0"
+                  aria-label="Close modal"
                 >
-                  {CUSTOM_EVENT_TOPIC_OPTIONS.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {modalAddedNotice && (
+                <div className="p-3 rounded-xl bg-emerald-950/90 border border-emerald-400 text-emerald-200 text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{modalAddedNotice}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleAddEvent} className="space-y-4">
+                {/* 1. CATEGORY / EVENT NAME ON TOP */}
+                <div>
+                  <label className="block text-xs font-bold text-amber-300 uppercase tracking-wider mb-1.5">
+                    1. Select Event Name / Category ({CUSTOM_EVENT_TOPIC_OPTIONS.length} Vedic Events)
+                  </label>
+                  <select
+                    value={newEvent.topicId}
+                    onChange={(e) => setNewEvent({ ...newEvent, topicId: e.target.value })}
+                    className="w-full max-w-full bg-slate-950 border border-amber-500/50 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold text-amber-100 focus:outline-none focus:border-amber-400"
+                  >
+                    {CUSTOM_EVENT_TOPIC_OPTIONS.map((opt) => (
+                      <option key={opt.id} value={opt.id} className="bg-slate-950 text-amber-100">
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
 
                 {newEvent.topicId === 'custom_other' && (
                   <input
@@ -1997,24 +2006,24 @@ export const CosmicCalendar: React.FC<CosmicCalendarProps> = ({ profile }) => {
               </div>
 
               {/* ACTION BUTTONS: ADD EVENT ONE-BY-ONE + DONE */}
-              <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800">
+              <div className="pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-t border-slate-800">
                 <span className="text-[11px] text-slate-400">
                   Added Events in List: <strong className="text-amber-300">{events.length}</strong>
                 </span>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
                   <button
                     type="button"
                     onClick={() => setShowAddModal(false)}
-                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 cursor-pointer"
+                    className="px-4 py-2.5 sm:py-2 rounded-xl text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 cursor-pointer text-center"
                   >
                     Done ({events.length} Added)
                   </button>
                   <button
                     type="submit"
-                    className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-md shadow-amber-500/20 cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 px-5 py-2.5 sm:py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-md shadow-amber-500/20 cursor-pointer"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="w-4 h-4 shrink-0" />
                     <span>Add Event</span>
                   </button>
                 </div>
@@ -2052,9 +2061,10 @@ export const CosmicCalendar: React.FC<CosmicCalendarProps> = ({ profile }) => {
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

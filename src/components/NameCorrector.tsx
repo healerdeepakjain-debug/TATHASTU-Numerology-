@@ -1018,14 +1018,16 @@ export const NameCorrector: React.FC<NameCorrectorProps> = ({
                   key={idx}
                   className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-1.5"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-sm text-amber-100">{item.field}</span>
-                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/40 shrink-0">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1.5">
+                    <span className="font-bold text-sm text-amber-100 leading-snug break-words min-w-0">
+                      {item.field}
+                    </span>
+                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/40 shrink-0 self-start">
                       {item.successRate}% Resonance
                     </span>
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">{item.reason}</p>
-                  <span className="text-[10px] text-emerald-400/90 font-mono block">
+                  <p className="text-xs text-slate-300 leading-relaxed break-words">{item.reason}</p>
+                  <span className="text-[10px] text-emerald-400/90 font-mono block break-words">
                     Planetary Patron: {item.governingPlanet}
                   </span>
                 </div>
@@ -1062,25 +1064,27 @@ export const NameCorrector: React.FC<NameCorrectorProps> = ({
                   key={idx}
                   className="p-4 rounded-xl bg-rose-950/25 border border-rose-500/40 space-y-1.5"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-sm text-rose-200">{bad.field}</span>
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-500/40 shrink-0">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1.5">
+                    <span className="font-bold text-sm text-rose-200 leading-snug break-words min-w-0">
+                      {bad.field}
+                    </span>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-500/40 shrink-0 self-start">
                       Planetary Friction: {bad.conflictPlanet}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">{bad.dangerReason}</p>
+                  <p className="text-xs text-slate-300 leading-relaxed break-words">{bad.dangerReason}</p>
                 </div>
               ))}
             </div>
 
             {/* Pranic Aura & Vedic Remedial Prescriptions Box */}
             <div className="p-4 rounded-xl bg-slate-950 border border-amber-500/30 space-y-3 mt-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <Gem className="w-4 h-4 text-amber-400" />
-                  <span>Pranic Aura &amp; Vedic Remedial Prescriptions ({activeFinalName})</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                <span className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-start sm:items-center gap-1.5 min-w-0">
+                  <Gem className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+                  <span className="break-words">Pranic Aura &amp; Vedic Remedial Prescriptions ({activeFinalName})</span>
                 </span>
-                <span className="text-[10px] font-mono text-amber-400">{careerAndAura.primaryChakra}</span>
+                <span className="text-[10px] font-mono text-amber-400 shrink-0">{careerAndAura.primaryChakra}</span>
               </div>
 
               <div className="space-y-2.5">

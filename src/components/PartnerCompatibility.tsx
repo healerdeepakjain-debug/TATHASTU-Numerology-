@@ -1061,7 +1061,97 @@ export const PartnerCompatibility: React.FC<PartnerCompatibilityProps> = ({ prof
         </div>
 
         {/* Visual 8-Koota Ashtakoot Milan Chart & Table */}
-        <div className="overflow-x-auto rounded-xl border border-amber-500/30">
+        {/* Mobile Stacked Card View (Prevents narrow column letter-by-letter wrapping on phones) */}
+        <div className="md:hidden space-y-2.5">
+          {analysis.dimensions.map((dim, idx) => {
+            const pct = Math.round((dim.obtainedPoints / Math.max(1, dim.maxPoints)) * 100);
+            return (
+              <div
+                key={idx}
+                className="p-3.5 rounded-2xl bg-slate-950/95 border border-amber-500/30 space-y-2.5"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <span className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300 font-mono font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-serif font-bold text-sm text-amber-100 leading-snug break-words">
+                        {dim.name}
+                      </div>
+                      <div className="text-[11px] text-amber-400/85 break-words">
+                        {dim.sanskritName}
+                      </div>
+                    </div>
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase shrink-0 ${
+                      dim.verdict === 'Excellent'
+                        ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
+                        : dim.verdict === 'Good'
+                        ? 'bg-amber-950 text-amber-300 border border-amber-500/40'
+                        : 'bg-rose-950 text-rose-300 border border-rose-500/40'
+                    }`}
+                  >
+                    {dim.verdict}
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-300 leading-relaxed break-words">
+                  {dim.description}
+                </p>
+
+                <div className="pt-1.5 border-t border-slate-800/80 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-mono">
+                    <span className="text-slate-400">
+                      Gunas Obtained: <strong className="text-amber-300">{dim.obtainedPoints}</strong> / {dim.maxPoints}
+                    </span>
+                    <span className="font-bold text-amber-200">{pct}%</span>
+                  </div>
+                  <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700">
+                    <div
+                      className={`h-full rounded-full ${
+                        pct >= 75
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                          : pct >= 50
+                          ? 'bg-gradient-to-r from-amber-500 to-yellow-400'
+                          : 'bg-gradient-to-r from-rose-500 to-orange-500'
+                      }`}
+                      style={{ width: `${Math.max(8, pct)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Mobile Total Ashtakoot Summary Box */}
+          <div className="p-4 rounded-2xl bg-amber-950/45 border-2 border-amber-500/50 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-100">
+                Total Ashtakoot Score
+              </span>
+              <span className="px-2.5 py-0.5 rounded-md bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-bold uppercase text-[10px] shrink-0">
+                {analysis.totalPoints >= 24 ? 'Shubh Milan' : 'Remedy Guided'}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between font-mono">
+              <span className="text-lg font-black text-emerald-300">
+                {analysis.totalPoints} <span className="text-xs text-slate-300 font-normal">/ 36 Gunas</span>
+              </span>
+              <span className="text-sm font-bold text-amber-200">{analysis.overallPercentage}%</span>
+            </div>
+            <div className="w-full h-3 rounded-full bg-slate-900 overflow-hidden border border-amber-500/40">
+              <div
+                className="h-full bg-gradient-to-r from-amber-400 via-emerald-400 to-teal-400"
+                style={{ width: `${analysis.overallPercentage}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop 6-Column Ashtakoot Table */}
+        <div className="hidden md:block overflow-x-auto rounded-xl border border-amber-500/30">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-gradient-to-r from-amber-950/70 via-slate-900 to-amber-950/70 border-b border-amber-500/30 text-amber-200 uppercase text-[11px]">

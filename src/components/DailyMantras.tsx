@@ -431,15 +431,15 @@ export const DailyMantras: React.FC<DailyMantrasProps> = ({ profile }) => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-1">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-amber-500/10">
                 <span className="text-[11px] font-mono text-amber-300">
                   Recommended Count: <strong>{mantra.repetitions}x Daily</strong>
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
                   <button
                     type="button"
                     onClick={() => setSelectedMantraId(mantra.id)}
-                    className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-[11px] font-bold transition-all cursor-pointer"
+                    className="flex-1 sm:flex-none px-3 py-2 sm:py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-[11px] font-bold transition-all cursor-pointer text-center"
                   >
                     Load in Japa Counter
                   </button>
@@ -451,12 +451,12 @@ export const DailyMantras: React.FC<DailyMantrasProps> = ({ profile }) => {
                         `${mantra.sanskritDevanagari}\n${mantra.transliteration}`
                       )
                     }
-                    className="px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-amber-300 border border-amber-500/30 text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                    className="px-3.5 py-2 sm:py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-amber-300 border border-amber-500/35 text-[11px] font-semibold inline-flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0"
                   >
                     {copiedId === mantra.id ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     ) : (
-                      <Copy className="w-3.5 h-3.5" />
+                      <Copy className="w-3.5 h-3.5 shrink-0" />
                     )}
                     <span>{copiedId === mantra.id ? 'Copied' : 'Copy'}</span>
                   </button>

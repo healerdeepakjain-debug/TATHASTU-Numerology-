@@ -12,7 +12,7 @@ const PLATFORM_CHANGE_EVENT = 'tathastu:platform-change';
  * - / (default) -> 'auto'
  */
 export function detectPlatformMode(): PlatformMode {
-  if (typeof window === 'undefined') return 'auto';
+  if (typeof window === 'undefined') return 'windows';
   try {
     const pathname = (window.location.pathname || '/').toLowerCase().replace(/\/+$/, '') || '/';
     const params = new URLSearchParams(window.location.search || '');
@@ -43,10 +43,19 @@ export function detectPlatformMode(): PlatformMode {
     ) {
       return 'mobile';
     }
+
+    // Automatic device/viewport detection: mobile screens or mobile UAs always open in Mobile view;
+    // desktop/laptop screens (>= 1024px) automatically open in Desktop/Windows view.
+    const ua = navigator.userAgent || '';
+    const isMobileUa = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua);
+    if (isMobileUa || window.innerWidth < 1024) {
+      return 'mobile';
+    }
+    return 'windows';
   } catch {
     // Ignore URL parse errors
   }
-  return 'auto';
+  return 'windows';
 }
 
 export interface PlatformLinksInfo {
@@ -158,9 +167,11 @@ export function usePlatformMode() {
 
     window.addEventListener('popstate', sync);
     window.addEventListener(PLATFORM_CHANGE_EVENT, sync);
+    window.addEventListener('resize', sync);
     return () => {
       window.removeEventListener('popstate', sync);
       window.removeEventListener(PLATFORM_CHANGE_EVENT, sync);
+      window.removeEventListener('resize', sync);
     };
   }, []);
 

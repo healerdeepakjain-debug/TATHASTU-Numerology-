@@ -79,14 +79,27 @@ import { BirthTimeAmPmInput, formatTime12HourAmPm } from './BirthTimeAmPmInput';
 import { HealerDeepakJainMissionShowcase } from './HealerDeepakJainMissionShowcase';
 import { HEALTH_CONCERN_OPTIONS } from '../utils/yogaPranayamaData';
 
+export type AdminPortalViewType =
+  | 'welcome'
+  | 'saved-profiles'
+  | 'new-profile'
+  | 'plan-upgrade'
+  | 'client-portal'
+  | 'healer-portal'
+  | 'master-admin-portal';
+
 interface AdminAndProfilesPortalProps {
   onOpenProfileWorkspace: () => void;
   onLogout: () => void;
+  controlledView?: AdminPortalViewType;
+  onControlledViewChange?: (view: AdminPortalViewType) => void;
 }
 
 export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   onOpenProfileWorkspace,
   onLogout,
+  controlledView,
+  onControlledViewChange,
 }) => {
   const {
     accounts,
@@ -124,13 +137,27 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
   // Top-level Post-Login Portal View:
   // Defaults to 'welcome' right after login so Welcome Page stays clean and
   // Saved Reports appear only when user navigates into Saved Profiles.
-  const [activeView, setActiveView] = useState<
-    'welcome' | 'saved-profiles' | 'new-profile' | 'plan-upgrade' | 'client-portal' | 'healer-portal' | 'master-admin-portal'
-  >('welcome');
+  const [internalView, setInternalView] = useState<AdminPortalViewType>('welcome');
+  const activeView: AdminPortalViewType = controlledView ?? internalView;
+  const setActiveView = (nextView: AdminPortalViewType) => {
+    setInternalView(nextView);
+    if (onControlledViewChange) {
+      onControlledViewChange(nextView);
+    }
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
+  };
 
   // Selected Client or Healer in Admin's Client Portal / Healer Portal for full drill-down
   const [selectedClientAccId, setSelectedClientAccId] = useState<string | null>(null);
   const [selectedHealerAccId, setSelectedHealerAccId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
+  }, [activeView, selectedClientAccId, selectedHealerAccId]);
   const [searchQuery, setSearchQuery] = useState('');
   const [feedbackReplyDrafts, setFeedbackReplyDrafts] = useState<Record<string, string>>({});
   const [ratingFilterProviderId, setRatingFilterProviderId] = useState<string>('all');
@@ -999,6 +1026,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+            {/* Hidden on mobile: Saved Profiles tab is already right below, and mobile opens each portal as its own dedicated page */}
             <button
               type="button"
               onClick={() => {
@@ -1006,7 +1034,7 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                 setSelectedClientAccId(null);
                 setSelectedHealerAccId(null);
               }}
-              className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/60 text-amber-100 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
+              className="hidden md:flex px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/60 text-amber-100 font-bold text-xs items-center gap-1.5 cursor-pointer shadow-md"
             >
               <Star className="w-3.5 h-3.5 text-amber-300" />
               <span>{activeView === 'welcome' ? 'Open Saved Reports' : 'Welcome Home'}</span>
@@ -1037,11 +1065,42 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
           </div>
         </div>
 
+        {/* Dedicated Page Back Bar on Mobile when inside a specific Portal View (so each portal tab opens as a clean dedicated page on mobile) */}
+        {activeView !== 'welcome' && (
+          <div className="flex md:hidden items-center justify-between gap-2 pt-2 border-t border-amber-500/20">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveView('welcome');
+                setSelectedClientAccId(null);
+                setSelectedHealerAccId(null);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-amber-500/40 text-amber-200 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-amber-400" />
+              <span>All Portals</span>
+            </button>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300 truncate">
+              {activeView === 'saved-profiles'
+                ? 'Saved Profiles'
+                : activeView === 'new-profile'
+                ? 'New Profile'
+                : activeView === 'client-portal'
+                ? 'Client Portal'
+                : activeView === 'healer-portal'
+                ? 'Healer Portal'
+                : activeView === 'master-admin-portal'
+                ? 'Master Admin Portal'
+                : 'Plan & Upgrade'}
+            </span>
+          </div>
+        )}
+
         {/* Navigation Buttons:
-            - For Client & Healer: ONLY Saved Profiles & + New Profile (Client Portal & Healer Portal are strictly Admin-only)
-            - For Admin: Saved Profiles | + New Profile | Client Portal | Healer Portal | Master Admin Portal */}
+            - On mobile: shown on Welcome Home so clicking any tab opens its dedicated page cleanly at the top
+            - On desktop (md:grid): always accessible for instant switching */}
         <div
-          className={`grid grid-cols-1 sm:grid-cols-2 ${
+          className={`${activeView !== 'welcome' ? 'hidden md:grid' : 'grid'} grid-cols-1 sm:grid-cols-2 ${
             isAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-2'
           } gap-2.5`}
         >
@@ -1790,11 +1849,11 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                             </span>
                           </div>
                         </div>
-                        <div className="md:col-span-3 flex md:block items-center justify-between font-mono text-xs text-amber-200 min-w-0">
-                          <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-amber-400 font-sans">
+                        <div className="md:col-span-3 flex md:block items-start md:items-center justify-between gap-2 font-mono text-xs text-amber-200 min-w-0">
+                          <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-amber-400 font-sans shrink-0">
                             Email &amp; Mobile
                           </span>
-                          <div className="truncate">
+                          <div className="min-w-0 text-right md:text-left">
                             <div className="truncate text-sky-200">{clientAcc.email}</div>
                             <div className="text-amber-200">📞 {clientAcc.mobile}</div>
                           </div>
@@ -2073,25 +2132,25 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                             </span>
                           </div>
                         </div>
-                        <div className="md:col-span-3 flex md:block items-center justify-between font-mono text-xs text-amber-200 min-w-0">
-                          <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-emerald-400 font-sans">
+                        <div className="md:col-span-3 flex md:block items-start md:items-center justify-between gap-2 font-mono text-xs text-amber-200 min-w-0">
+                          <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-emerald-400 font-sans shrink-0">
                             Email &amp; Mobile
                           </span>
-                          <div className="truncate">
+                          <div className="min-w-0 text-right md:text-left">
                             <div className="truncate text-sky-200">{healerAcc.email}</div>
                             <div className="text-amber-200">📞 {healerAcc.mobile}</div>
                           </div>
                         </div>
-                        <div className="md:col-span-2 flex md:block items-center justify-between font-mono text-xs">
-                          <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-emerald-400 font-sans">
+                        <div className="md:col-span-2 flex md:block items-center justify-between gap-2 font-mono text-xs">
+                          <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-emerald-400 font-sans shrink-0">
                             Password
                           </span>
                           <span className="px-2 py-0.5 rounded bg-slate-900 border border-emerald-500/35 text-emerald-300 font-bold">
                             🔑 {healerAcc.passwordHash}
                           </span>
                         </div>
-                        <div className="md:col-span-1 flex md:block items-center justify-between">
-                          <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                        <div className="md:col-span-1 flex md:block items-center justify-between gap-2">
+                          <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-emerald-400 shrink-0">
                             Rating
                           </span>
                           {ratingStats.count > 0 ? (
@@ -2102,11 +2161,11 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                             <span className="text-[11px] text-slate-400 font-mono">—</span>
                           )}
                         </div>
-                        <div className="md:col-span-2 flex md:block items-center justify-between">
-                          <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                        <div className="md:col-span-2 flex md:block items-center justify-between gap-2">
+                          <span className="md:hidden text-[10px] font-bold uppercase tracking-wider text-emerald-400 shrink-0">
                             Plan &amp; Quota
                           </span>
-                          <div>
+                          <div className="flex flex-col items-end md:items-start text-right md:text-left">
                             <span className="px-2 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 font-mono text-xs font-bold">
                               {usedCount}/{maxCount}
                             </span>
@@ -2115,23 +2174,12 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
                             </span>
                           </div>
                         </div>
-                        <div className="md:col-span-1 flex justify-end">
+                        <div className="md:col-span-1 flex justify-end pt-1 md:pt-0 border-t border-slate-800/70 md:border-t-0">
                           <span className="text-xs font-bold text-emerald-400">Open →</span>
                         </div>
                       </div>
                     );
                   })}
-                </div>
-
-                {/* All Client Profiles Created by Healers */}
-                <div className="pt-5 border-t border-emerald-500/20 space-y-3">
-                  <h4 className="font-serif text-base font-bold text-amber-100">
-                    Healer Client Profiles ({healerPortalProfiles.length})
-                  </h4>
-                  {renderSavedProfilesTableHeader()}
-                  <div className="space-y-2">
-                    {healerPortalProfiles.map((prof) => renderSavedClientRow(prof))}
-                  </div>
                 </div>
               </>
             ) : (

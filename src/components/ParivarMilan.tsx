@@ -704,8 +704,8 @@ export const ParivarMilan: React.FC<ParivarMilanProps> = ({ profile, onUpdatePro
                         </div>
 
                         {/* 2. Relation with Client */}
-                        <div>
-                          <label className="block text-xs font-bold text-amber-200 uppercase tracking-wider mb-1.5">
+                        <div className="min-w-0">
+                          <label className="block text-xs font-bold text-amber-200 uppercase tracking-wider mb-1.5 break-words">
                             2. Relation with Client ({profile.name}) *
                           </label>
                           <select
@@ -715,7 +715,7 @@ export const ParivarMilan: React.FC<ParivarMilanProps> = ({ profile, onUpdatePro
                                 relation: e.target.value as FamilyRelationType,
                               })
                             }
-                            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-amber-500/40 text-white text-sm focus:outline-none focus:border-amber-400 cursor-pointer"
+                            className="w-full max-w-full min-w-0 px-3 py-2.5 rounded-xl bg-slate-950 border border-amber-500/40 text-white text-xs sm:text-sm focus:outline-none focus:border-amber-400 cursor-pointer truncate"
                           >
                             {FAMILY_RELATION_OPTIONS.map((rel) => (
                               <option key={rel} value={rel} className="bg-slate-950 text-white">
@@ -1039,14 +1039,14 @@ export const ParivarMilan: React.FC<ParivarMilanProps> = ({ profile, onUpdatePro
                           className="bg-slate-950/90 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 transition-all cursor-pointer"
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                            <div className="flex items-center gap-2.5">
-                              <span className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300 font-black text-xs flex items-center justify-center">
+                            <div className="flex flex-wrap items-center gap-2 min-w-0">
+                              <span className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-300 font-black text-xs flex items-center justify-center shrink-0">
                                 {index + 1}
                               </span>
-                              <span className="font-serif font-bold text-white text-sm sm:text-base">
-                                {profile.name} & {res.member.name}
+                              <span className="font-serif font-bold text-white text-sm sm:text-base break-words min-w-0">
+                                {profile.name} &amp; {res.member.name}
                               </span>
-                              <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 text-[10px] font-bold">
+                              <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 text-[10px] font-bold break-words max-w-full">
                                 {res.member.relation}
                               </span>
                             </div>
@@ -1399,16 +1399,22 @@ export const ParivarMilan: React.FC<ParivarMilanProps> = ({ profile, onUpdatePro
                               </div>
 
                               {/* Pranic Aura, Crystal, Rudraksha & Sound Frequency Strip */}
-                              <div className="mt-3 px-3.5 py-2 rounded-xl bg-indigo-950/40 border border-indigo-500/30 flex flex-wrap items-center justify-between gap-2 text-[11px] text-indigo-200">
-                                <span className="flex items-center gap-1.5">
-                                  <Gem className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                  <strong>Crystal & Rudraksha:</strong> {ch.healingCrystal} •{' '}
-                                  {ch.rudrakshaMukhi}
-                                </span>
-                                <span className="flex items-center gap-1.5 font-mono text-amber-300 font-bold">
-                                  <Volume2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                  Sound Healing: {ch.soundFrequencyHz} • {ch.beejMantra}
-                                </span>
+                              <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-indigo-950/40 border border-indigo-500/30 flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-2 text-[11px] text-indigo-200">
+                                <div className="flex items-start gap-2 min-w-0">
+                                  <Gem className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                                  <div className="leading-relaxed break-words min-w-0">
+                                    <strong className="text-amber-200">Crystal &amp; Rudraksha:</strong>{' '}
+                                    <span>
+                                      {ch.healingCrystal} • {ch.rudrakshaMukhi}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-start gap-2 font-mono text-amber-300 font-bold min-w-0">
+                                  <Volume2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                                  <div className="leading-relaxed break-words min-w-0">
+                                    <span>Sound Healing: {ch.soundFrequencyHz} • {ch.beejMantra}</span>
+                                  </div>
+                                </div>
                               </div>
 
                               {/* 3-Column Remedies: Client Remedy, Family Member Remedy, Joint Parivar Remedy */}

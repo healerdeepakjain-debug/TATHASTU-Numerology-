@@ -17,8 +17,8 @@ import {
   X,
   FolderOpen,
   LogOut,
-  Menu,
   ChevronRight,
+  Printer,
 } from 'lucide-react';
 import { useLanguage } from '../utils/i18n';
 import {
@@ -66,10 +66,6 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   const [internalOpen, setInternalOpen] = useState(false);
 
   const drawerOpen = isOpen !== undefined ? isOpen : internalOpen;
-  const openDrawer = () => {
-    if (onOpen) onOpen();
-    else setInternalOpen(true);
-  };
   const closeDrawer = () => {
     if (onClose) onClose();
     else setInternalOpen(false);
@@ -143,25 +139,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
   return (
     <>
-      {/* Subtle Floating Left-Edge Side Panel Handle on Mobile/Tablet when a profile is active */}
-      {hasActiveProfile && !drawerOpen && (
-        <button
-          type="button"
-          onClick={openDrawer}
-          aria-label="Open All Modules Side Panel"
-          className={`fixed left-0 top-1/2 -translate-y-1/2 z-40 ${
-            forceVisible ? '' : 'md:hidden'
-          } flex flex-col items-center justify-center gap-1 py-3 px-1.5 rounded-r-2xl bg-gradient-to-b from-amber-500 to-amber-600 text-slate-950 shadow-[4px_0_20px_rgba(245,158,11,0.45)] border-y border-r border-amber-300 cursor-pointer no-print`}
-          title="Open All Modules Side Panel"
-        >
-          <Menu className="w-4 h-4" />
-          <span className="text-[9px] font-black uppercase tracking-wider [writing-mode:vertical-rl] rotate-180">
-            Modules
-          </span>
-        </button>
-      )}
-
-      {/* Slide-Out Side Panel Drawer for ALL Modules */}
+      {/* Slide-Out Side Panel Drawer for ALL Modules (Triggered by top hamburger menu next to TATHASTU NUMEROLOGY) */}
       {drawerOpen && (
         <div
           className={`fixed inset-0 z-[9990] bg-slate-950/80 backdrop-blur-sm flex ${
@@ -205,6 +183,20 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
             {/* Scrollable Grouped Modules List */}
             <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+              {hasActiveProfile && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeDrawer();
+                    window.dispatchEvent(new CustomEvent('tathastu:open-print-preview'));
+                  }}
+                  className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4 shrink-0" />
+                  <span>Print / Download PDF Report</span>
+                </button>
+              )}
+
               {!hasActiveProfile && (
                 <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200 leading-relaxed">
                   Select or create a profile in <strong>Saved Profiles &amp; Portals</strong> to unlock all personalized numerology &amp; astrology modules.

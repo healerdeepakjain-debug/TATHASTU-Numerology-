@@ -282,62 +282,58 @@
     padding-right: env(safe-area-inset-right);
   }
 
-  /* Smooth Card-by-Card Scroll Snapping for Main Reporting Modules on Mobile Devices */
+  /* Smooth natural vertical flow for main reporting modules on mobile (no jarring page-break jumps) */
   @media (max-width: 860px) {
     html:has(.report-snap-flow) {
-      scroll-snap-type: y proximity;
-      scroll-padding-top: 74px;
-      scroll-behavior: smooth;
+      scroll-snap-type: none;
+      scroll-padding-top: 84px;
+      scroll-behavior: auto;
     }
 
+    .report-snap-flow,
     .report-snap-flow > div > div,
     .report-snap-flow > div > section,
-    .report-snap-flow .report-snap-card {
-      scroll-snap-align: start;
-      scroll-margin-top: 74px;
-    }
-
+    .report-snap-flow .report-snap-card,
     .report-snap-flow .grid:not(.report-snap-deck) > div[class*="rounded-2xl"],
     .report-snap-flow .grid:not(.report-snap-deck) > div[class*="rounded-3xl"] {
-      scroll-snap-align: start;
-      scroll-margin-top: 74px;
+      scroll-snap-align: none;
+      scroll-margin-top: 84px;
     }
 
     .report-a4-preview-viewport {
-      scroll-snap-type: y proximity;
+      scroll-snap-type: none;
       scroll-padding-top: 12px;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-y: contain;
     }
 
     .report-a4-preview-viewport .a4-sheet-page {
-      scroll-snap-align: start;
-      scroll-snap-stop: normal;
+      scroll-snap-align: none;
       scroll-margin-top: 12px;
     }
   }
 
   html:has(body.tathastu-mobile-app-mode .report-snap-flow) {
-    scroll-snap-type: y proximity;
-    scroll-padding-top: 74px;
-    scroll-behavior: smooth;
+    scroll-snap-type: none;
+    scroll-padding-top: 84px;
+    scroll-behavior: auto;
   }
 
   body.tathastu-mobile-app-mode .report-snap-flow > div > div,
   body.tathastu-mobile-app-mode .report-snap-flow > div > section,
   body.tathastu-mobile-app-mode .report-snap-flow .report-snap-card {
-    scroll-snap-align: start;
-    scroll-margin-top: 74px;
+    scroll-snap-align: none;
+    scroll-margin-top: 84px;
   }
 
   body.tathastu-mobile-app-mode .report-a4-preview-viewport {
-    scroll-snap-type: y proximity;
+    scroll-snap-type: none;
     scroll-padding-top: 12px;
     -webkit-overflow-scrolling: touch;
   }
 
   body.tathastu-mobile-app-mode .report-a4-preview-viewport .a4-sheet-page {
-    scroll-snap-align: start;
+    scroll-snap-align: none;
     scroll-margin-top: 12px;
   }
 
@@ -385,10 +381,11 @@
   width: 210mm;
   min-width: 210mm;
   max-width: 210mm;
+  height: 297mm;
   min-height: 297mm;
   margin-left: auto;
   margin-right: auto;
-  padding: 5mm 6mm;
+  padding: 5.5mm 6.5mm;
   box-sizing: border-box;
   position: relative;
   display: flex;
@@ -408,12 +405,16 @@
   width: 794px !important;
   min-width: 794px !important;
   max-width: 794px !important;
+  height: 1123px !important;
   min-height: 1123px !important;
-  padding: 19px 22px !important;
+  padding: 20px 24px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   border: 1.5px solid rgba(245, 158, 11, 0.65) !important;
-  overflow: visible !important;
+  overflow: hidden !important;
 }
 
 .a4-pdf-capture-mode .a4-print-grid-2 {
@@ -454,6 +455,7 @@
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
+    height: auto !important;
     min-height: auto !important;
     max-height: none !important;
     padding: 12px !important;
@@ -573,9 +575,11 @@
 }
 
 .a4-compact-footer {
-  flex-shrink: 0;
+  flex-shrink: 0 !important;
+  width: 100%;
   height: auto;
-  margin-top: auto;
+  margin-top: auto !important;
+  margin-bottom: 0 !important;
   overflow: hidden;
   box-sizing: border-box;
   break-inside: avoid !important;
@@ -588,7 +592,7 @@
   justify-content: flex-start;
   flex: 1 1 auto;
   min-height: 0;
-  padding: 2px 0;
+  padding: 2px 0 4px;
   gap: 5px;
   box-sizing: border-box;
 }
@@ -683,8 +687,11 @@
     min-height: 297mm !important;
     max-height: 297mm !important;
     margin: 0 auto !important;
-    padding: 5mm 6mm !important;
+    padding: 5.5mm 6.5mm !important;
     box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
     box-shadow: none !important;
     border: 1.5px solid rgba(245, 158, 11, 0.65) !important;
     border-radius: 0 !important;
@@ -717,7 +724,7 @@
     justify-content: flex-start !important;
     flex: 1 1 auto !important;
     min-height: 0 !important;
-    padding: 0.5mm 0 !important;
+    padding: 0.5mm 0 1mm !important;
     gap: 4.5px !important;
     overflow: hidden !important;
   }
@@ -742,8 +749,10 @@
 
   .a4-compact-footer {
     flex-shrink: 0 !important;
+    width: 100% !important;
     height: auto !important;
     margin-top: auto !important;
+    margin-bottom: 0 !important;
     padding: 3.5px 8.5px !important;
     overflow: hidden !important;
     break-inside: avoid !important;

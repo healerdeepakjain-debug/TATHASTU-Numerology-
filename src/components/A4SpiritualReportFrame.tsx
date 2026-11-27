@@ -1008,6 +1008,16 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     setIsPrintPreviewOpen(true);
   };
 
+  useEffect(() => {
+    const onOpenPrintPreview = () => {
+      setIsPrintPreviewOpen(true);
+    };
+    window.addEventListener('tathastu:open-print-preview', onOpenPrintPreview);
+    return () => {
+      window.removeEventListener('tathastu:open-print-preview', onOpenPrintPreview);
+    };
+  }, []);
+
   const persistSignedPdfUrlToSharedReport = async (signedUrl: string | null | undefined) => {
     if (!signedUrl || !activeProfile?.id || !auth.currentUser) return;
     try {
@@ -1739,59 +1749,115 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     );
   };
 
-  const renderA4PageHealerFooter = (pageNumber: number, _totalPages?: number) => (
-    <div className="a4-compact-footer relative z-10 mt-auto border-t-2 border-amber-500/55 bg-slate-950/95 rounded-xl px-2.5 py-1.5">
-      <div className="grid grid-cols-[1.55fr_0.75fr_1.1fr] items-stretch gap-2 text-[8px] leading-snug">
+  const renderA4PageHealerFooter = (
+    pageNumber: number,
+    _totalPages?: number,
+    isResponsiveScreen = false
+  ) => (
+    <div
+      className={`a4-compact-footer relative z-10 mt-auto border-t-2 border-amber-500/55 bg-slate-950/95 rounded-xl ${
+        isResponsiveScreen ? 'px-3.5 py-3 md:px-2.5 md:py-1.5' : 'px-2.5 py-1.5'
+      }`}
+    >
+      <div
+        className={`grid items-stretch ${
+          isResponsiveScreen
+            ? 'grid-cols-1 md:grid-cols-[1.55fr_0.75fr_1.1fr] gap-3 md:gap-2 text-xs md:text-[8px] leading-relaxed md:leading-snug'
+            : 'grid-cols-[1.55fr_0.75fr_1.1fr] gap-2 text-[8px] leading-snug'
+        }`}
+      >
         {/* Left Column: Healer Emblem + Full Name, Brand, Phone, Email, Address (No Truncation) */}
-        <div className="flex items-center gap-2 min-w-0 pr-2 border-r border-amber-500/40 self-stretch">
+        <div
+          className={`flex items-start md:items-center gap-2.5 md:gap-2 min-w-0 self-stretch ${
+            isResponsiveScreen
+              ? 'pb-2.5 border-b border-amber-500/30 md:pb-0 md:border-b-0 md:pr-2 md:border-r md:border-amber-500/40'
+              : 'pr-2 border-r border-amber-500/40'
+          }`}
+        >
           <img
             src={brandLogo}
             alt={brandTitle}
             referrerPolicy="no-referrer"
-            className="w-8 h-8 rounded-lg object-cover border border-amber-400 shadow-sm shrink-0"
+            className={`${
+              isResponsiveScreen ? 'w-11 h-11 md:w-8 md:h-8' : 'w-8 h-8'
+            } rounded-lg object-cover border border-amber-400 shadow-sm shrink-0`}
           />
-          <div className="min-w-0 flex-1 space-y-0.5 break-words">
-            <div className="font-serif font-black text-[9.5px] text-amber-100 leading-tight break-words">
+          <div className="min-w-0 flex-1 space-y-1 md:space-y-0.5 break-words">
+            <div
+              className={`font-serif font-black text-amber-100 leading-snug md:leading-tight break-words ${
+                isResponsiveScreen ? 'text-sm md:text-[9.5px]' : 'text-[9.5px]'
+              }`}
+            >
               Healer: {healerDisplayName} — <span className="text-amber-300">{brandTitle}</span>
             </div>
-            <div className="text-[7.5px] text-slate-200 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 leading-tight break-words">
-              <span className="inline-flex items-center gap-0.5 text-emerald-300 font-mono font-semibold">
-                <Phone className="w-2 h-2 shrink-0" /> {healerDisplayMobile}
+            <div
+              className={`text-slate-200 flex flex-wrap items-center gap-x-2 gap-y-1 md:gap-x-1.5 md:gap-y-0.5 leading-snug md:leading-tight break-words ${
+                isResponsiveScreen ? 'text-[11px] md:text-[7.5px]' : 'text-[7.5px]'
+              }`}
+            >
+              <span className="inline-flex items-center gap-1 md:gap-0.5 text-emerald-300 font-mono font-semibold">
+                <Phone className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0`} />{' '}
+                {healerDisplayMobile}
               </span>
-              <span className="text-amber-500/60">|</span>
-              <span className="inline-flex items-center gap-0.5 text-amber-200 font-mono break-all">
-                <Mail className="w-2 h-2 shrink-0" /> {healerDisplayEmail}
+              <span className="text-amber-500/60 hidden sm:inline">|</span>
+              <span className="inline-flex items-center gap-1 md:gap-0.5 text-amber-200 font-mono break-all">
+                <Mail className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0`} />{' '}
+                {healerDisplayEmail}
               </span>
             </div>
-            <div className="text-[7.3px] text-sky-300 flex items-start gap-1 leading-tight break-words">
-              <MapPin className="w-2 h-2 shrink-0 mt-0.5" />
+            <div
+              className={`text-sky-300 flex items-start gap-1 leading-snug md:leading-tight break-words ${
+                isResponsiveScreen ? 'text-[11px] md:text-[7.3px]' : 'text-[7.3px]'
+              }`}
+            >
+              <MapPin className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0 mt-0.5`} />
               <span className="break-words">{healerDisplayAddress}</span>
             </div>
           </div>
         </div>
 
         {/* Center Column: Strictly Center-Aligned Single Page Number (Equal-Height Vertical Dividers) */}
-        <div className="flex flex-col items-center justify-center text-center px-2 border-r border-amber-500/40 self-stretch">
-          <div className="inline-flex items-center justify-center px-3 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/65 text-amber-100 font-mono font-black text-[9.2px] shadow-sm whitespace-nowrap">
+        <div
+          className={`flex items-center justify-center text-center self-stretch ${
+            isResponsiveScreen
+              ? 'flex-row justify-between md:flex-col md:justify-center pb-2.5 border-b border-amber-500/30 md:pb-0 md:border-b-0 md:px-2 md:border-r md:border-amber-500/40'
+              : 'flex-col px-2 border-r border-amber-500/40'
+          }`}
+        >
+          <div
+            className={`inline-flex items-center justify-center px-3 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/65 text-amber-100 font-mono font-black shadow-sm whitespace-nowrap ${
+              isResponsiveScreen ? 'text-xs md:text-[9.2px]' : 'text-[9.2px]'
+            }`}
+          >
             Page {pageNumber}
           </div>
-          <div className="text-[7px] font-serif font-bold tracking-wider uppercase text-amber-300/90 mt-1 leading-tight break-words">
+          <div
+            className={`font-serif font-bold tracking-wider uppercase text-amber-300/90 leading-tight break-words ${
+              isResponsiveScreen ? 'text-[10px] md:text-[7px] md:mt-1' : 'text-[7px] mt-1'
+            }`}
+          >
             {TATHASTU_BRAND_NAME}
           </div>
         </div>
 
         {/* Right Column: Social Handles Stacked Cleanly Without Truncation */}
-        <div className="flex flex-col items-end justify-center gap-0.5 text-[7.2px] text-amber-200 min-w-0 self-stretch">
-          <span className="inline-flex items-center gap-1 bg-pink-950/75 border border-pink-500/40 px-1.5 py-0.5 rounded max-w-full break-all">
-            <Instagram className="w-2 h-2 text-pink-400 shrink-0" />
+        <div
+          className={`flex min-w-0 self-stretch ${
+            isResponsiveScreen
+              ? 'flex-row flex-wrap md:flex-col md:items-end justify-start md:justify-center gap-1.5 md:gap-0.5 text-[10.5px] md:text-[7.2px] text-amber-200'
+              : 'flex-col items-end justify-center gap-0.5 text-[7.2px] text-amber-200'
+          }`}
+        >
+          <span className="inline-flex items-center gap-1 bg-pink-950/75 border border-pink-500/40 px-2 py-1 md:px-1.5 md:py-0.5 rounded max-w-full break-all">
+            <Instagram className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} text-pink-400 shrink-0`} />
             <span className="font-mono break-all">{healerInstagram}</span>
           </span>
-          <span className="inline-flex items-center gap-1 bg-blue-950/75 border border-blue-500/40 px-1.5 py-0.5 rounded max-w-full break-all">
-            <Facebook className="w-2 h-2 text-blue-400 shrink-0" />
+          <span className="inline-flex items-center gap-1 bg-blue-950/75 border border-blue-500/40 px-2 py-1 md:px-1.5 md:py-0.5 rounded max-w-full break-all">
+            <Facebook className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} text-blue-400 shrink-0`} />
             <span className="font-mono break-all">{healerFacebook}</span>
           </span>
-          <span className="inline-flex items-center gap-1 bg-emerald-950/75 border border-emerald-500/40 px-1.5 py-0.5 rounded max-w-full break-all">
-            <Globe className="w-2 h-2 text-emerald-400 shrink-0" />
+          <span className="inline-flex items-center gap-1 bg-emerald-950/75 border border-emerald-500/40 px-2 py-1 md:px-1.5 md:py-0.5 rounded max-w-full break-all">
+            <Globe className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} text-emerald-400 shrink-0`} />
             <span className="font-mono break-all">{healerWebsite}</span>
           </span>
         </div>
@@ -6076,8 +6142,9 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         </div>
       )}
 
+      {/* Floating Print / Download PDF button is Desktop-only; on Mobile it lives cleanly in the Side Panel & Dashboard header so it never overlaps buttons/cards */}
       {activeProfile && (
-        <div className="fixed right-4 bottom-6 z-40 flex flex-col gap-2 no-print">
+        <div className="hidden md:flex fixed right-4 bottom-6 z-40 flex-col gap-2 no-print">
           <button
             type="button"
             onClick={handleOpenPrintPreview}
@@ -6231,8 +6298,8 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           </div>
 
           {activeProfile && (
-            <div className="relative z-10 px-4 sm:px-6 pb-4">
-              {renderA4PageHealerFooter(1)}
+            <div className="relative z-10 px-3 sm:px-6 pb-4">
+              {renderA4PageHealerFooter(1, undefined, true)}
             </div>
           )}
         </div>

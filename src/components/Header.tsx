@@ -23,8 +23,6 @@ import {
   Clock,
   BookOpen,
   HeartPulse,
-  Monitor,
-  Smartphone,
   Menu,
 } from 'lucide-react';
 import { BirthProfile } from '../types';
@@ -62,7 +60,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { language, setLanguage, t } = useLanguage();
   const { isMobile } = useResponsiveViewport();
-  const { isWindowsFullPage, isMobileAppMode, switchPlatformMode } = usePlatformMode();
+  const { isWindowsFullPage, isMobileAppMode } = usePlatformMode();
   const {
     currentAccount,
     activeProfile,
@@ -199,37 +197,7 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-1.5 w-full sm:w-auto">
-          {/* Unified Windows Full-Page (/windows) & Mobile/Tablet Play Store (/mobile) Switcher */}
-          <div className="inline-flex items-center rounded-lg bg-slate-900 border border-amber-500/35 p-0.5">
-            <button
-              type="button"
-              onClick={() => switchPlatformMode('windows')}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${
-                isWindowsFullPage
-                  ? 'bg-amber-500 text-slate-950'
-                  : 'text-amber-200/80 hover:text-amber-100'
-              }`}
-              title="Open Dedicated Windows Full-Page Link (/windows)"
-            >
-              <Monitor className="w-3 h-3" />
-              <span>Windows</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => switchPlatformMode('mobile')}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] sm:text-[10.5px] font-bold transition-all cursor-pointer ${
-                isMobileAppMode
-                  ? 'bg-emerald-500 text-slate-950'
-                  : 'text-emerald-200/80 hover:text-emerald-100'
-              }`}
-              title="Open Dedicated Mobile / Tablet & Play Store Link (/mobile)"
-            >
-              <Smartphone className="w-3 h-3" />
-              <span>Mobile</span>
-            </button>
-          </div>
-
+        <div className="flex flex-wrap items-center justify-end gap-1.5 w-full sm:w-auto">
           {/* Indian Language Selection Dropdown Window */}
           <div
             data-no-translate="true"
@@ -320,8 +288,8 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Side Controls: Only show Opened Client Profile badge when a Client Name was clicked */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Right Side Controls: On mobile, Saved Profiles & Portals + Logout sit cleanly side-by-side; client detail box is desktop-only since Namaste box shows it below */}
+        <div className="flex items-center justify-between md:justify-end flex-wrap gap-2 w-full md:w-auto">
           {activeProfile && (
             <>
               <button
@@ -329,18 +297,18 @@ export const Header: React.FC<HeaderProps> = ({
                   clearActiveProfile();
                   setActiveTab('profiles-portal');
                 }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer shrink-0"
                 title="Close active client dashboard and return to Saved Profiles & Portals"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <FolderOpen className="w-3.5 h-3.5" />
-                <span>Saved Profiles & Portals</span>
+                <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+                <FolderOpen className="w-3.5 h-3.5 shrink-0" />
+                <span>Saved Profiles &amp; Portals</span>
               </button>
 
-              {/* Opened Client Profile Badge */}
+              {/* Opened Client Profile Badge (Desktop only — hidden on mobile to keep header compact & show more report) */}
               <button
                 onClick={handleProfileEditClick}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/80 border border-amber-500/30 hover:border-amber-400/60 transition-all shadow-inner group text-left cursor-pointer"
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/80 border border-amber-500/30 hover:border-amber-400/60 transition-all shadow-inner group text-left cursor-pointer"
                 title={
                   currentAccount?.role === 'admin'
                     ? 'Admin: Edit or Delete any profile'
@@ -369,14 +337,14 @@ export const Header: React.FC<HeaderProps> = ({
             </>
           )}
 
-          {/* Logout Button — Signs out completely and returns to Login + Introduction Page */}
+          {/* Logout Button — Sits right next to Saved Profiles & Portals on mobile when profile is open */}
           <button
             type="button"
             onClick={onLogout}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/35 border border-rose-400/60 text-rose-200 hover:text-white font-bold text-xs transition-all cursor-pointer shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/35 border border-rose-400/60 text-rose-200 hover:text-white font-bold text-xs transition-all cursor-pointer shadow-sm shrink-0 ml-auto md:ml-0"
             title="Logout and return to Login & Introduction Page"
           >
-            <LogOut className="w-3.5 h-3.5 text-rose-300" />
+            <LogOut className="w-3.5 h-3.5 text-rose-300 shrink-0" />
             <span>Logout</span>
           </button>
         </div>
