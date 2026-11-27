@@ -45,8 +45,11 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
   const voiceTimerRef = useRef<number | null>(null);
   const musicStartedRef = useRef<boolean>(false);
   const voiceTriggeredRef = useRef<boolean>(false);
+  const voicePlayedOnceRef = useRef<boolean>(false);
   const voicePendingUnlockRef = useRef<boolean>(false);
   const speechSpokenRef = useRef<boolean>(false);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   const [isFadingOut, setIsFadingOut] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -60,7 +63,7 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
   const effectiveDuration = prefersReducedMotion ? 2200 : durationMs;
 
   const speakFemalePranamFallback = (fromUserGesture = false) => {
-    if (completedRef.current || speechSpokenRef.current) return;
+    if (completedRef.current || speechSpokenRef.current || voicePlayedOnceRef.current) return;
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     try {
       window.speechSynthesis.cancel();
@@ -103,17 +106,20 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
 
       utterance.onstart = () => {
         speechSpokenRef.current = true;
+        voicePlayedOnceRef.current = true;
         voicePendingUnlockRef.current = false;
       };
       utterance.onerror = (evt) => {
         const errCode = (evt as SpeechSynthesisErrorEvent)?.error;
         if ((errCode === 'not-allowed' || errCode === 'interrupted') && !fromUserGesture) {
           speechSpokenRef.current = false;
+          voicePlayedOnceRef.current = false;
           voicePendingUnlockRef.current = true;
         }
       };
 
       speechSpokenRef.current = true;
+      voicePlayedOnceRef.current = true;
       window.speechSynthesis.speak(utterance);
     } catch {
       // Speech synthesis unavailable
@@ -166,53 +172,65 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
     setIsFadingOut(true);
     stopAmbientSound();
     window.setTimeout(() => {
-      onComplete();
+      onCompleteRef.current();
     }, 460);
   };
 
   const playFemaleTathastuPranamVoice = (fromUserGesture = false) => {
-    if (completedRef.current) return;
+    if (completedRef.current || voicePlayedOnceRef.current || speechSpokenRef.current) return;
     if (voiceTriggeredRef.current && !voicePendingUnlockRef.current) return;
 
     const audio = voiceAudioRef.current;
     if (audio && voiceReadyRef.current) {
       voiceTriggeredRef.current = true;
+      voicePendingUnlockRef.current = false;
       audio.volume = 1.0;
       try {
-        if (audio.ended) return;
+        if (audio.ended || !audio.paused) {
+          voicePlayedOnceRef.current = true;
+          return;
+        }
+        voicePlayedOnceRef.current = true;
         const playPromise = audio.play();
         if (playPromise && typeof playPromise.then === 'function') {
           playPromise
             .then(() => {
+              voicePlayedOnceRef.current = true;
               voicePendingUnlockRef.current = false;
             })
             .catch((err) => {
+              voicePlayedOnceRef.current = false;
               // Browser autoplay policy blocked before interaction -> wait for gesture unlock
               if (err?.name === 'NotAllowedError' && !fromUserGesture) {
                 voicePendingUnlockRef.current = true;
-              } else if (!completedRef.current) {
+              } else if (!completedRef.current && !speechSpokenRef.current) {
                 voicePendingUnlockRef.current = false;
                 speakFemalePranamFallback(fromUserGesture);
               }
             });
         } else {
+          voicePlayedOnceRef.current = true;
           voicePendingUnlockRef.current = false;
         }
       } catch {
-        if (!completedRef.current) {
+        voicePlayedOnceRef.current = false;
+        if (!completedRef.current && !speechSpokenRef.current) {
           speakFemalePranamFallback(fromUserGesture);
         }
       }
       return;
     }
 
-    if (voiceFailedRef.current || fromUserGesture) {
+    if (voiceFailedRef.current) {
       voiceTriggeredRef.current = true;
       voicePendingUnlockRef.current = false;
       speakFemalePranamFallback(fromUserGesture);
     } else {
-      // Studio audio still fetching; mark triggered so fetch completion plays immediately
+      // Studio audio still fetching; wait for it rather than double-playing speechSynthesis + WAV
       voiceTriggeredRef.current = true;
+      if (fromUserGesture) {
+        voicePendingUnlockRef.current = true;
+      }
     }
   };
 
@@ -225,8 +243,8 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtx) return;
 
-      if (audioCtxRef.current) {
-        if (audioCtxRef.current.state === 'suspended') {
+      if (audioCtxRef.current || musicStartedRef.current) {
+        if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
           audioCtxRef.current.resume().catch(() => {});
         }
         return;
@@ -326,8 +344,8 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
               audio.volume = 1.0;
               voiceAudioRef.current = audio;
               voiceReadyRef.current = true;
-              // If timer already fired while fetching, play immediately
-              if (voiceTriggeredRef.current && !speechSpokenRef.current) {
+              // If timer already fired while fetching, play once immediately
+              if (voiceTriggeredRef.current && !voicePlayedOnceRef.current && !speechSpokenRef.current) {
                 voiceTriggeredRef.current = false;
                 playFemaleTathastuPranamVoice(false);
               }
@@ -340,7 +358,7 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
       }
       if (cancelled || completedRef.current) return;
       voiceFailedRef.current = true;
-      if (voiceTriggeredRef.current && !speechSpokenRef.current) {
+      if (voiceTriggeredRef.current && !voicePlayedOnceRef.current && !speechSpokenRef.current) {
         speakFemalePranamFallback(false);
       }
     };
@@ -367,19 +385,27 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
       playFemaleTathastuPranamVoice(false);
     }, 420);
 
-    // Ensure strict desktop browsers resume music + female voice on earliest touch/pointer/key interaction
+    // Ensure strict desktop/mobile browsers resume music + female voice ONCE on earliest gesture
+    let unlockHandled = false;
     const unlockAudio = () => {
-      if (!audioCtxRef.current) {
+      if (completedRef.current) return;
+      if (!audioCtxRef.current && !musicStartedRef.current) {
         startSacredIntroMusic();
-      } else if (audioCtxRef.current.state === 'suspended') {
+      } else if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
         audioCtxRef.current.resume().catch(() => {});
       }
-      if (!voiceTriggeredRef.current || voicePendingUnlockRef.current) {
+      if (!voicePlayedOnceRef.current && !speechSpokenRef.current && (!voiceTriggeredRef.current || voicePendingUnlockRef.current)) {
         playFemaleTathastuPranamVoice(true);
+      }
+      if (voicePlayedOnceRef.current || speechSpokenRef.current) {
+        unlockHandled = true;
+      }
+      if (unlockHandled && audioCtxRef.current?.state === 'running') {
+        window.removeEventListener('pointerdown', unlockAudio);
+        window.removeEventListener('keydown', unlockAudio);
       }
     };
     window.addEventListener('pointerdown', unlockAudio, { passive: true });
-    window.addEventListener('touchstart', unlockAudio, { passive: true });
     window.addEventListener('keydown', unlockAudio, { passive: true });
 
     const startTime = performance.now();
@@ -396,12 +422,12 @@ export const TathastuIntroSplash: React.FC<TathastuIntroSplashProps> = ({
     return () => {
       cancelled = true;
       window.removeEventListener('pointerdown', unlockAudio);
-      window.removeEventListener('touchstart', unlockAudio);
       window.removeEventListener('keydown', unlockAudio);
       window.clearInterval(progressTimer);
       stopAmbientSound();
     };
-  }, [effectiveDuration]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 60FPS Real-Time Animated Spiritual Mandala, Cosmic Rays, Navagraha Orbits & Golden Aura Canvas
   useEffect(() => {

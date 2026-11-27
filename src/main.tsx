@@ -18,10 +18,18 @@ if (typeof window !== 'undefined') {
     window.location.hostname !== 'localhost' &&
     window.location.hostname !== '127.0.0.1'
   ) {
+    const hadControllerAtBoot = Boolean(navigator.serviceWorker.controller);
     let hasRefreshedForNewSw = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (hasRefreshedForNewSw) return;
+      // Never reload on first-ever SW claim (which replays the intro splash & music twice)
+      if (!hadControllerAtBoot || hasRefreshedForNewSw) return;
       hasRefreshedForNewSw = true;
+      try {
+        // Ensure a silent OTA update reload never replays the intro splash graphics & music a second time
+        window.sessionStorage.setItem('tathastu_skip_intro_once', '1');
+      } catch {
+        // Ignore storage errors
+      }
       window.location.reload();
     });
 
@@ -37,7 +45,8 @@ if (typeof window !== 'undefined') {
     };
 
     window.addEventListener('load', () => {
-      setTimeout(triggerSilentUpdateCheck, 1200);
+      // Wait until after intro splash finishes before checking for OTA SW updates
+      setTimeout(triggerSilentUpdateCheck, 6500);
     });
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {

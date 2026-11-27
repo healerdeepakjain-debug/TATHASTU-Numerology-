@@ -127,8 +127,22 @@ function TathastuMainApp() {
       ) {
         return false;
       }
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        if (window.sessionStorage.getItem('tathastu_skip_intro_once') === '1') {
+          window.sessionStorage.removeItem('tathastu_skip_intro_once');
+          return false;
+        }
+        const lastStartedRaw = window.sessionStorage.getItem('tathastu_intro_started_at');
+        if (lastStartedRaw) {
+          const lastStarted = Number(lastStartedRaw);
+          if (Number.isFinite(lastStarted) && Date.now() - lastStarted < 15000) {
+            return false;
+          }
+        }
+        window.sessionStorage.setItem('tathastu_intro_started_at', String(Date.now()));
+      }
     } catch {
-      // Ignore URL parse error
+      // Ignore URL/storage error
     }
     return true;
   });

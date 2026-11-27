@@ -288,66 +288,64 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Side Controls: On mobile, Saved Profiles & Portals + Logout sit cleanly side-by-side; client detail box is desktop-only since Namaste box shows it below */}
-        <div className="flex items-center justify-between md:justify-end flex-wrap gap-2 w-full md:w-auto">
-          {activeProfile && (
-            <>
-              <button
-                onClick={() => {
-                  clearActiveProfile();
-                  setActiveTab('profiles-portal');
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer shrink-0"
-                title="Close active client dashboard and return to Saved Profiles & Portals"
-              >
-                <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
-                <FolderOpen className="w-3.5 h-3.5 shrink-0" />
-                <span>Saved Profiles &amp; Portals</span>
-              </button>
+        {/* Right Side Controls: Shown ONLY when a client profile report is open (Welcome screen already has Logout beside Change Password) */}
+        {activeProfile && activeTab !== 'profiles-portal' && (
+          <div className="flex items-center justify-between md:justify-end flex-wrap gap-2 w-full md:w-auto">
+            <button
+              onClick={() => {
+                clearActiveProfile();
+                setActiveTab('profiles-portal');
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer shrink-0"
+              title="Close active client dashboard and return to Saved Profiles & Portals"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+              <FolderOpen className="w-3.5 h-3.5 shrink-0" />
+              <span>Saved Profiles &amp; Portals</span>
+            </button>
 
-              {/* Opened Client Profile Badge (Desktop only — hidden on mobile to keep header compact & show more report) */}
-              <button
-                onClick={handleProfileEditClick}
-                className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/80 border border-amber-500/30 hover:border-amber-400/60 transition-all shadow-inner group text-left cursor-pointer"
-                title={
-                  currentAccount?.role === 'admin'
-                    ? 'Admin: Edit or Delete any profile'
-                    : `Locked Profile — Contact Admin ${TATHASTU_ADMIN_PHONE} to Edit/Delete`
-                }
-              >
-                <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 font-bold text-xs">
-                  {currentAccount?.role === 'admin' ? (
-                    <Crown className="w-4 h-4 text-amber-300" />
-                  ) : (
-                    <Lock className="w-3.5 h-3.5 text-amber-300" />
-                  )}
+            {/* Opened Client Profile Badge (Desktop only — hidden on mobile to keep header compact & show more report) */}
+            <button
+              onClick={handleProfileEditClick}
+              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/80 border border-amber-500/30 hover:border-amber-400/60 transition-all shadow-inner group text-left cursor-pointer"
+              title={
+                currentAccount?.role === 'admin'
+                  ? 'Admin: Edit or Delete any profile'
+                  : `Locked Profile — Contact Admin ${TATHASTU_ADMIN_PHONE} to Edit/Delete`
+              }
+            >
+              <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 font-bold text-xs">
+                {currentAccount?.role === 'admin' ? (
+                  <Crown className="w-4 h-4 text-amber-300" />
+                ) : (
+                  <Lock className="w-3.5 h-3.5 text-amber-300" />
+                )}
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-amber-100 flex items-center gap-1.5">
+                  <span>{activeProfile.name}</span>
+                  <span className="text-[10px] text-amber-400 font-normal">({activeProfile.dob})</span>
                 </div>
-                <div>
-                  <div className="text-xs font-semibold text-amber-100 flex items-center gap-1.5">
-                    <span>{activeProfile.name}</span>
-                    <span className="text-[10px] text-amber-400 font-normal">({activeProfile.dob})</span>
-                  </div>
-                  <div className="text-[10px] text-amber-300/70 flex items-center gap-2 font-mono">
-                    <span>M: <strong className="text-amber-200">{mulank} ({mulankInfo?.planet})</strong></span>
-                    <span>•</span>
-                    <span>B: <strong className="text-amber-200">{bhagyank} ({bhagyankInfo?.planet})</strong></span>
-                  </div>
+                <div className="text-[10px] text-amber-300/70 flex items-center gap-2 font-mono">
+                  <span>M: <strong className="text-amber-200">{mulank} ({mulankInfo?.planet})</strong></span>
+                  <span>•</span>
+                  <span>B: <strong className="text-amber-200">{bhagyank} ({bhagyankInfo?.planet})</strong></span>
                 </div>
-              </button>
-            </>
-          )}
+              </div>
+            </button>
 
-          {/* Logout Button — Sits right next to Saved Profiles & Portals on mobile when profile is open */}
-          <button
-            type="button"
-            onClick={onLogout}
-            className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/35 border border-rose-400/60 text-rose-200 hover:text-white font-bold text-xs transition-all cursor-pointer shadow-sm shrink-0 ml-auto md:ml-0"
-            title="Logout and return to Login & Introduction Page"
-          >
-            <LogOut className="w-3.5 h-3.5 text-rose-300 shrink-0" />
-            <span>Logout</span>
-          </button>
-        </div>
+            {/* Logout Button — Sits right next to Saved Profiles & Portals when profile report is open */}
+            <button
+              type="button"
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/35 border border-rose-400/60 text-rose-200 hover:text-white font-bold text-xs transition-all cursor-pointer shadow-sm shrink-0 ml-auto md:ml-0"
+              title="Logout and return to Login & Introduction Page"
+            >
+              <LogOut className="w-3.5 h-3.5 text-rose-300 shrink-0" />
+              <span>Logout</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Navigation Tabs (Full-Width Desktop Grid on Windows/Desktop; Mobile/Tablet /mobile uses MobileBottomNav) */}
