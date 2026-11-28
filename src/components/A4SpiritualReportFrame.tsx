@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, createContext, useContext } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import { toJpeg } from 'html-to-image';
 import { jsPDF } from 'jspdf';
@@ -88,7 +88,6 @@ import { SANSKRit_BEEJ_DEVANAGARI } from './DailyMantras';
 import {
   generateAndExport18PagePdf,
   generate12MonthLunarAndAstroForecast,
-  calculateExactPdfPageCounts,
 } from '../utils/pdfReportGenerator';
 import {
   generateClientReportQrDataUrl,
@@ -134,6 +133,281 @@ interface A4SpiritualReportFrameProps {
   onOpenAdminPortal?: () => void;
   onOpenEditProfileModal?: () => void;
 }
+
+const A4_HL_SKIP_TAGS = new Set([
+  'svg',
+  'path',
+  'circle',
+  'rect',
+  'line',
+  'polygon',
+  'polyline',
+  'g',
+  'text',
+  'img',
+  'br',
+  'hr',
+  'style',
+  'script',
+]);
+
+const A4_HL_PATTERN = new RegExp(
+  [
+    // 1. Percentages (%)
+    '([+-]?\\d{1,3}(?:\\.\\d+)?%)',
+    // 2. Maha Dasha / Antardasha names
+    '(\\b(?:(?:Surya|Sun|Chandra|Moon|Mangal|Mars|Rahu|Guru|Brihaspati|Jupiter|Shani|Saturn|Budha|Budh|Mercury|Ketu|Shukra|Venus|Vimshottari|Parashari|Progressive|Numerology)\\s+(?:Maha\\s*Dasha|Mahadasha|Antardasha|Dasha)|Maha\\s*Dasha|Mahadasha|Antardasha)\\b)',
+    // 3. Chakra names
+    '(\\b(?:Muladhara|Swadhisthana|Svadhishthana|Manipura|Anahata|Vishuddha|Vishuddhi|Ajna|Sahasrara|Earth\\s+Star|Soul\\s+Star|Root\\s+Chakra|Sacral\\s+Chakra|Solar\\s+Plexus(?:\\s+Chakra)?|Heart\\s+Chakra|Throat\\s+Chakra|Third\\s+Eye(?:\\s+Chakra)?|Crown\\s+Chakra|9-Chakra)\\b)',
+    // 4. Precious Stones / Ratna / Rudraksha names
+    '(\\b(?:Yellow\\s+Sapphire|Blue\\s+Sapphire|White\\s+Sapphire|Red\\s+Coral|Cat[\'’]s\\s+Eye|Hessonite\\s+Garnet|Hessonite|White\\s+Zircon|Natural\\s+Emerald|Emerald|Panna|Ruby|Manikya|Manik|Natural\\s+Pearl|Pearl|Moti|Pukhraj|Gomed|Diamond|Heera|Opal|Lehsunia|Neelam|Moonga|Citrine|Pyrite|Amethyst|Rose\\s+Quartz|Clear\\s+Quartz|Green\\s+Aventurine|Tiger\\s+Eye|Black\\s+Tourmaline|Sulemani\\s+Hakik|Peridot|Green\\s+Tourmaline|Green\\s+Jade|Marakata|(?:\\d+\\s*-?\\s*)?Mukhi\\s+Rudraksha|Rudraksha)\\b)',
+    // 5. Metal & Wearing Finger / Hand names
+    '(\\b(?:24K\\s+Gold|22K\\s+Gold|18K\\s+Gold|Pure\\s+Gold|Sterling\\s+Silver|Pure\\s+Silver|Panchdhatu|Ashtadhatu|Platinum|Copper|Brass|Gold|Silver|Ring\\s+Finger(?:\\s*\\(Anamika\\))?|Little\\s+Finger(?:\\s*\\(Kanishthika\\))?|Middle\\s+Finger(?:\\s*\\(Madhyama\\))?|Index\\s+Finger(?:\\s*\\(Tarjani\\))?|Anamika|Kanishthika|Madhyama|Tarjani|Right\\s*\\(Working\\)\\s*Hand|Right\\s+Hand|Left\\s+Hand)\\b)',
+    // 6. Planet names
+    '(\\b(?:Brihaspati|Navagraha|Mercury|Jupiter|Saturn|Chandra|Shukra|Mangal|Surya|Shani|Venus|Budha|Budh|Rahu|Ketu|Guru|Mars|Moon|Sun)\\b)',
+    // 7. Benefits / Profit / Remedies
+    '(\\b(?:Profit\\s*\\/\\s*Benefits?|Key\\s+Benefits?|Benefits?|Profit|Laabh|Strengths?|Remedies|Remedy)\\b)',
+    // 8. Loss / Drawbacks / Challenges
+    '(\\b(?:Loss\\s*\\/\\s*Drawbacks?|Drawbacks?|Losses|Loss|Haani|Challenges?)\\b)',
+  ].join('|'),
+  'gi'
+);
+
+function highlightA4TextString(text: string): React.ReactNode {
+  if (!text || text.length < 2) return text;
+  A4_HL_PATTERN.lastIndex = 0;
+  let match = A4_HL_PATTERN.exec(text);
+  if (!match) return text;
+
+  const out: React.ReactNode[] = [];
+  let lastIdx = 0;
+  let partKey = 0;
+
+  while (match) {
+    const start = match.index;
+    if (start > lastIdx) {
+      out.push(text.slice(lastIdx, start));
+    }
+    const token = match[0];
+    let cls = 'a4-hl-planet';
+    if (match[1]) cls = 'a4-hl-percent';
+    else if (match[2]) cls = 'a4-hl-dasha';
+    else if (match[3]) cls = 'a4-hl-chakra';
+    else if (match[4]) cls = 'a4-hl-stone';
+    else if (match[5]) cls = 'a4-hl-metal';
+    else if (match[6]) cls = 'a4-hl-planet';
+    else if (match[7]) cls = 'a4-hl-benefit';
+    else if (match[8]) cls = 'a4-hl-loss';
+
+    out.push(
+      <span key={`hl-${partKey++}`} className={cls}>
+        {token}
+      </span>
+    );
+    lastIdx = start + token.length;
+    if (A4_HL_PATTERN.lastIndex === start) {
+      A4_HL_PATTERN.lastIndex++;
+    }
+    match = A4_HL_PATTERN.exec(text);
+  }
+
+  if (lastIdx < text.length) {
+    out.push(text.slice(lastIdx));
+  }
+  return out;
+}
+
+function highlightReportNode(node: React.ReactNode): React.ReactNode {
+  if (typeof node === 'string') {
+    return highlightA4TextString(node);
+  }
+  if (node == null || typeof node === 'boolean' || typeof node === 'number') {
+    return node;
+  }
+  if (Array.isArray(node)) {
+    let changed = false;
+    const mapped = node.map((child) => {
+      const next = highlightReportNode(child);
+      if (next !== child) changed = true;
+      return next;
+    });
+    return changed ? mapped : node;
+  }
+  if (React.isValidElement<{ children?: React.ReactNode; className?: string }>(node)) {
+    const elType = node.type;
+    if (elType === React.Fragment) {
+      const nextChildren = highlightReportNode(node.props.children);
+      return nextChildren !== node.props.children
+        ? React.cloneElement(node, undefined, nextChildren)
+        : node;
+    }
+    if (typeof elType !== 'string') {
+      return node;
+    }
+    if (A4_HL_SKIP_TAGS.has(elType)) {
+      return node;
+    }
+    const cls = typeof node.props.className === 'string' ? node.props.className : '';
+    if (
+      cls.includes('a4-hl-') ||
+      cls.includes('a4-page-num-pill') ||
+      cls.includes('a4-no-highlight')
+    ) {
+      return node;
+    }
+    if (node.props.children === undefined) {
+      return node;
+    }
+    const nextChildren = highlightReportNode(node.props.children);
+    return nextChildren !== node.props.children
+      ? React.cloneElement(node, undefined, nextChildren)
+      : node;
+  }
+  return node;
+}
+
+const A4HighlightedContent: React.FC<{ children: React.ReactNode }> = React.memo(({ children }) => {
+  const highlighted = useMemo(() => highlightReportNode(children), [children]);
+  return <>{highlighted}</>;
+});
+
+/**
+ * Guarantees BOTH zero footer overlap / vertical clipping AND full-height visual balance on every A4 sheet:
+ * - Scales down cleanly when a page exceeds available height (never clips or hits footer).
+ * - Automatically enlarges typography & stretches vertical alignment when a page has blank spare space
+ *   so every sheet looks rich, readable, and aligned edge-to-edge from header to footer.
+ */
+const A4AutoFitBody: React.FC<{
+  orientationKey: string;
+  children: React.ReactNode;
+}> = ({ orientationKey, children }) => {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const [fitState, setFitState] = useState<{ scale: number; stretch: boolean }>({
+    scale: 1,
+    stretch: false,
+  });
+
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    const inner = innerRef.current;
+    if (!wrap || !inner) return;
+
+    const recalc = () => {
+      const availH = wrap.clientHeight;
+      if (availH <= 40) return;
+
+      const spacerEl = inner.querySelector<HTMLElement>(':scope > .a4-dynamic-page-spacer');
+      const hadStretchClass = inner.classList.contains('a4-fill-stretch');
+
+      const prevTransform = inner.style.transform;
+      const prevWidth = inner.style.width;
+      const prevMaxWidth = inner.style.maxWidth;
+      const prevMinHeight = inner.style.minHeight;
+      const prevHeight = inner.style.height;
+      const prevSpacerFlex = spacerEl ? spacerEl.style.flex : '';
+      const prevSpacerMt = spacerEl ? spacerEl.style.marginTop : '';
+
+      if (hadStretchClass) inner.classList.remove('a4-fill-stretch');
+      inner.style.transform = 'none';
+      inner.style.width = '100%';
+      inner.style.maxWidth = 'none';
+      inner.style.minHeight = 'auto';
+      inner.style.height = 'auto';
+      if (spacerEl) {
+        spacerEl.style.flex = '0 0 auto';
+        spacerEl.style.marginTop = '6px';
+      }
+
+      const naturalH = inner.scrollHeight;
+      let nextScale = 1;
+      let nextStretch = false;
+
+      if (naturalH > availH + 1) {
+        nextScale = Math.max(0.55, Math.min(1, (availH - 4) / naturalH));
+        nextStretch = false;
+      } else if (naturalH > 80 && naturalH < availH - 22) {
+        // Progressively step up scale so sparser pages gain larger crisp typography & zero blank gaps
+        const candidates = [1.03, 1.06, 1.09, 1.12, 1.15, 1.18, 1.21, 1.24, 1.28, 1.32];
+        let bestS = 1;
+        let bestVisualH = naturalH;
+
+        for (const s of candidates) {
+          inner.style.width = `${(100 / s).toFixed(3)}%`;
+          const visualH = inner.scrollHeight * s;
+          if (visualH <= availH - 6) {
+            bestS = s;
+            bestVisualH = visualH;
+          } else {
+            break;
+          }
+        }
+        nextScale = bestS;
+        nextStretch = availH - bestVisualH > 16;
+      }
+
+      inner.style.transform = prevTransform;
+      inner.style.width = prevWidth;
+      inner.style.maxWidth = prevMaxWidth;
+      inner.style.minHeight = prevMinHeight;
+      inner.style.height = prevHeight;
+      if (spacerEl) {
+        spacerEl.style.flex = prevSpacerFlex;
+        spacerEl.style.marginTop = prevSpacerMt;
+      }
+      if (hadStretchClass) inner.classList.add('a4-fill-stretch');
+
+      setFitState((prev) =>
+        Math.abs(prev.scale - nextScale) > 0.008 || prev.stretch !== nextStretch
+          ? { scale: nextScale, stretch: nextStretch }
+          : prev
+      );
+    };
+
+    recalc();
+    const rafId = requestAnimationFrame(recalc);
+    const timerId = window.setTimeout(recalc, 190);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(timerId);
+    };
+  }, [orientationKey, children]);
+
+  const { scale: fitScale, stretch: fillStretch } = fitState;
+  const isScaled = Math.abs(fitScale - 1) > 0.008;
+
+  return (
+    <div
+      ref={wrapRef}
+      className="relative z-10 flex-1 min-h-0 my-1 overflow-hidden a4-page-body-fill a4-text-box-wrap a4-no-clip"
+      style={{ overflowWrap: 'anywhere', whiteSpace: 'normal', wordBreak: 'break-word' }}
+    >
+      <div
+        ref={innerRef}
+        className={`a4-autofit-inner flex flex-col flex-1 w-full min-w-0 ${
+          fillStretch ? 'a4-fill-stretch' : ''
+        }`}
+        style={
+          isScaled
+            ? {
+                transform: `scale(${fitScale})`,
+                transformOrigin: 'top left',
+                width: `${(100 / fitScale).toFixed(3)}%`,
+                maxWidth: 'none',
+                minHeight: `${(100 / fitScale).toFixed(3)}%`,
+                ...(fillStretch ? { height: `${(100 / fitScale).toFixed(3)}%` } : {}),
+              }
+            : {
+                minHeight: '100%',
+                ...(fillStretch ? { height: '100%' } : {}),
+              }
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
 
 export interface ReportSectionSelection {
   nameAndCareer: boolean;
@@ -238,8 +512,18 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
   });
   const { isWindowsFullPage, isMobileAppMode } = usePlatformMode();
   const [windowsSpreadView, setWindowsSpreadView] = useState<boolean>(false);
+  const [reportOrientation, setReportOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  const isLandscapeReport = reportOrientation === 'landscape';
   const [viewportWidth, setViewportWidth] = useState<number>(() =>
-    typeof window !== 'undefined' ? window.innerWidth : 1024
+    typeof window !== 'undefined'
+      ? Math.min(window.innerWidth, document.documentElement?.clientWidth || window.innerWidth)
+      : 1024
+  );
+  const previewViewportRef = useRef<HTMLDivElement | null>(null);
+  const [previewViewportWidth, setPreviewViewportWidth] = useState<number>(() =>
+    typeof window !== 'undefined'
+      ? Math.min(window.innerWidth, document.documentElement?.clientWidth || window.innerWidth)
+      : 1024
   );
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -249,12 +533,42 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
   const [pdfExportProgress, setPdfExportProgress] = useState<{ current: number; total: number } | null>(null);
   const pdfCaptureContainerRef = useRef<HTMLDivElement | null>(null);
 
+  // Sync custom 'Landscape Report' mode with document class & dynamic '@page { size: landscape; }' media rule
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.classList.toggle('tathastu-landscape-report-mode', isLandscapeReport);
+    document.body.classList.toggle('tathastu-landscape-report-mode', isLandscapeReport);
+
+    const styleId = 'tathastu-landscape-report-page-rule';
+    let styleEl = document.getElementById(styleId) as HTMLStyleElement | null;
+    if (isLandscapeReport) {
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = styleId;
+        document.head.appendChild(styleEl);
+      }
+      styleEl.textContent = '@media print { @page { size: landscape; margin: 0mm; } }';
+    } else if (styleEl) {
+      styleEl.remove();
+    }
+
+    return () => {
+      document.documentElement.classList.remove('tathastu-landscape-report-mode');
+      document.body.classList.remove('tathastu-landscape-report-mode');
+      const existing = document.getElementById(styleId);
+      if (existing) existing.remove();
+    };
+  }, [isLandscapeReport]);
+
   useEffect(() => {
     const onResize = () => {
-      const w = window.innerWidth;
+      const w = Math.min(
+        window.innerWidth,
+        document.documentElement?.clientWidth || window.innerWidth
+      );
       setViewportWidth(w);
       setIsMobileViewport(w < 768);
-      if (w < 640) setPreviewScale(Math.round(Math.max(35, Math.min(100, ((w - 16) / 794) * 100))));
+      if (w < 640) setPreviewScale(Math.round(Math.max(30, Math.min(100, ((w - 16) / 794) * 100))));
       else if (w < 1024) setPreviewScale(78);
       else setPreviewScale(100);
     };
@@ -265,6 +579,31 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       window.removeEventListener('orientationchange', onResize);
     };
   }, []);
+
+  // Precisely measure the actual visible Print Preview viewport width so mobile pages fit 100% edge-to-edge with zero right-side cut-off
+  useEffect(() => {
+    if (!isPrintPreviewOpen) return;
+    const el = previewViewportRef.current;
+    const updateWidth = () => {
+      const measured =
+        el?.clientWidth ||
+        Math.min(window.innerWidth, document.documentElement?.clientWidth || window.innerWidth);
+      if (measured > 0) {
+        setPreviewViewportWidth(measured);
+      }
+    };
+    updateWidth();
+    let ro: ResizeObserver | null = null;
+    if (el && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(updateWidth);
+      ro.observe(el);
+    }
+    window.addEventListener('resize', updateWidth);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', updateWidth);
+    };
+  }, [isPrintPreviewOpen, isLandscapeReport]);
 
   const reportQrDirectUrl = useMemo(() => {
     if (!activeProfile) return '';
@@ -782,87 +1121,32 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       (b.targetAudience === 'all' || b.targetAudience === currentAccount.role)
   );
 
-  const pdfPageCountInfo = useMemo(() => {
-    if (!activeProfile) {
-      return {
-        totalPdfPages: 0,
-        modulePageCounts: {
-          nameAndCareer: 5,
-          advanceMobileAudit: 5,
-          forecast12Months: 3,
-          auditedCalendar12Months: 2,
-          transitsAndMoon12Months: 2,
-          dailyMantras: 1,
-          yogaAndPranayama: 2,
-          partnerMilanChakras: 3,
-          parivarMilan: 1,
-          festivals12Months: 3,
-          islamicVedicRemedies: 2,
-        } as Record<keyof ReportSectionSelection, number>,
-        modulePageRanges: {
-          nameAndCareer: { startPage: 2, endPage: 6, pageCount: 5 },
-          advanceMobileAudit: { startPage: 7, endPage: 11, pageCount: 5 },
-          forecast12Months: { startPage: 12, endPage: 14, pageCount: 3 },
-          auditedCalendar12Months: { startPage: 15, endPage: 16, pageCount: 2 },
-          transitsAndMoon12Months: { startPage: 17, endPage: 18, pageCount: 2 },
-          dailyMantras: { startPage: 19, endPage: 19, pageCount: 1 },
-          yogaAndPranayama: { startPage: 20, endPage: 21, pageCount: 2 },
-          partnerMilanChakras: { startPage: 22, endPage: 24, pageCount: 3 },
-          parivarMilan: { startPage: 25, endPage: 25, pageCount: 1 },
-          festivals12Months: { startPage: 26, endPage: 28, pageCount: 3 },
-          islamicVedicRemedies: { startPage: 29, endPage: 30, pageCount: 2 },
-        } as Record<keyof ReportSectionSelection, { startPage: number; endPage: number; pageCount: number }>,
-        closingSummaryPageRange: { startPage: 31, endPage: 32, pageCount: 2 },
-      };
-    }
-    return calculateExactPdfPageCounts({
-      activeProfile,
-      healerAccount: healerAccountForBranding,
-      isHealerReport,
-      brandTitle,
-      healerDisplayName,
-      healerDisplayMobile,
-      healerDisplayEmail,
-      healerDisplayAddress,
-      healerInstagram,
-      healerFacebook,
-      healerYoutube,
-      healerWebsite,
-      startFormatted: reportDateRange.startFormatted,
-      endFormatted: reportDateRange.endFormatted,
-      twelveMonths: reportDateRange.twelveMonths,
-      qrCodeDataUrl: reportQrDataUrl,
-      qrCodeDirectUrl: reportQrDirectUrl,
-      watermarkOpacityPercent: watermarkSettings.opacityPercent,
-      watermarkEnabled: watermarkSettings.enabled,
-      selectedSections,
-      language,
-      aiReportSummary: aiReportSummary || undefined,
-    });
-  }, [
-    activeProfile,
-    healerAccountForBranding,
-    isHealerReport,
-    brandTitle,
-    healerDisplayName,
-    healerDisplayMobile,
-    healerDisplayEmail,
-    healerDisplayAddress,
-    healerInstagram,
-    healerFacebook,
-    healerYoutube,
-    healerWebsite,
-    reportDateRange,
-    reportQrDataUrl,
-    reportQrDirectUrl,
-    watermarkSettings.opacityPercent,
-    watermarkSettings.enabled,
-    selectedSections,
-    language,
-    aiReportSummary,
-  ]);
+  const modulePageCounts = useMemo<Record<keyof ReportSectionSelection, number>>(() => {
+    const parivarMembers = multiSectionReportData?.parivarReport?.memberResults || [];
+    const parivarPages =
+      1 +
+      parivarMembers.reduce((sum, res) => {
+        const needingHarmony = res.nineChakraDiagnostics.filter(
+          (ch) => ch.status !== 'Harmonious'
+        ).length;
+        const chakraPages = needingHarmony > 0 ? Math.ceil(needingHarmony / 4) : 0;
+        return sum + 1 + chakraPages;
+      }, 0);
 
-  const modulePageCounts = pdfPageCountInfo.modulePageCounts;
+    return {
+      nameAndCareer: 7,
+      advanceMobileAudit: 6,
+      forecast12Months: 3,
+      auditedCalendar12Months: 2,
+      transitsAndMoon12Months: 2,
+      dailyMantras: 1,
+      yogaAndPranayama: 2,
+      partnerMilanChakras: 5,
+      parivarMilan: parivarPages,
+      festivals12Months: 3,
+      islamicVedicRemedies: 3,
+    };
+  }, [multiSectionReportData]);
   const fmtPg = (n: number) => `${n} ${n === 1 ? 'Page' : 'Pages'}`;
 
   const MODULE_OPTIONS: {
@@ -1099,22 +1383,25 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         })
       );
 
+      const pdfOrientation = isLandscapeReport ? 'landscape' : 'portrait';
       const pdf = new jsPDF({
-        orientation: 'portrait',
+        orientation: pdfOrientation,
         unit: 'mm',
         format: 'a4',
         compress: true,
       });
 
-      const A4_W_MM = 210;
-      const A4_H_MM = 297;
+      const A4_W_MM = isLandscapeReport ? 297 : 210;
+      const A4_H_MM = isLandscapeReport ? 210 : 297;
+      const targetSheetW = isLandscapeReport ? 1123 : 794;
+      const targetSheetH = isLandscapeReport ? 794 : 1123;
 
       for (let idx = 0; idx < pageNodes.length; idx++) {
         const sheetEl = pageNodes[idx];
         setPdfExportProgress({ current: idx + 1, total: pageNodes.length });
 
-        const sheetW = Math.max(sheetEl.offsetWidth || 794, 794);
-        const sheetH = Math.max(sheetEl.scrollHeight || 1123, 1123);
+        const sheetW = targetSheetW;
+        const sheetH = targetSheetH;
 
         const dataUrl = await toJpeg(sheetEl, {
           quality: 0.88,
@@ -1127,7 +1414,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         });
 
         if (idx > 0) {
-          pdf.addPage('a4', 'portrait');
+          pdf.addPage('a4', pdfOrientation);
         }
 
         // Fill A4 page canvas with cosmic dark base so edges never show white strips
@@ -1658,16 +1945,16 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
   ) => {
     if (!activeProfile || !multiSectionReportData) return null;
     return (
-      <div className="a4-page-header relative z-10 pb-1.5 mb-1.5 border-b-2 border-amber-500/45">
-        <div className="flex items-center justify-between gap-2 text-[8.5px] font-serif text-amber-300/90 px-4 pb-1 mb-1.5 border-b border-amber-500/20 leading-tight">
-          <span className="shrink-0">॥ श्री गणेशाय नमः • ॐ ऐं ह्रीं क्लीं चामुण्डायै विच्चे ॥</span>
-          <span className="font-mono uppercase tracking-wider text-amber-400 font-bold text-center flex-1">
+      <div className="a4-page-header a4-no-clip relative z-10 pb-1.5 mb-1.5 border-b-2 border-amber-500/45">
+        <div className="a4-flex-safe text-[8.5px] font-serif text-amber-300/90 px-4 pb-1 mb-1.5 border-b border-amber-500/20 leading-tight">
+          <span className="a4-no-clip">॥ श्री गणेशाय नमः • ॐ ऐं ह्रीं क्लीं चामुण्डायै विच्चे ॥</span>
+          <span className="font-mono uppercase tracking-wider text-amber-400 font-bold text-center flex-1 a4-no-clip">
             {TATHASTU_APP_NAME} • {TATHASTU_BRAND_NAME} ({TATHASTU_TAGLINE})
           </span>
-          <span className="shrink-0">॥ तत् त्वम् असि • तथास्तु ॥</span>
+          <span className="a4-no-clip">॥ तत् त्वम् असि • तथास्तु ॥</span>
         </div>
 
-        <div className="flex items-center justify-between gap-2.5">
+        <div className="flex items-center justify-between gap-2.5 min-w-0">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <img
               src={brandLogo}
@@ -1675,21 +1962,21 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               referrerPolicy="no-referrer"
               className="w-11 h-11 rounded-xl object-cover border-2 border-amber-400 shadow-lg shrink-0"
             />
-            <div className="min-w-0 flex-1">
-              <div className="text-[8.5px] font-bold uppercase tracking-wider text-amber-400 leading-tight">
+            <div className="min-w-0 flex-1 a4-no-clip">
+              <div className="text-[8.5px] font-bold uppercase tracking-wider text-amber-400 leading-tight a4-no-clip">
                 {TATHASTU_BRAND_NAME} — {TATHASTU_TAGLINE}
               </div>
-              <h2 className="font-serif text-base font-black text-amber-100 tracking-wide leading-tight">
+              <h2 className="font-serif text-base font-black text-amber-100 tracking-wide leading-tight a4-no-clip">
                 {brandTitle}
               </h2>
-              <div className="text-[9px] text-emerald-300 font-bold leading-tight">
+              <div className="text-[9px] text-emerald-300 font-bold leading-tight a4-numeric-wrap">
                 Healer Name: {healerDisplayName} • 📞 {healerDisplayMobile} • ✉️ {healerDisplayEmail}
               </div>
-              <p className="text-[9.5px] text-sky-300 font-semibold leading-tight">{pageSubtitle}</p>
+              <p className="text-[9.5px] text-sky-300 font-semibold leading-tight a4-no-clip">{pageSubtitle}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-950/90 border border-amber-500/40 rounded-xl px-2 py-1.5 shrink-0">
+          <div className="flex items-center gap-2 bg-slate-950/90 border border-amber-500/40 rounded-xl px-2 py-1.5 min-w-0 max-w-[49%] shrink a4-no-clip">
             <div className="relative shrink-0">
               <img
                 src={sectionHeadImage}
@@ -1698,15 +1985,15 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 className="w-14 h-11 rounded-lg object-cover border border-amber-400/60 shadow-md"
               />
             </div>
-            <div className="text-right">
-              <div className="text-[11px] font-black text-amber-100 leading-tight">{activeProfile.name}</div>
-              <div className="text-[9px] font-mono text-amber-300 leading-tight">
+            <div className="text-right min-w-0 flex-1 a4-no-clip">
+              <div className="text-[11px] font-black text-amber-100 leading-tight a4-no-clip">{activeProfile.name}</div>
+              <div className="text-[9px] font-mono text-amber-300 leading-tight a4-numeric-wrap">
                 DOB: {activeProfile.dob} • TOB: {formatTime12HourAmPm(activeProfile.tob || '09:30')}
               </div>
-              <div className="text-[8.5px] font-mono text-emerald-300 leading-tight">
+              <div className="text-[8.5px] font-mono text-emerald-300 leading-tight a4-numeric-wrap">
                 Mulank {multiSectionReportData.m} ({PLANETARY_PROFILES[multiSectionReportData.m]?.planet}) • Bhagyank {multiSectionReportData.b} ({PLANETARY_PROFILES[multiSectionReportData.b]?.planet})
               </div>
-              <div className="text-[8px] font-mono text-amber-200 font-bold leading-tight">
+              <div className="text-[8px] font-mono text-amber-200 font-bold leading-tight a4-no-clip">
                 Healer: {healerDisplayName}
               </div>
             </div>
@@ -1726,26 +2013,26 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         </div>
 
         {isCoverPage && (
-          <div className="grid grid-cols-4 gap-2 mt-2 pt-2 border-t border-amber-500/25 text-[9.5px] a4-print-grid-4">
-            <div className="bg-slate-950/85 border border-amber-500/30 rounded-lg px-2 py-1">
+          <div className="grid grid-cols-4 gap-2 mt-2 pt-2 border-t border-amber-500/25 text-[9.5px] a4-print-grid-4 a4-grid-safe">
+            <div className="bg-slate-950/85 border border-amber-500/30 rounded-lg px-2 py-1 a4-no-clip">
               <span className="text-slate-400 block text-[8.5px] uppercase">Birth Place</span>
-              <strong className="text-amber-100 truncate block">{activeProfile.pob || 'New Delhi, India'}</strong>
+              <strong className="text-amber-100 block leading-tight a4-no-clip">{activeProfile.pob || 'New Delhi, India'}</strong>
             </div>
-            <div className="bg-slate-950/85 border border-amber-500/30 rounded-lg px-2 py-1">
+            <div className="bg-slate-950/85 border border-amber-500/30 rounded-lg px-2 py-1 a4-no-clip">
               <span className="text-slate-400 block text-[8.5px] uppercase">Vedic Moon & Sun Sign</span>
-              <strong className="text-emerald-300 truncate block">
+              <strong className="text-emerald-300 block leading-tight a4-no-clip">
                 {multiSectionReportData.astro.rashi} • {multiSectionReportData.astro.sunSign.split(' ')[0]}
               </strong>
             </div>
-            <div className="bg-slate-950/85 border border-amber-500/30 rounded-lg px-2 py-1">
+            <div className="bg-slate-950/85 border border-amber-500/30 rounded-lg px-2 py-1 a4-no-clip">
               <span className="text-slate-400 block text-[8.5px] uppercase">Spiritual Healer Name</span>
-              <strong className="text-amber-200 truncate block">
+              <strong className="text-amber-200 block leading-tight a4-no-clip">
                 {healerDisplayName} ({brandTitle})
               </strong>
             </div>
-            <div className="bg-slate-950/85 border border-amber-500/30 rounded-lg px-2 py-1">
+            <div className="bg-slate-950/85 border border-amber-500/30 rounded-lg px-2 py-1 a4-no-clip">
               <span className="text-slate-400 block text-[8.5px] uppercase">12-Month Validity</span>
-              <strong className="text-sky-300 font-mono truncate block">
+              <strong className="text-sky-300 font-mono block leading-tight a4-numeric-wrap">
                 {reportDateRange.startFormatted} – {reportDateRange.endFormatted}
               </strong>
             </div>
@@ -1824,14 +2111,14 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
 
         {/* Center Column: Strictly Center-Aligned Single Page Number */}
         <div
-          className={`flex items-center justify-center text-center self-stretch ${
+          className={`flex items-center justify-center text-center self-stretch min-w-0 ${
             isResponsiveScreen
               ? 'flex-row justify-between md:flex-col md:justify-center pb-2 border-b border-amber-500/30 md:pb-0 md:border-b-0 md:px-2 md:border-r md:border-amber-500/40'
               : 'flex-col px-1.5 border-r border-amber-500/40'
           }`}
         >
           <div
-            className={`inline-flex items-center justify-center px-2.5 py-[1px] rounded-md bg-amber-500/20 border border-amber-400/65 text-amber-100 font-mono font-black shadow-sm whitespace-nowrap ${
+            className={`a4-page-num-pill inline-flex items-center justify-center px-2.5 py-[1px] rounded-md bg-amber-500/20 border border-amber-400/65 text-amber-100 font-mono font-black shadow-sm ${
               isResponsiveScreen ? 'text-xs md:text-[9px]' : 'text-[8.5px]'
             }`}
           >
@@ -1939,7 +2226,24 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       content: React.ReactNode;
     }[] = [];
 
-    // PAGE 1: DYNAMIC 'INDEX OF MODULES' & MASTER SPIRITUAL DOSSIER TABLE OF CONTENTS
+    // Live exact page range tracker for every module so Page 1 Index matches actual rendered pages 100%
+    const modulePageRangesMap: Partial<
+      Record<keyof ReportSectionSelection, { startPage: number; endPage: number; pageCount: number }>
+    > = {};
+    const trackModuleStart = () => pages.length;
+    const trackModuleEnd = (key: keyof ReportSectionSelection, startIdx: number) => {
+      const endIdx = pages.length;
+      if (endIdx > startIdx) {
+        // +2 offset because Page 1 (Index of Modules) is prepended at the end and pages are 1-indexed
+        modulePageRangesMap[key] = {
+          startPage: startIdx + 2,
+          endPage: endIdx + 1,
+          pageCount: endIdx - startIdx,
+        };
+      }
+    };
+
+    // Active Module Definitions (used to construct Page 1 Index of Modules with EXACT live page numbers at the end)
     const activeModuleDefinitions: {
       key: keyof ReportSectionSelection;
       title: string;
@@ -1950,21 +2254,21 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         key: 'nameAndCareer',
         title: 'Name, Career, 5-Pillar Ratna & Universal Validator',
         chaptersAndScope:
-          'Birth Chart, 3×3 Lo-Shu Matrix, 8 Planes, Name Spellings, All Career Sectors, 5-Pillar Ratna & Vehicle/Flat/Business Validator',
+          'Birth Chart, 3×3 Lo-Shu Matrix, 8 Planes, Name Spellings, All Career Sectors, 5-Pillar Ratna, No-Name-Change & Growth Ratna & Validator',
         personalizedHighlight: `Mulank ${m} (${mPlanet.planet}) | Bhagyank ${b} (${bPlanet.planet}) • Top Name: ${topPerfectChoice?.suggestedName || activeProfile.name} • Primary Gem: ${gemRecommend.lifeStone.primaryGem}`,
       },
       {
         key: 'advanceMobileAudit',
         title: 'Advance Mobile Numerology, Dasha & Lo-Shu Matrix',
         chaptersAndScope:
-          '10-Digit Mobile Pair Scanner, Missing/Repeated Digits, Planetary Dasha Timeline, Remedies & Ideal Number Synthesis',
+          '10-Digit Mobile Pair Scanner, Missing/Repeated Digits, 120-Yr Vimshottari & 45-Yr Numerology Maha Dasha, Remedies & Virtual SIMs',
         personalizedHighlight: `Mobile: ${activeProfile.mobile || '9876543210'} → Compound ${mobileAnalysis.compoundNumber} / Root #${mobileAnalysis.singleDigit} (${mobileAnalysis.verdict})`,
       },
       {
         key: 'forecast12Months',
         title: `12-Month Vedic & Numerology Monthly Forecast (${reportDateRange.startFormatted} – ${reportDateRange.endFormatted})`,
         chaptersAndScope:
-          'Month-by-Month Personal Month Vibrations, Career, Finance, Health, Relationships & Monthly Remedies across 12 Months',
+          'Month-by-Month Personal Month Vibrations, Career, Finance, Health, Challenges, Harmony % & Monthly Remedies across 12 Months',
         personalizedHighlight: `12-Month Cycle for Mulank ${m} & Bhagyank ${b} • Peak Growth & Precaution Windows Mapped`,
       },
       {
@@ -1992,7 +2296,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         key: 'yogaAndPranayama',
         title: 'Personalized Yoga Sadhana, Asanas & Pranayama Protocol',
         chaptersAndScope:
-          'Illustrated Step-by-Step Yogasanas, Therapeutic Pranayama Breathing, Mudras & Daily Holistic Sadhana Routine',
+          'Illustrated Step-by-Step 6-Asana Gallery, Therapeutic Pranayama Breathing, Mudras & Daily Holistic Sadhana Routine',
         personalizedHighlight: `Target Focus: ${
           activeProfile.healthConcerns && activeProfile.healthConcerns.length > 0
             ? activeProfile.healthConcerns.join(', ')
@@ -2010,7 +2314,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         key: 'parivarMilan',
         title: 'Parivar Milan (Family Harmony Graph, Vedic & 9-Chakra Diagnostics)',
         chaptersAndScope:
-          'Final Conclusive Family Harmony Graph, Vedic Astrology Match, Gemstone & Rudraksha Remedies + Chakras Needing Harmony',
+          'Final Conclusive Family Harmony Graph, Per-Member Vedic Astrology Match, Gemstone & Rudraksha Remedies + Chakras Needing Harmony',
         personalizedHighlight:
           parivarReport && parivarReport.memberResults.length > 0
             ? `Family Members Analyzed: ${parivarReport.memberResults.length} • Collective Harmony: ${parivarReport.averageFamilyHarmony}% (${parivarReport.familyCollectiveVerdict})`
@@ -2036,310 +2340,115 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       selectedCount === 0 ? mDef.key === 'nameAndCareer' : Boolean(selectedSections[mDef.key])
     );
 
-    const modRanges = pdfPageCountInfo.modulePageRanges;
-    const totalCalculatedPages =
-      pdfPageCountInfo.totalPdfPages > 0 ? pdfPageCountInfo.totalPdfPages : 28;
-
-    pages.push({
-      title: `Page 1: Index of Modules & Master Spiritual Dossier Guide (${selectedModuleEntries.length} Active Modules • ${totalCalculatedPages} Pages)`,
-      headImg: spiritualReportBanner,
-      headLabel: 'Index of Modules',
-      isCover: true,
-      content: (
-        <div className="space-y-2 text-xs a4-section-no-break">
-          <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-950/80 via-slate-950 to-indigo-950/80 border-2 border-amber-400/60 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <span className="text-[8px] font-mono uppercase tracking-widest text-amber-300 font-bold block">
-                MASTER DOSSIER TABLE OF CONTENTS • ACTIVE MODULE DIRECTORY
-              </span>
-              <h3 className="font-serif text-sm font-black text-amber-100">
-                INDEX OF MODULES INCLUDED IN THIS PERSONALIZED REPORT ({selectedModuleEntries.length} ACTIVE MODULES)
-              </h3>
-              <p className="text-[8.5px] text-slate-200 mt-0.5">
-                Prepared exclusively for <strong className="text-amber-200">{activeProfile.name}</strong> (DOB: {activeProfile.dob} • Place: {activeProfile.pob || 'New Delhi'}) — Locate every selected diagnostic module, prediction, and remedy by page number below.
-              </p>
-            </div>
-            <div className="px-2.5 py-1.5 rounded-xl bg-slate-950/90 border border-emerald-400/50 text-right shrink-0">
-              <div className="text-[7.5px] font-mono uppercase text-emerald-300 font-bold">
-                Total Dossier Length
-              </div>
-              <div className="font-mono text-xs font-black text-amber-200">
-                {totalCalculatedPages} A4 Pages
-              </div>
-              <div className="text-[7px] font-mono text-sky-300">
-                {selectedModuleEntries.length} Selected Module(s)
-              </div>
-            </div>
-          </div>
-
-          {/* Active Modules Table of Contents */}
-          <div className="overflow-hidden rounded-xl border border-amber-500/45 bg-slate-950/95">
-            <div className="grid grid-cols-12 bg-amber-950/70 border-b border-amber-500/40 px-2.5 py-1.5 text-[7.8px] font-bold text-amber-200 uppercase">
-              <div className="col-span-3 pr-1.5">Module # &amp; Active Module Name</div>
-              <div className="col-span-4 px-1.5 border-l border-amber-500/25">
-                Chapters, Diagnostics &amp; Remedies Included
-              </div>
-              <div className="col-span-3 px-1.5 border-l border-amber-500/25">
-                Key Personalized Result ({activeProfile.name})
-              </div>
-              <div className="col-span-2 pl-1.5 border-l border-amber-500/25 text-right">
-                Page No.
-              </div>
-            </div>
-            <div className="divide-y divide-amber-500/20">
-              <div className="grid grid-cols-12 px-2.5 py-1 text-[7.6px] items-center bg-slate-900/70">
-                <div className="col-span-3 pr-1.5 font-bold text-amber-200">
-                  00. Index of Modules &amp; Executive Charter
-                </div>
-                <div className="col-span-4 px-1.5 border-l border-amber-500/20 text-slate-300">
-                  Master Table of Contents, Active Module Directory &amp; Core Natal/Remedy Quick Reference
-                </div>
-                <div className="col-span-3 px-1.5 border-l border-amber-500/20 text-emerald-300 font-mono">
-                  Mulank {m} ({mPlanet.planet}) | Bhagyank {b} ({bPlanet.planet}) • {astro.rashi}
-                </div>
-                <div className="col-span-2 pl-1.5 border-l border-amber-500/20 text-right font-mono font-bold text-amber-300">
-                  Page 1 (1p)
-                </div>
-              </div>
-              {selectedModuleEntries.map((entry, idx) => {
-                const rng = modRanges?.[entry.key];
-                const pgText =
-                  rng && rng.startPage > 0
-                    ? rng.startPage === rng.endPage
-                      ? `Page ${rng.startPage} (1p)`
-                      : `Pages ${rng.startPage}–${rng.endPage} (${rng.pageCount}p)`
-                    : `${modulePageCounts[entry.key] || 1}p`;
-                return (
-                  <div
-                    key={entry.key}
-                    className="grid grid-cols-12 px-2.5 py-1 text-[7.6px] items-center leading-tight"
-                  >
-                    <div className="col-span-3 pr-1.5 font-bold text-amber-100">
-                      {String(idx + 1).padStart(2, '0')}. {entry.title}
-                    </div>
-                    <div className="col-span-4 px-1.5 border-l border-amber-500/20 text-slate-300">
-                      {entry.chaptersAndScope}
-                    </div>
-                    <div className="col-span-3 px-1.5 border-l border-amber-500/20 text-emerald-200">
-                      {entry.personalizedHighlight}
-                    </div>
-                    <div className="col-span-2 pl-1.5 border-l border-amber-500/20 text-right font-mono font-bold text-amber-300">
-                      {pgText}
-                    </div>
-                  </div>
-                );
-              })}
-              {(() => {
-                const closingRng = pdfPageCountInfo.closingSummaryPageRange;
-                const closingPgText =
-                  closingRng && closingRng.startPage > 0
-                    ? closingRng.startPage === closingRng.endPage
-                      ? `Page ${closingRng.startPage} (1p)`
-                      : `Pages ${closingRng.startPage}–${closingRng.endPage} (${closingRng.pageCount}p)`
-                    : 'Final 2 Pages';
-                const activeSummaryPreview =
-                  aiReportSummary ||
-                  buildClassicalFallbackSummary({
-                    profile: activeProfile,
-                    healerName: healerDisplayName,
-                    brandTitle,
-                    language,
-                  });
-                return (
-                  <div className="grid grid-cols-12 px-2.5 py-1 text-[7.6px] items-center leading-tight bg-amber-950/35">
-                    <div className="col-span-3 pr-1.5 font-bold text-amber-200">
-                      {String(selectedModuleEntries.length + 1).padStart(2, '0')}. Complete Report Summary, 10-Year Future (With vs. Without Remedies) &amp; Tathastu Blessings
-                    </div>
-                    <div className="col-span-4 px-1.5 border-l border-amber-500/20 text-slate-200">
-                      1–2 Page Simple Paragraph Summary (Vedic + Parashar Astrology &amp; Numerology), Next 10 Years Future Without vs. With Remedies, Thank You &amp; Spiritual Blessings
-                    </div>
-                    <div className="col-span-3 px-1.5 border-l border-amber-500/20 text-emerald-300">
-                      Parashar Dasha: {activeSummaryPreview.parasharMahadashaLabel} • {activeSummaryPreview.startYear}–{activeSummaryPreview.endYear}
-                    </div>
-                    <div className="col-span-2 pl-1.5 border-l border-amber-500/20 text-right font-mono font-bold text-amber-300">
-                      {closingPgText}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-
-          {/* Executive Personalized Snapshot & Core Remedies Charter */}
-          <div className="p-2.5 rounded-xl bg-slate-950/95 border border-amber-500/40 space-y-1.5">
-            <div className="flex items-center justify-between border-b border-amber-500/25 pb-1">
-              <span className="font-serif text-[9px] font-bold text-amber-200 uppercase">
-                EXECUTIVE PERSONALIZED SNAPSHOT &amp; CORE REMEDIES AT A GLANCE ({activeProfile.name.toUpperCase()})
-              </span>
-              <span className="text-[7.5px] font-mono text-emerald-300">
-                12-Month Validity: {reportDateRange.startFormatted} – {reportDateRange.endFormatted}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 text-[7.8px]">
-              <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5">
-                <div className="font-bold text-amber-300 uppercase">
-                  1. Core Numerology &amp; Vedic Natal Pillars
-                </div>
-                <div className="text-slate-200">
-                  <strong>Mulank (Driver):</strong> #{m} ({mPlanet.planet}) • <strong>Bhagyank (Conductor):</strong> #{b} ({bPlanet.planet}) • <strong>Rashi:</strong> {astro.rashi} ({astro.nakshatra}, Pada {astro.pada})
-                </div>
-                <div className="text-emerald-300 font-mono">
-                  Friendly Nos: {mPlanet.friendlyNumbers.join(', ')} • Lucky Days: {mPlanet.luckyDays.join(', ')} • Color: {mPlanet.luckyColor}
-                </div>
-              </div>
-              <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5">
-                <div className="font-bold text-amber-300 uppercase">
-                  2. Name &amp; Mobile Frequency Alignment
-                </div>
-                <div className="text-slate-200">
-                  <strong>Current Name:</strong> {activeProfile.name} (#{nameAnalysis.totalChaldeanCompound} → #{nameAnalysis.chaldeanSingle}) • <strong>Best Name:</strong> {topPerfectChoice?.suggestedName || activeProfile.name} (#{topPerfectChoice?.compoundNumber ?? nameAnalysis.totalChaldeanCompound} → #{topPerfectChoice?.singleDigit ?? nameAnalysis.chaldeanSingle})
-                </div>
-                <div className="text-sky-300 font-mono">
-                  Mobile: {activeProfile.mobile || '9876543210'} → #{mobileAnalysis.singleDigit} ({mobileAnalysis.verdict}) • Top Career: {career.perfectBusinesses[0]?.field || career.favorableProfessions[0] || 'Leadership'}
-                </div>
-              </div>
-              <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5">
-                <div className="font-bold text-amber-300 uppercase">
-                  3. Primary 5-Pillar Ratna &amp; Rudraksha Shield
-                </div>
-                <div className="text-slate-200">
-                  <strong>Primary Maharatna:</strong> {gemRecommend.lifeStone.primaryGem} ({gemRecommend.lifeStone.sanskritGem}) in {gemRecommend.lifeStone.metal} on {gemRecommend.lifeStone.finger} ({gemRecommend.lifeStone.wearingDay})
-                </div>
-                <div className="text-emerald-300">
-                  <strong>Destiny Stone:</strong> {gemRecommend.destinyStone.primaryGem} • <strong>Growth Stone:</strong> {nameAndGrowthRatna.personalGrowthStone.ratna.primaryGem}
-                </div>
-              </div>
-              <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5">
-                <div className="font-bold text-amber-300 uppercase">
-                  4. Daily Beej Mantra, Vastu &amp; Healer Attestation
-                </div>
-                <div className="text-slate-200">
-                  <strong>Daily Mantra:</strong> &ldquo;{bPlanet.beejMantra}&rdquo; (108x Morning) • <strong>Vastu Disha:</strong> East / North-East (Ishan Kon)
-                </div>
-                <div className="text-amber-200">
-                  <strong>Authorized Healer:</strong> {healerDisplayName} ({brandTitle}) • 📞 {healerDisplayMobile}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ),
-    });
-
-    // PAGES 2–6: Detailed Name Numerology, Career Harmony, Gemstone Recommendation & Universal Validator
+    // MODULE 1: Detailed Name Numerology, Career Harmony, Gemstone Recommendation & Universal Validator
     if (selectedSections.nameAndCareer || selectedCount === 0) {
-      // PAGE 2: Executive Birth Chart, Panchang, Lo-Shu 8 Planes & Name Summary
+      const modStart_nameAndCareer = trackModuleStart();
+      // PAGE 2: Executive Birth Chart, Core Planetary Pillars, Lo-Shu 8 Planes & Name Summary (No Live Panchang in Print)
       pages.push({
-        title: 'Page 1: Executive Vedic Birth Chart, Daily Panchang, 8 Lo-Shu Planes & Name Vibration Summary',
+        title: 'Page 1: Executive Vedic Birth Chart, Core Planetary Pillars, 8 Lo-Shu Planes & Name Vibration Summary',
         headImg: vedicNameCareerYantra,
         headLabel: 'Sri Yantra & Birth Chart',
         isCover: false,
         content: (
-          <div className="space-y-2 text-xs">
-            <div className="relative rounded-xl overflow-hidden border border-amber-500/40 min-h-[76px]">
+          <div className="space-y-3 text-xs">
+            <div className="relative rounded-xl overflow-hidden border border-amber-500/45 min-h-[86px]">
               <img
                 src={vedicNameCareerYantra}
                 alt="Sacred Sri Yantra & Vedic Astrological Natal Chart"
                 referrerPolicy="no-referrer"
                 className="absolute inset-0 w-full h-full object-cover opacity-55"
               />
-              <div className="relative z-10 bg-gradient-to-r from-slate-950/95 via-slate-950/80 to-slate-950/40 p-2.5 flex flex-col justify-center">
-                <span className="text-[9px] font-mono uppercase tracking-widest text-amber-400 font-bold break-words">
+              <div className="relative z-10 bg-gradient-to-r from-slate-950/95 via-slate-950/82 to-slate-950/45 p-3 flex flex-col justify-center gap-0.5">
+                <span className="text-[9.5px] font-mono uppercase tracking-widest text-amber-400 font-bold break-words">
                   01 • EXECUTIVE VEDIC, CHALDEAN &amp; PRANIC BLUEPRINT ({activeProfile.gender === 'female' ? 'FEMALE / BRIDE' : 'MALE / GROOM'})
                 </span>
-                <h3 className="font-serif text-sm font-black text-amber-100 break-words leading-snug">
-                  Complete Birth Chart, Daily Panchang &amp; 8 Lo-Shu Planes for {activeProfile.name}
+                <h3 className="font-serif text-[15px] font-black text-amber-100 break-words leading-snug">
+                  Complete Birth Chart, Planetary Pillars &amp; 8 Lo-Shu Planes for {activeProfile.name}
                 </h3>
-                <p className="text-[9.2px] text-emerald-300 break-words leading-snug">
+                <p className="text-[10px] text-emerald-300 break-words leading-snug">
                   DOB: {activeProfile.dob} • TOB: {formatTime12HourAmPm(activeProfile.tob || '09:30')} • POB: {activeProfile.pob} ({(activeProfile.lat ?? 28.61).toFixed(2)}°N, {(activeProfile.lng ?? 77.21).toFixed(2)}°E) • Rashi: {astro.rashi} ({astro.rashiLord}) • Nakshatra: {astro.nakshatra} (Pada {astro.pada}, Lord: {astro.nakshatraLord})
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 a4-print-grid-3">
-              <div className="p-2 rounded-xl bg-slate-950/90 border border-amber-500/35 text-[9px] space-y-0.5">
-                <span className="text-[8.5px] uppercase tracking-wider text-amber-400 font-bold block">
+            <div className="grid grid-cols-3 gap-2.5 a4-print-grid-3 a4-grid-safe">
+              <div className="p-2.5 rounded-xl bg-slate-950/92 border border-amber-500/40 text-[9.6px] space-y-1 a4-no-clip">
+                <span className="text-[9px] uppercase tracking-wider text-amber-400 font-bold block">
                   Psychic Number (Mulank {m})
                 </span>
-                <strong className="text-amber-100 text-[10.5px] block">
+                <strong className="text-amber-100 text-[11px] block leading-snug">
                   Ruler: {mPlanet.planet} ({mPlanet.sanskritName}) • Deity: {mPlanet.deity}
                 </strong>
-                <span className="text-slate-300 block">
+                <span className="text-slate-200 block a4-list-wrap leading-snug">
                   Element: {mPlanet.element} • Color: {mPlanet.luckyColor} • Metal: {mPlanet.metal} • Stone: {mPlanet.gemstone}
                 </span>
-                <span className="text-emerald-300 block">
+                <span className="text-emerald-300 block a4-numeric-wrap leading-snug">
                   Friendly: {mPlanet.friendlyNumbers.join(', ')} | Neutral: {mPlanet.neutralNumbers.join(', ')} | Enemy: {mPlanet.enemyNumbers.join(', ')}
                 </span>
-                <span className="text-amber-200 block">Traits: {mPlanet.traits.join(', ')}</span>
+                <span className="text-amber-200 block a4-list-wrap leading-snug">
+                  Key Traits: {mPlanet.traits.join(', ')}
+                </span>
               </div>
 
-              <div className="p-2 rounded-xl bg-slate-950/90 border border-emerald-500/35 text-[9px] space-y-0.5">
-                <span className="text-[8.5px] uppercase tracking-wider text-emerald-400 font-bold block">
+              <div className="p-2.5 rounded-xl bg-slate-950/92 border border-emerald-500/40 text-[9.6px] space-y-1 a4-no-clip">
+                <span className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold block">
                   Destiny Number (Bhagyank {b})
                 </span>
-                <strong className="text-emerald-200 text-[10.5px] block">
+                <strong className="text-emerald-200 text-[11px] block leading-snug">
                   Ruler: {bPlanet.planet} ({bPlanet.sanskritName}) • Deity: {bPlanet.deity}
                 </strong>
-                <span className="text-slate-300 block">
+                <span className="text-slate-200 block a4-list-wrap leading-snug">
                   Element: {bPlanet.element} • Color: {bPlanet.luckyColor} • Metal: {bPlanet.metal} • Stone: {bPlanet.gemstone}
                 </span>
-                <span className="text-emerald-300 block">
+                <span className="text-emerald-300 block a4-numeric-wrap leading-snug">
                   Friendly: {bPlanet.friendlyNumbers.join(', ')} | Neutral: {bPlanet.neutralNumbers.join(', ')} | Enemy: {bPlanet.enemyNumbers.join(', ')}
                 </span>
-                <span className="text-amber-200 block">Lucky Days: {bPlanet.luckyDays.join(', ')}</span>
+                <span className="text-amber-200 block a4-list-wrap leading-snug">
+                  Lucky Days: {bPlanet.luckyDays.join(', ')}
+                </span>
               </div>
 
-              <div className="p-2 rounded-xl bg-slate-950/90 border border-sky-500/35 text-[9px] space-y-0.5">
-                <span className="text-[8.5px] uppercase tracking-wider text-sky-400 font-bold block">
-                  Name Chaldean & Pythagorean + Triad
+              <div className="p-2.5 rounded-xl bg-slate-950/92 border border-sky-500/40 text-[9.6px] space-y-1 a4-no-clip">
+                <span className="text-[9px] uppercase tracking-wider text-sky-400 font-bold block">
+                  Name Chaldean &amp; Pythagorean + Triad
                 </span>
-                <strong className="text-sky-200 text-[10.5px] font-mono block">
+                <strong className="text-sky-200 text-[11px] font-mono block a4-numeric-wrap leading-snug">
                   Chaldean: {nameAnalysis.totalChaldeanCompound}➔{nameAnalysis.chaldeanSingle} ({nameAnalysis.harmonyScore}%)
                 </strong>
-                <span className="text-slate-300 block">
+                <span className="text-slate-200 block a4-numeric-wrap leading-snug">
                   Pythagorean: {nameAnalysis.totalPythagoreanCompound}➔{nameAnalysis.pythagoreanSingle} • Verdict: {nameAnalysis.verdict}
                 </span>
-                <span className="text-emerald-300 block">
+                <span className="text-emerald-300 block a4-numeric-wrap leading-snug">
                   Triad (Name+DOB+Mob): {triadCompound}➔{triadSingle} ({triadPlanet.planet} • {combinedTriadScore}%)
                 </span>
-                <span className="text-amber-200 block">
+                <span className="text-amber-200 block a4-no-clip leading-snug">
                   Chakra: {career.primaryChakra} • Aura: {career.auraColor}
                 </span>
               </div>
             </div>
 
-            {/* Today's Live Panchang & Hora */}
-            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 text-[9px] space-y-0.5">
-              <div className="flex items-center justify-between font-bold text-amber-200">
-                <span>Today's Live Vedic Panchang, Hora & Muhurat Snapshot ({panchang.dateStr})</span>
-                <span className="font-mono text-emerald-300">{panchang.tithi} • {panchang.vara}</span>
-              </div>
-              <div className="text-slate-200">
-                <strong>Current Hora:</strong> {panchang.currentHoraPlanet} ({panchang.horaStatus}) — {panchang.horaAdvice} | <strong>Auspicious Windows:</strong> {panchang.auspiciousTimings.join(' • ')} | <strong className="text-rose-300">Avoid Rahu Kaal:</strong> {panchang.rahuKaalWindow.start} – {panchang.rahuKaalWindow.end}
-              </div>
-              <div className="text-amber-200">
-                <strong>Today's Lucky Numbers:</strong> {panchang.todayLuckyNumbers.join(', ')} • <strong>Color:</strong> {panchang.todayLuckyColor} • <strong>Beej Mantra:</strong> {panchang.todayBeejMantra} • <strong>Affirmation:</strong> "{panchang.affirmation}"
-              </div>
-            </div>
-
             {/* All 8 Lo-Shu Planes & Raj Yoga Completion Matrix */}
-            <div className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/35">
-              <div className="flex items-center justify-between mb-1">
-                <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
-                  Complete 8 Lo-Shu Planes & Raj Yoga Completion Matrix (Present: {loShu.presentNumbers.join(', ')} | Missing: {loShu.missingNumbers.map((mItem) => mItem.number).join(', ') || 'None'})
+            <div className="p-2.5 rounded-xl bg-slate-950/95 border border-amber-500/40 a4-no-clip space-y-2">
+              <div className="a4-flex-safe border-b border-amber-500/25 pb-1">
+                <h4 className="font-serif text-[11.5px] font-bold text-amber-200 uppercase a4-numeric-wrap">
+                  Complete 8 Lo-Shu Planes &amp; Raj Yoga Completion Matrix (Present: {loShu.presentNumbers.join(', ')} | Missing: {loShu.missingNumbers.map((mItem) => mItem.number).join(', ') || 'None'})
                 </h4>
-                <span className="text-[8.5px] font-mono text-emerald-300">Kua Number: {loShu.kuaNumber}</span>
+                <span className="text-[9.5px] font-mono text-emerald-300 font-bold a4-badge-wrap">
+                  Kua Number: {loShu.kuaNumber}
+                </span>
               </div>
-              <div className="grid grid-cols-4 gap-1.5 a4-print-grid-2">
+              <div className="grid grid-cols-2 gap-2 a4-print-grid-2 a4-grid-safe">
                 {loShu.planes.map((pl, idx) => (
-                  <div key={idx} className="p-1.5 rounded bg-slate-900 border border-amber-500/25 text-[8px] min-w-0 break-words">
-                    <div className="flex items-center justify-between gap-1 font-bold text-amber-200">
-                      <span className="break-words">{pl.name} ({pl.numbers.join('-')})</span>
-                      <span className={pl.completionPercentage === 100 ? 'text-emerald-300 font-mono shrink-0' : 'text-amber-400 font-mono shrink-0'}>
+                  <div key={idx} className="p-2 rounded-lg bg-slate-900/95 border border-amber-500/30 text-[9.2px] space-y-0.5 a4-no-clip">
+                    <div className="a4-flex-safe font-bold text-amber-200">
+                      <span className="a4-numeric-wrap">{pl.name} ({pl.numbers.join('-')})</span>
+                      <span className={pl.completionPercentage === 100 ? 'text-emerald-300 font-mono a4-badge-wrap' : 'text-amber-400 font-mono a4-badge-wrap'}>
                         {pl.completionPercentage}%
                       </span>
                     </div>
-                    <div className="text-slate-300 leading-tight break-words mt-0.5">{pl.status}: {pl.interpretation}</div>
+                    <div className="text-slate-200 leading-snug a4-no-clip">
+                      <strong className="text-amber-300">{pl.status}:</strong> {pl.interpretation}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2348,30 +2457,30 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         ),
       });
 
-      // PAGE 2: Letter-by-Letter Chaldean Breakdown, Top Perfect Choice, All 8 Spellings & 41-Day Protocol
+      // PAGE 3 (Code Page 2): Letter-by-Letter Chaldean Breakdown, 3-Way Profit/Loss Comparison (Real Name, Name A, Name B), All Spellings & 41-Day Protocol
       pages.push({
-        title: 'Page 2: Letter-by-Letter Chaldean Breakdown, Supreme Harmonic Choice & All Harmonized Spellings',
+        title: 'Page 2: Letter-by-Letter Chaldean Breakdown, Real Name vs Name A & B Profit/Loss Analysis & Harmonized Spellings',
         headImg: vedicNameCareerYantra,
-        headLabel: 'Name Correction & Examples',
+        headLabel: 'Name Profit/Loss & Harmony',
         content: (
-          <div className="space-y-2 text-xs">
-            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 overflow-hidden">
-              <h4 className="font-serif text-[11px] font-bold text-amber-200 mb-1">
-                Letter-by-Letter Chaldean & Pythagorean Sound Breakdown for "{activeProfile.name}" (Compound {nameAnalysis.totalChaldeanCompound} — {nameAnalysis.compoundInfo.title})
+          <div className="space-y-2.5 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-amber-500/35 overflow-hidden">
+              <h4 className="font-serif text-[11.5px] font-bold text-amber-200 mb-1">
+                Letter-by-Letter Chaldean &amp; Pythagorean Sound Breakdown for "{activeProfile.name}" (Compound {nameAnalysis.totalChaldeanCompound} — {nameAnalysis.compoundInfo.title})
               </h4>
-              <p className="text-[9px] text-slate-300 mb-1.5 leading-snug">
+              <p className="text-[9.4px] text-slate-200 mb-2 leading-snug">
                 {nameAnalysis.compoundInfo.description} | <strong>Mulank Relationship:</strong> {nameAnalysis.mulankRelation} • <strong>Bhagyank Relationship:</strong> {nameAnalysis.bhagyankRelation}
               </p>
-              <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-1 w-full">
+              <div className="grid grid-cols-10 gap-1 w-full a4-grid-safe">
                 {nameAnalysis.letters.map((item, idx) => (
                   <div
                     key={idx}
-                    className="px-1 py-0.5 rounded bg-slate-950 border border-amber-500/35 text-center font-mono text-[8.5px] overflow-hidden"
+                    className="px-1 py-1 rounded bg-slate-950 border border-amber-500/35 text-center font-mono text-[8.5px] a4-no-clip"
                   >
-                    <span className="text-amber-200 font-black text-[10px] block leading-tight">
+                    <span className="text-amber-200 font-black text-[10.5px] block leading-tight">
                       {item.char}
                     </span>
-                    <span className="text-emerald-300 text-[7.5px] block truncate">
+                    <span className="text-emerald-300 text-[7.5px] block leading-tight a4-numeric-cell">
                       C:{item.chaldeanVal}|P:{item.pythagoreanVal}
                     </span>
                   </div>
@@ -2379,155 +2488,168 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               </div>
             </div>
 
+            {(() => {
+              const realNameStr = (activeProfile.originalName || activeProfile.name || '').trim();
+              const selNameAStr = (
+                activeProfile.selectedNameA ||
+                nameSuggestions[0]?.suggestedName ||
+                `${activeProfile.name}a`
+              ).trim();
+              const selNameBStr = (
+                activeProfile.selectedNameB ||
+                nameSuggestions[1]?.suggestedName ||
+                `${activeProfile.name}h`
+              ).trim();
+              const realRes = analyzeName(realNameStr, m, b);
+              const nameARes = analyzeName(selNameAStr, m, b);
+              const nameBRes = analyzeName(selNameBStr, m, b);
+
+              const realPlanet = PLANETARY_PROFILES[realRes.chaldeanSingle] || mPlanet;
+              const nameAPlanet = PLANETARY_PROFILES[nameARes.chaldeanSingle] || mPlanet;
+              const nameBPlanet = PLANETARY_PROFILES[nameBRes.chaldeanSingle] || bPlanet;
+
+              const threeWayCols = [
+                {
+                  tag: '1. Real / Original Name',
+                  nameStr: realNameStr,
+                  res: realRes,
+                  planet: realPlanet,
+                  profitText:
+                    realRes.harmonyScore >= 78
+                      ? `Strong innate ${realPlanet.planet} (${realRes.compoundInfo.title}) aura giving ${realRes.harmonyScore}% natural harmony, authentic public identity, and zero document transition friction.`
+                      : `Provides baseline ${realPlanet.planet} traits (${realPlanet.traits.slice(0, 2).join(', ')}) and established legal/social identity without needing immediate document changes.`,
+                  lossText:
+                    realRes.harmonyScore < 75
+                      ? `Planetary friction (${realRes.mulankRelation} with Mulank ${m} & ${realRes.bhagyankRelation} with Bhagyank ${b}) creates career delays, effort-to-reward imbalance, and avoidable financial leakage.`
+                      : `Leaves +${Math.max(4, Math.max(nameARes.harmonyScore, nameBRes.harmonyScore) - realRes.harmonyScore)}% untapped commercial expansion & faster fortune momentum compared to peak harmonized spelling.`,
+                },
+                {
+                  tag: '2. Selected Name A',
+                  nameStr: selNameAStr,
+                  res: nameARes,
+                  planet: nameAPlanet,
+                  profitText: `Aligns with ${nameAPlanet.planet} (${nameARes.compoundInfo.title} • ${nameARes.harmonyScore}% Harmony), unlocking +${Math.max(5, nameARes.harmonyScore - realRes.harmonyScore)}% stronger wealth attraction, leadership recognition, and faster commercial breakthroughs.`,
+                  lossText: `Requires 41 days of disciplined daily writing & digital profile consistency to anchor the new ${nameAPlanet.planet} frequency; temporary minor adjustment phase across social handles & signatures.`,
+                },
+                {
+                  tag: '3. Selected Name B',
+                  nameStr: selNameBStr,
+                  res: nameBRes,
+                  planet: nameBPlanet,
+                  profitText: `Activates ${nameBPlanet.planet} (${nameBRes.compoundInfo.title} • ${nameBRes.harmonyScore}% Harmony), boosting long-term stability, relationship warmth, client trust, and steady +${Math.max(4, nameBRes.harmonyScore - realRes.harmonyScore)}% aura resonance.`,
+                  lossText: `Slower initial commercial spike compared to aggressive wealth roots if used inconsistently; requires unified usage across WhatsApp, visiting cards & signatures alongside ${nameBPlanet.planet} remedies.`,
+                },
+              ];
+
+              return (
+                <div className="p-2.5 rounded-xl bg-slate-900/95 border-2 border-emerald-500/45 space-y-2 text-[8.8px] a4-no-clip">
+                  <div className="a4-flex-safe border-b border-emerald-500/25 pb-1">
+                    <span className="font-serif text-[10.8px] font-bold text-amber-200 uppercase a4-no-clip">
+                      ★ 3-Way Name Profit &amp; Loss Audit: Real Name vs Selected Name A &amp; Selected Name B (Active: "{activeProfile.name}")
+                    </span>
+                    <span className="font-mono text-emerald-300 font-bold a4-badge-wrap">
+                      Complete Profit (Laabh) &amp; Loss (Haani) Breakdown
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 a4-print-grid-3 a4-grid-safe items-stretch">
+                    {threeWayCols.map((col, cIdx) => {
+                      const isActive =
+                        col.nameStr.toUpperCase() === activeProfile.name.trim().toUpperCase();
+                      return (
+                        <div
+                          key={cIdx}
+                          className={`p-2 rounded-lg border space-y-1.5 flex flex-col justify-between a4-no-clip ${
+                            isActive
+                              ? 'bg-emerald-950/40 border-emerald-400'
+                              : 'bg-slate-950/90 border-amber-500/30'
+                          }`}
+                        >
+                          <div className="space-y-1">
+                            <div className="a4-flex-safe font-bold text-amber-200">
+                              <span>{col.tag}</span>
+                              {isActive && (
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 text-[7px] font-black a4-badge-wrap">
+                                  ACTIVE
+                                </span>
+                              )}
+                            </div>
+                            <div className="font-mono font-black text-[10px] text-white leading-tight a4-numeric-wrap border-b border-amber-500/20 pb-1">
+                              {col.nameStr} — {col.res.totalChaldeanCompound}➔{col.res.chaldeanSingle} ({col.res.harmonyScore}%)
+                            </div>
+                            <div className="p-1.5 rounded bg-emerald-950/35 border border-emerald-500/30 text-emerald-100 leading-snug a4-no-clip">
+                              <strong className="text-emerald-300">✓ Profit / Benefits (Laabh):</strong>{' '}
+                              {col.profitText}
+                            </div>
+                            <div className="p-1.5 rounded bg-rose-950/35 border border-rose-500/30 text-rose-100 leading-snug a4-no-clip">
+                              <strong className="text-rose-300">⚠ Loss / Drawbacks (Haani):</strong>{' '}
+                              {col.lossText}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {nameAnalysis.isAuspicious &&
             !activeProfile.selectedNameA &&
             !activeProfile.selectedNameB ? (
               <div className="p-2.5 rounded-xl bg-emerald-950/30 border-2 border-emerald-500/45 space-y-1 text-[9.5px]">
                 <h4 className="font-serif text-[11px] font-bold text-emerald-300 uppercase">
-                  ★ Perfect Name Frequency Result — No Name Change Suggestion Required
+                  ★ Perfect Name Frequency Result — Current Spelling Already Auspicious
                 </h4>
                 <p className="text-slate-200 leading-snug">
-                  Your current name spelling <strong className="text-amber-200">"{activeProfile.name}"</strong> vibrates at Chaldean Compound <strong className="text-emerald-300">{nameAnalysis.totalChaldeanCompound}</strong> ➔ Root <strong className="text-emerald-300">{nameAnalysis.chaldeanSingle} ({PLANETARY_PROFILES[nameAnalysis.chaldeanSingle]?.planet})</strong> with <strong className="text-emerald-300">{nameAnalysis.harmonyScore}% Cosmic Harmony</strong> ({nameAnalysis.compoundInfo.title}). Because your name frequency is already auspicious and in harmony with Mulank {m} and Bhagyank {b}, only your result is shown and no spelling modification is needed.
+                  Your current name spelling <strong className="text-amber-200">"{activeProfile.name}"</strong> vibrates at Chaldean Compound <strong className="text-emerald-300">{nameAnalysis.totalChaldeanCompound}</strong> ➔ Root <strong className="text-emerald-300">{nameAnalysis.chaldeanSingle} ({PLANETARY_PROFILES[nameAnalysis.chaldeanSingle]?.planet})</strong> with <strong className="text-emerald-300">{nameAnalysis.harmonyScore}% Cosmic Harmony</strong> ({nameAnalysis.compoundInfo.title}). You may retain your original spelling or optionally adopt Selected Name A / Name B above for targeted commercial amplification.
                 </p>
               </div>
             ) : (
-              <>
-                {(() => {
-                  const realNameStr = (activeProfile.originalName || activeProfile.name || '').trim();
-                  const selNameAStr = (
-                    activeProfile.selectedNameA ||
-                    nameSuggestions[0]?.suggestedName ||
-                    `${activeProfile.name}a`
-                  ).trim();
-                  const selNameBStr = (
-                    activeProfile.selectedNameB ||
-                    nameSuggestions[1]?.suggestedName ||
-                    `${activeProfile.name}h`
-                  ).trim();
-                  const realRes = analyzeName(realNameStr, m, b);
-                  const nameARes = analyzeName(selNameAStr, m, b);
-                  const nameBRes = analyzeName(selNameBStr, m, b);
-
-                  return (
-                    <div className="p-2 rounded-xl bg-slate-900/95 border-2 border-emerald-500/45 space-y-1.5 text-[8.5px]">
-                      <div className="flex items-center justify-between border-b border-emerald-500/25 pb-1">
-                        <span className="font-serif text-[10px] font-bold text-amber-200 uppercase">
-                          ★ 3-Way Name Comparison: Real Name vs Selected Name A &amp; Selected Name B (Active Final Name: "{activeProfile.name}")
-                        </span>
-                        <span className="font-mono text-emerald-300 font-bold">
-                          Losses of Real Name vs Benefits of Selected Names
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
-                        {[
-                          {
-                            tag: '1. Real / Original Name',
-                            nameStr: realNameStr,
-                            res: realRes,
-                            isReal: true,
-                          },
-                          {
-                            tag: '2. Selected Name A',
-                            nameStr: selNameAStr,
-                            res: nameARes,
-                            isReal: false,
-                          },
-                          {
-                            tag: '3. Selected Name B',
-                            nameStr: selNameBStr,
-                            res: nameBRes,
-                            isReal: false,
-                          },
-                        ].map((col, cIdx) => {
-                          const isActive =
-                            col.nameStr.toUpperCase() === activeProfile.name.trim().toUpperCase();
-                          return (
-                            <div
-                              key={cIdx}
-                              className={`p-1.5 rounded-lg border space-y-0.5 ${
-                                isActive
-                                  ? 'bg-emerald-950/40 border-emerald-400'
-                                  : 'bg-slate-950/90 border-amber-500/25'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between font-bold text-amber-200">
-                                <span>{col.tag}</span>
-                                {isActive && (
-                                  <span className="px-1 py-0.2 rounded bg-emerald-500 text-slate-950 text-[7px] font-black">
-                                    ACTIVE PROFILE
-                                  </span>
-                                )}
-                              </div>
-                              <div className="font-mono font-black text-[9.5px] text-white truncate">
-                                {col.nameStr} — {col.res.totalChaldeanCompound}➔{col.res.chaldeanSingle} ({col.res.harmonyScore}%)
-                              </div>
-                              {col.isReal ? (
-                                <p className="text-rose-200 leading-tight">
-                                  <strong>Drawback / Loss:</strong>{' '}
-                                  {col.res.harmonyScore < 75
-                                    ? `Creates planetary friction (${col.res.mulankRelation} with Mulank ${m}), causing career delays & financial leakage.`
-                                    : `Baseline vibration (${col.res.compoundInfo.title}); can be elevated for faster commercial & aura breakthroughs.`}
-                                </p>
-                              ) : (
-                                <p className="text-emerald-200 leading-tight">
-                                  <strong>Benefit / Gain:</strong> Aligns with{' '}
-                                  {PLANETARY_PROFILES[col.res.chaldeanSingle]?.planet} ({col.res.compoundInfo.title}), unlocking +{Math.max(5, col.res.harmonyScore - realRes.harmonyScore)}% higher cosmic harmony, wealth &amp; recognition.
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {nameSuggestions.length > 0 && (
-                  <div className="p-2.5 rounded-xl bg-slate-900/90 border border-amber-500/35 space-y-1.5">
-                    <div className="flex items-center justify-between border-b border-amber-500/25 pb-1">
-                      <h4 className="font-serif text-[11px] font-bold text-amber-200">
-                        Complete List of Harmonized Name Spelling Suggestions for {activeProfile.name}
-                      </h4>
-                      <span className="text-[9px] font-mono text-emerald-300">
-                        Friendly Roots: {mPlanet.friendlyNumbers.join(', ')}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
-                      {nameSuggestions.map((sug, i) => (
-                        <div
-                          key={i}
-                          className="p-1.5 rounded-lg bg-slate-950/95 border border-amber-500/25 flex items-start justify-between gap-1.5"
-                        >
-                          <div>
-                            <div className="font-mono font-black text-[10.5px] text-amber-100">
-                              {i + 1}. {sug.suggestedName}
-                            </div>
-                            <div className="text-[8.5px] text-slate-300 leading-snug">
-                              {sug.changeExplanation} ({sug.planetaryBlessing})
-                            </div>
-                          </div>
-                          <span className="px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-mono font-bold text-[8.5px] shrink-0">
-                            {sug.compoundNumber}➔{sug.singleDigit} ({sug.harmonyScore}%)
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+              nameSuggestions.length > 0 && (
+                <div className="p-2.5 rounded-xl bg-slate-900/90 border border-amber-500/35 space-y-1.5 a4-no-clip">
+                  <div className="a4-flex-safe border-b border-amber-500/25 pb-1">
+                    <h4 className="font-serif text-[11px] font-bold text-amber-200 a4-no-clip">
+                      Complete List of Harmonized Name Spelling Suggestions for {activeProfile.name}
+                    </h4>
+                    <span className="text-[9px] font-mono text-emerald-300 a4-numeric-wrap">
+                      Friendly Roots: {mPlanet.friendlyNumbers.join(', ')}
+                    </span>
                   </div>
-                )}
-              </>
+                  <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe">
+                    {nameSuggestions.map((sug, i) => (
+                      <div
+                        key={i}
+                        className="p-1.5 rounded-lg bg-slate-950/95 border border-amber-500/25 a4-flex-safe items-start a4-no-clip"
+                      >
+                        <div className="min-w-0 flex-1 a4-no-clip">
+                          <div className="font-mono font-black text-[10.5px] text-amber-100 a4-no-clip">
+                            {i + 1}. {sug.suggestedName}
+                          </div>
+                          <div className="text-[8.6px] text-slate-300 leading-snug a4-no-clip">
+                            {sug.changeExplanation} ({sug.planetaryBlessing})
+                          </div>
+                        </div>
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-mono font-bold text-[8.5px] a4-badge-wrap a4-numeric-wrap">
+                          {sug.compoundNumber}➔{sug.singleDigit} ({sug.harmonyScore}%)
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
             )}
 
-            <div className="p-2 rounded-xl bg-emerald-950/20 border border-emerald-500/35 space-y-1 text-[9.2px]">
-              <h5 className="font-serif text-[10.5px] font-bold text-emerald-300 uppercase">
-                Practical Examples & 41-Day Name Vibration Activation Remedies
+            <div className="p-2.5 rounded-xl bg-emerald-950/25 border border-emerald-500/40 space-y-1 text-[9.4px]">
+              <h5 className="font-serif text-[10.8px] font-bold text-emerald-300 uppercase">
+                Practical Examples &amp; 41-Day Name Vibration Activation Remedies
               </h5>
-              <p className="text-slate-200">
-                <strong>• Example 1 (Digital & Social Profiles):</strong> Immediately update your display name on WhatsApp, Instagram, LinkedIn, Email Signature, and Visiting Cards to <strong className="text-amber-200">"{topPerfectChoice?.suggestedName || activeProfile.name}"</strong>.
+              <p className="text-slate-200 leading-snug">
+                <strong>• Example 1 (Digital &amp; Social Profiles):</strong> Immediately update your display name on WhatsApp, Instagram, LinkedIn, Email Signature, and Visiting Cards to <strong className="text-amber-200">"{topPerfectChoice?.suggestedName || activeProfile.name}"</strong>.
               </p>
-              <p className="text-slate-200">
+              <p className="text-slate-200 leading-snug">
                 <strong>• Example 2 (41-Day Sankalpa Writing Sadhana):</strong> Write your harmonized name 41 times every morning at sunrise in a dedicated notebook using a gold, green, or red ink pen while chanting <strong className="text-amber-200">"{mPlanet.beejMantra}"</strong>.
               </p>
-              <p className="text-slate-200">
+              <p className="text-slate-200 leading-snug">
                 <strong>• Example 3 (Ascending Signature Alignment):</strong> Sign your harmonized name at a 15° upward angle with an underline and a single dot underneath; never cut or loop backwards through the first letter.
               </p>
             </div>
@@ -2542,72 +2664,72 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headLabel: 'Career & Fortune Remedies',
         content: (
           <div className="space-y-2 text-xs">
-            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 text-[9px] text-slate-200">
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 text-[9px] text-slate-200 a4-no-clip">
               <strong className="text-amber-200">Top Favorable Career & Profession Streams (Mulank {m} & Bhagyank {b}):</strong>{' '}
-              <span className="text-emerald-300 font-semibold">{career.favorableProfessions.join(' • ')}</span>
-              <div className="mt-0.5 text-slate-300">
+              <span className="text-emerald-300 font-semibold a4-list-wrap">{career.favorableProfessions.join(' • ')}</span>
+              <div className="mt-0.5 text-slate-300 a4-no-clip">
                 <strong>Aura Diagnosis ({career.auraColor} • {career.primaryChakra} / {career.secondaryChakra}):</strong> {career.auraHealthSummary}
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
-              <div className="p-2 rounded-xl bg-emerald-950/25 border border-emerald-500/40 space-y-1">
+            <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3 a4-grid-safe">
+              <div className="p-2 rounded-xl bg-emerald-950/25 border border-emerald-500/40 space-y-1 a4-list-wrap">
                 <h5 className="font-serif text-[10px] font-bold text-emerald-300 uppercase">
                   1. Supreme Perfect Businesses (All 4)
                 </h5>
                 {career.perfectBusinesses.map((item, idx) => (
-                  <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-emerald-500/25 text-[8.5px]">
-                    <div className="flex items-center justify-between font-bold text-emerald-200">
+                  <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-emerald-500/25 text-[8.5px] a4-no-clip">
+                    <div className="a4-flex-safe font-bold text-emerald-200">
                       <span>{item.field}</span>
-                      <span className="font-mono text-emerald-400">{item.successRate}%</span>
+                      <span className="font-mono text-emerald-400 a4-numeric-wrap">{item.successRate}%</span>
                     </div>
-                    <p className="text-slate-300 leading-tight mt-0.5">{item.reason}</p>
+                    <p className="text-slate-300 leading-tight mt-0.5 a4-no-clip">{item.reason}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="p-2 rounded-xl bg-sky-950/25 border border-sky-500/40 space-y-1">
+              <div className="p-2 rounded-xl bg-sky-950/25 border border-sky-500/40 space-y-1 a4-list-wrap">
                 <h5 className="font-serif text-[10px] font-bold text-sky-300 uppercase">
                   2. Good Supportive Businesses (All 4)
                 </h5>
                 {career.goodBusinesses.map((item, idx) => (
-                  <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-sky-500/25 text-[8.5px]">
-                    <div className="flex items-center justify-between font-bold text-sky-200">
+                  <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-sky-500/25 text-[8.5px] a4-no-clip">
+                    <div className="a4-flex-safe font-bold text-sky-200">
                       <span>{item.field}</span>
-                      <span className="font-mono text-sky-400">{item.successRate}%</span>
+                      <span className="font-mono text-sky-400 a4-numeric-wrap">{item.successRate}%</span>
                     </div>
-                    <p className="text-slate-300 leading-tight mt-0.5">{item.reason}</p>
+                    <p className="text-slate-300 leading-tight mt-0.5 a4-no-clip">{item.reason}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="p-2 rounded-xl bg-rose-950/25 border border-rose-500/40 space-y-1">
+              <div className="p-2 rounded-xl bg-rose-950/25 border border-rose-500/40 space-y-1 a4-list-wrap">
                 <h5 className="font-serif text-[10px] font-bold text-rose-300 uppercase">
                   3. Hostile Sectors to Avoid (All 4)
                 </h5>
                 {career.veryBadBusinesses.map((item, idx) => (
-                  <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-rose-500/25 text-[8.5px]">
-                    <div className="flex items-center justify-between font-bold text-rose-200">
+                  <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-rose-500/25 text-[8.5px] a4-no-clip">
+                    <div className="a4-flex-safe font-bold text-rose-200">
                       <span>{item.field}</span>
-                      <span className="font-mono text-rose-400">{item.conflictPlanet}</span>
+                      <span className="font-mono text-rose-400 a4-badge-wrap">{item.conflictPlanet}</span>
                     </div>
-                    <p className="text-slate-300 leading-tight mt-0.5">{item.dangerReason}</p>
+                    <p className="text-slate-300 leading-tight mt-0.5 a4-no-clip">{item.dangerReason}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 space-y-1.5">
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 space-y-1.5 a4-no-clip">
               <h5 className="font-serif text-[10px] font-bold text-amber-200 uppercase">
                 All 6 Prescribed Vedic, Pranic, Sound Frequency (Hz) &amp; Fortune Remedies for Career &amp; Aura Breakthrough
               </h5>
-              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3 items-stretch">
+              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3 a4-grid-safe items-stretch">
                 {career.fortuneReadingRemedies.map((rem, idx) => (
                   <div
                     key={idx}
-                    className="p-2 rounded-lg bg-slate-950 border border-amber-500/25 text-[8.1px] flex flex-col justify-between gap-1 h-full text-left"
+                    className="p-2 rounded-lg bg-slate-950 border border-amber-500/25 text-[8.1px] flex flex-col justify-between gap-1 h-full text-left a4-no-clip"
                   >
-                    <div className="space-y-1">
+                    <div className="space-y-1 a4-no-clip">
                       <div className="font-bold text-amber-300 leading-snug text-[8.4px] border-b border-amber-500/20 pb-0.5">
                         {idx + 1}. [{rem.category}] {rem.title}
                       </div>
@@ -2616,9 +2738,9 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                         <strong>Addresses:</strong> {rem.issueAddressed}
                       </div>
                     </div>
-                    <div className="mt-auto pt-1 border-t border-sky-500/25 flex items-center justify-between gap-1">
+                    <div className="mt-auto pt-1 border-t border-sky-500/25 a4-flex-safe">
                       <span className="text-[7px] uppercase tracking-wider text-sky-400 font-bold">Sound Hz</span>
-                      <span className="px-1.5 py-0.5 rounded bg-sky-950 border border-sky-500/45 text-sky-200 font-mono text-[7.4px] font-bold">
+                      <span className="px-1.5 py-0.5 rounded bg-sky-950 border border-sky-500/45 text-sky-200 font-mono text-[7.4px] font-bold a4-badge-wrap a4-numeric-wrap">
                         🔊 {rem.frequencyHz}
                       </span>
                     </div>
@@ -2642,21 +2764,21 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headLabel: '5-Pillar Ratna Dossier',
         content: (
           <div className="space-y-2 text-xs">
-            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40 flex items-center justify-between">
-              <div>
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40 a4-flex-safe a4-no-clip">
+              <div className="min-w-0 flex-1">
                 <h4 className="font-serif text-[11px] font-bold text-amber-200 uppercase">
                   Complete 5-Pillar Vedic Ratna Shastra Matrix for {activeProfile.name}
                 </h4>
-                <p className="text-[9px] text-slate-300">
-                  Ideal Carat / Ratti Weight Range: <strong className="text-emerald-300">{gemRecommend.idealRattiRange}</strong> | Stones Strictly to Avoid: <strong className="text-rose-300">{gemRecommend.stonesToAvoid.map((s) => `${s.primaryGem} (${s.planet})`).join(', ') || 'Enemy Planet Gems'}</strong>
+                <p className="text-[9px] text-slate-300 a4-list-wrap">
+                  Ideal Carat / Ratti Weight Range: <strong className="text-emerald-300 a4-numeric-wrap">{gemRecommend.idealRattiRange}</strong> | Stones Strictly to Avoid: <strong className="text-rose-300">{gemRecommend.stonesToAvoid.map((s) => `${s.primaryGem} (${s.planet})`).join(', ') || 'Enemy Planet Gems'}</strong>
                 </p>
               </div>
-              <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/50 text-amber-200 font-mono text-[9px] font-bold">
+              <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/50 text-amber-200 font-mono text-[9px] font-bold a4-badge-wrap">
                 Rashi: {astro.rashi}
               </span>
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 a4-list-wrap">
               {[
                 {
                   pillar: `1. Life Stone (Mulank ${m} — ${mPlanet.planet})`,
@@ -2684,12 +2806,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                   extra: `Amplifies public magnetism, brand recognition & commercial success.`,
                 },
               ].map((item, idx) => (
-                <div key={idx} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.8px] space-y-0.5">
-                  <div className="flex items-center justify-between font-bold text-amber-200">
+                <div key={idx} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.8px] space-y-0.5 a4-no-clip">
+                  <div className="a4-flex-safe font-bold text-amber-200">
                     <span>{item.pillar}: <strong className="text-emerald-300">{item.stone.primaryGem} ({item.stone.sanskritName})</strong></span>
-                    <span className="font-mono text-sky-300">Upratna: {item.stone.substituteStone}</span>
+                    <span className="font-mono text-sky-300 a4-badge-wrap">Upratna: {item.stone.substituteStone}</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5 text-slate-200 a4-print-grid-2">
+                  <div className="grid grid-cols-2 gap-1.5 text-slate-200 a4-print-grid-2 a4-grid-safe">
                     <div>
                       <strong>Metal &amp; Finger:</strong> {item.stone.metal} • {item.stone.wearingFinger} | <strong>Day/Time:</strong> {item.stone.wearingDayTime}
                     </div>
@@ -2697,7 +2819,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                       <strong>Chakra:</strong> {item.stone.chakra} | <strong>Mantra (108x):</strong> <span className="text-amber-300 font-mono">{item.stone.mantra}</span>
                     </div>
                   </div>
-                  <div className="text-slate-300">
+                  <div className="text-slate-300 a4-list-wrap">
                     <strong>Benefits:</strong> {(item.stone.benefits || item.stone.coreBenefits).join(' • ')} — <span className="text-emerald-200">{item.extra}</span>
                   </div>
                 </div>
@@ -2719,138 +2841,151 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         ),
       });
 
-      // PAGE 4B: Precious Stone Recommendation — If You Do Not Want to Change Name & For Personal Growth (Complete Step-by-Step Guide)
-      pages.push({
-        title: 'Page 4B: Precious Stone Recommendation — If You Do Not Want to Change Name & For Personal Growth (Complete Step-by-Step Guide)',
-        headImg: vedicNameCareerYantra,
-        headLabel: 'No-Name-Change & Growth Ratna',
-        content: (
-          <div className="space-y-2 text-xs">
-            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40 flex items-center justify-between gap-2">
-              <div>
-                <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
-                  Precious Stone Recommendation — If You Do Not Want to Change Name &amp; For Personal Growth
-                </h4>
-                <p className="text-[8.5px] text-slate-300">
-                  For clients who prefer not to alter their existing name spelling (<strong className="text-amber-200">{activeProfile.originalName || activeProfile.name}</strong>) and for accelerated Personal Growth &amp; Career Breakthroughs, with complete wearing instructions.
-                </p>
+      // PAGE 4B & 4C: Precious Stone Recommendations Split into Two Spacious Full-Width Pages (Zero Text Cutting)
+      [
+        {
+          stoneRec: nameAndGrowthRatna.noNameChangeStone,
+          pageTag: 'Page 4B',
+          title: 'Page 4B: Precious Stone Recommendation — If You Do Not Want to Change Name (Complete Step-by-Step Guide)',
+          headLabel: 'No-Name-Change Ratna',
+          isGrowth: false,
+          subtitleBanner: `For clients who prefer not to alter their existing name spelling (${activeProfile.originalName || activeProfile.name}) — complete Vedic wearing instructions & Prana-Pratishtha ritual.`,
+        },
+        {
+          stoneRec: nameAndGrowthRatna.personalGrowthStone,
+          pageTag: 'Page 4C',
+          title: 'Page 4C: Precious Stone Recommendation — For Personal Growth, Career Authority & Self-Elevation (Complete Step-by-Step Guide)',
+          headLabel: 'Personal Growth Ratna',
+          isGrowth: true,
+          subtitleBanner: `For accelerated Personal Growth, Career Authority & Self-Elevation for ${activeProfile.name} — complete Vedic wearing instructions & Prana-Pratishtha ritual.`,
+        },
+      ].forEach(({ stoneRec, title, headLabel, isGrowth, subtitleBanner }) => {
+        pages.push({
+          title,
+          headImg: vedicNameCareerYantra,
+          headLabel,
+          content: (
+            <div className="space-y-2.5 text-xs">
+              <div className="p-2.5 rounded-xl bg-slate-900/95 border border-amber-500/40 a4-flex-safe a4-no-clip">
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
+                    {stoneRec.purposeTitle}
+                  </h4>
+                  <p className="text-[8.5px] text-slate-300 mt-0.5">{subtitleBanner}</p>
+                </div>
+                <span className="px-2.5 py-1 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-mono text-[8.5px] font-bold a4-badge-wrap a4-numeric-wrap">
+                  Weight: {stoneRec.idealRattiRange} ({stoneRec.idealCaratRange})
+                </span>
               </div>
-              <span className="px-2 py-1 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-mono text-[8.5px] font-bold shrink-0">
-                Weight: {nameAndGrowthRatna.noNameChangeStone.idealRattiRange} ({nameAndGrowthRatna.noNameChangeStone.idealCaratRange})
-              </span>
-            </div>
 
-            <div className="grid grid-cols-2 gap-2 a4-print-grid-2">
-              {[nameAndGrowthRatna.noNameChangeStone, nameAndGrowthRatna.personalGrowthStone].map(
-                (stoneRec, idx) => (
-                  <div
-                    key={idx}
-                    className={`p-2 rounded-xl bg-slate-950/95 border text-[8px] space-y-1.5 ${
-                      idx === 0 ? 'border-amber-500/45' : 'border-emerald-500/45'
+              <div
+                className={`p-3 rounded-xl bg-slate-950/95 border text-[8.8px] space-y-2.5 a4-no-clip ${
+                  isGrowth ? 'border-emerald-500/45' : 'border-amber-500/45'
+                }`}
+              >
+                <div className="a4-flex-safe">
+                  <span
+                    className={`px-2 py-0.5 rounded font-bold uppercase text-[8px] border a4-badge-wrap ${
+                      isGrowth
+                        ? 'bg-emerald-500/20 text-emerald-200 border-emerald-500/40'
+                        : 'bg-amber-500/20 text-amber-200 border-amber-500/40'
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-1">
-                      <span
-                        className={`px-1.5 py-0.5 rounded font-bold uppercase text-[7.5px] border ${
-                          idx === 0
-                            ? 'bg-amber-500/20 text-amber-200 border-amber-500/40'
-                            : 'bg-emerald-500/20 text-emerald-200 border-emerald-500/40'
-                        }`}
-                      >
-                        {stoneRec.priorityBadge}
-                      </span>
-                      <span className="font-mono text-amber-300 font-bold text-[7.5px]">
-                        Planet: {stoneRec.ratna.planet} ({stoneRec.ratna.sanskritPlanet})
-                      </span>
-                    </div>
+                    {stoneRec.priorityBadge}
+                  </span>
+                  <span className="font-mono text-amber-300 font-bold text-[8.5px] a4-badge-wrap">
+                    Planet: {stoneRec.ratna.planet} ({stoneRec.ratna.sanskritPlanet})
+                  </span>
+                </div>
 
-                    <div>
-                      <div className="font-serif text-[9.5px] font-bold text-amber-100 leading-tight">
-                        {stoneRec.purposeTitle}
-                      </div>
-                      <div className="text-[7.5px] text-amber-300/80">{stoneRec.purposeSubtitle}</div>
-                    </div>
-
-                    <div className="p-1.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5">
-                      <div className="flex items-center justify-between">
-                        <strong className="text-emerald-300 text-[9px]">
-                          Primary Stone: {stoneRec.ratna.primaryGem} ({stoneRec.ratna.sanskritGem})
-                        </strong>
-                        <span className="font-mono text-amber-200 text-[7.5px] font-bold">
-                          {stoneRec.idealRattiRange}
-                        </span>
-                      </div>
-                      <div className="text-sky-200 text-[7.8px]">
-                        <strong>Substitute Stone (Upratna):</strong> {stoneRec.ratna.upratna}
-                      </div>
-                    </div>
-
-                    <div className="p-1.5 rounded-lg bg-slate-900/90 border border-amber-500/20 text-slate-200 leading-snug">
-                      <strong className="text-amber-300 uppercase block text-[7.5px]">
-                        Why Recommended According to Vedic Astrology &amp; Chaldean Numerology:
-                      </strong>
-                      {stoneRec.astrologicalReason}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-1 a4-print-grid-2">
-                      <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
-                        <strong className="text-amber-400 uppercase block text-[7px]">
-                          1. Which Finger &amp; Hand to Wear
-                        </strong>
-                        <span className="text-amber-100 font-bold block">{stoneRec.wearingHandAndFinger}</span>
-                        <span className="text-slate-400 text-[7px]">Chakra: {stoneRec.ratna.chakra}</span>
-                      </div>
-                      <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
-                        <strong className="text-amber-400 uppercase block text-[7px]">
-                          2. In Which Metal &amp; Setting
-                        </strong>
-                        <span className="text-amber-100 font-bold block">{stoneRec.ratna.metal}</span>
-                        <span className="text-slate-400 text-[7px]">Open-back touching skin</span>
-                      </div>
-                      <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
-                        <strong className="text-emerald-400 uppercase block text-[7px]">
-                          3. Auspicious Day, Time &amp; Nakshatra
-                        </strong>
-                        <span className="text-emerald-200 font-bold block">{stoneRec.dayAndMuhurat}</span>
-                        <span className="text-slate-400 text-[7px]">{stoneRec.pakshaAndNakshatra}</span>
-                      </div>
-                      <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
-                        <strong className="text-sky-400 uppercase block text-[7px]">
-                          4. Panchamrit Purification Liquid
-                        </strong>
-                        <span className="text-sky-200 font-bold block">{stoneRec.purificationIngredients}</span>
-                        <span className="text-slate-400 text-[7px]">Soak 21–30 mins before sunrise</span>
-                      </div>
-                    </div>
-
-                    <div className="p-1.5 rounded bg-amber-950/35 border border-amber-500/35">
-                      <strong className="text-amber-400 uppercase block text-[7px]">
-                        5. Prana-Pratishtha Beej Mantra (Chant 108 Times Before Wearing)
-                      </strong>
-                      <span className="font-serif font-bold text-amber-100">{stoneRec.beejMantra}</span>
-                    </div>
-
-                    <div className="p-1.5 rounded bg-emerald-950/25 border border-emerald-500/30 space-y-0.5">
-                      <strong className="text-emerald-300 uppercase block text-[7.5px]">
-                        Complete Step-by-Step Wearing Ritual (Ratna Dharan Vidhi):
-                      </strong>
-                      {stoneRec.howToWearStepByStep.map((st, sIdx) => (
-                        <div key={sIdx} className="text-slate-200 leading-tight text-[7.5px]">
-                          • {st}
-                        </div>
-                      ))}
-                    </div>
+                <div className="a4-no-clip">
+                  <div className="font-serif text-[10.5px] font-bold text-amber-100 leading-tight">
+                    {stoneRec.purposeTitle}
                   </div>
-                )
+                  <div className="text-[8.2px] text-amber-300/85 mt-0.5">{stoneRec.purposeSubtitle}</div>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-1 a4-no-clip">
+                  <div className="a4-flex-safe">
+                    <strong className="text-emerald-300 text-[10px]">
+                      Primary Stone: {stoneRec.ratna.primaryGem} ({stoneRec.ratna.sanskritGem})
+                    </strong>
+                    <span className="font-mono text-amber-200 text-[8.5px] font-bold a4-badge-wrap a4-numeric-wrap">
+                      {stoneRec.idealRattiRange} ({stoneRec.idealCaratRange})
+                    </span>
+                  </div>
+                  <div className="text-sky-200 text-[8.5px] a4-list-wrap">
+                    <strong>Substitute Stone (Upratna):</strong> {stoneRec.ratna.upratna}
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-slate-900/90 border border-amber-500/20 text-slate-200 leading-relaxed a4-no-clip">
+                  <strong className="text-amber-300 uppercase block text-[8px] mb-0.5">
+                    Why Recommended According to Vedic Astrology &amp; Chaldean Numerology:
+                  </strong>
+                  {stoneRec.astrologicalReason}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 a4-print-grid-2 a4-grid-safe">
+                  <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/25">
+                    <strong className="text-amber-400 uppercase block text-[7.8px]">
+                      1. Which Finger &amp; Hand to Wear
+                    </strong>
+                    <span className="text-amber-100 font-bold block mt-0.5">{stoneRec.wearingHandAndFinger}</span>
+                    <span className="text-slate-400 text-[7.8px]">Chakra: {stoneRec.ratna.chakra}</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/25">
+                    <strong className="text-amber-400 uppercase block text-[7.8px]">
+                      2. In Which Metal &amp; Setting
+                    </strong>
+                    <span className="text-amber-100 font-bold block mt-0.5">{stoneRec.ratna.metal}</span>
+                    <span className="text-slate-400 text-[7.8px]">Open-back touching skin</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/25">
+                    <strong className="text-emerald-400 uppercase block text-[7.8px]">
+                      3. Auspicious Day, Time &amp; Nakshatra
+                    </strong>
+                    <span className="text-emerald-200 font-bold block mt-0.5">{stoneRec.dayAndMuhurat}</span>
+                    <span className="text-slate-400 text-[7.8px]">{stoneRec.pakshaAndNakshatra}</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/25">
+                    <strong className="text-sky-400 uppercase block text-[7.8px]">
+                      4. Panchamrit Purification Liquid
+                    </strong>
+                    <span className="text-sky-200 font-bold block mt-0.5">{stoneRec.purificationIngredients}</span>
+                    <span className="text-slate-400 text-[7.8px]">Soak 21–30 mins before sunrise</span>
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-amber-950/35 border border-amber-500/35 a4-no-clip">
+                  <strong className="text-amber-400 uppercase block text-[7.8px]">
+                    5. Prana-Pratishtha Beej Mantra (Chant 108 Times Before Wearing)
+                  </strong>
+                  <span className="font-serif font-bold text-amber-100 text-[9.5px] block mt-0.5">
+                    {stoneRec.beejMantra}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-emerald-950/25 border border-emerald-500/30 space-y-1 a4-list-wrap">
+                  <strong className="text-emerald-300 uppercase block text-[8px]">
+                    Complete Step-by-Step Wearing Ritual (Ratna Dharan Vidhi):
+                  </strong>
+                  {stoneRec.howToWearStepByStep.map((st, sIdx) => (
+                    <div key={sIdx} className="text-slate-200 leading-snug text-[8.4px]">
+                      • {st}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {isGrowth && !isHealerReport && (
+                <div className="p-2 rounded-xl bg-amber-950/35 border border-amber-500/45 text-[8.5px] text-amber-100 leading-snug">
+                  <strong className="text-amber-300 uppercase">Official Remedies Portal (www.tathastulight.com):</strong> Visit <strong className="text-emerald-300 font-mono">www.tathastulight.com</strong> for 100% genuine &amp; authentic Rudraksha, Crystals, Home Cleansing Material, Precious &amp; Semi-Precious Stones.
+                </div>
               )}
             </div>
-            {!isHealerReport && (
-              <div className="p-2 rounded-xl bg-amber-950/35 border border-amber-500/45 text-[8.5px] text-amber-100 leading-snug">
-                <strong className="text-amber-300 uppercase">Official Remedies Portal (www.tathastulight.com):</strong> Visit <strong className="text-emerald-300 font-mono">www.tathastulight.com</strong> for 100% genuine &amp; authentic Rudraksha, Crystals, Home Cleansing Material, Precious &amp; Semi-Precious Stones.
-              </div>
-            )}
-          </div>
-        ),
+          ),
+        });
       });
 
       // PAGE 5: Universal Numeric Vibration Verifier (Vehicle, Flat/House, Bank/Brand, Mobile)
@@ -2867,71 +3002,88 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               Every registration plate, house/flat door number, bank account, or commercial brand name carries an active Chaldean compound and single-digit root. Align all assets to your Friendly Planetary Roots (<strong className="text-emerald-300">{mPlanet.friendlyNumbers.join(', ')}</strong>).
             </div>
 
-            <div className="grid grid-cols-2 gap-2 a4-print-grid-2">
+            <div className="grid grid-cols-2 gap-2 a4-print-grid-2 a4-grid-safe">
               {[
                 { label: '1. Vehicle Registration Plate Benchmark', data: vehicleValidation },
                 { label: '2. Flat / Villa / Office Door Number Benchmark', data: flatValidation },
                 { label: '3. Business / Brand / Account Name Benchmark', data: businessValidation },
                 { label: '4. Primary Mobile Number Benchmark', data: mobileValidation },
               ].map((card, idx) => (
-                <div key={idx} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.8px] space-y-1">
-                  <div className="flex items-center justify-between font-bold text-amber-200">
+                <div key={idx} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.8px] space-y-1 a4-no-clip">
+                  <div className="a4-flex-safe font-bold text-amber-200">
                     <span>{card.label}</span>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-mono">
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-mono a4-badge-wrap a4-numeric-wrap">
                       {card.data.compoundNumber}➔{card.data.singleDigit} ({card.data.compatibilityScore}%)
                     </span>
                   </div>
-                  <div className="text-sky-300 font-mono">
+                  <div className="text-sky-300 font-mono a4-numeric-wrap">
                     Sample: {card.data.input} • Planet: {card.data.rulingPlanet} • Status: {card.data.status}
                   </div>
-                  <div className="text-slate-200">
+                  <div className="text-slate-200 a4-no-clip">
                     <strong>Compound Title ({card.data.compoundInfo.title}):</strong> {card.data.compoundInfo.description}
                   </div>
-                  <div className="text-emerald-200 leading-snug">
+                  <div className="text-emerald-200 leading-snug a4-no-clip">
                     <strong>Vedic Guidance:</strong> {card.data.recommendation}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="p-2 rounded-xl bg-slate-900/95 border border-sky-500/35 text-[8.5px] text-slate-200 space-y-1">
-              <div className="flex items-center justify-between font-bold text-sky-300 uppercase">
+            <div className="p-2.5 rounded-xl bg-slate-900/95 border border-sky-500/40 text-[8.8px] text-slate-200 space-y-1.5 a4-no-clip">
+              <div className="a4-flex-safe font-bold text-sky-300 uppercase">
                 <span>1. Step-by-Step Self-Calculation Formula (Calculate Your Own Vehicle, Flat &amp; Brand)</span>
-                <span className="font-mono text-amber-300">Chaldean Key (1 to 8)</span>
+                <span className="font-mono text-amber-300 a4-badge-wrap">Chaldean Key (1 to 8)</span>
               </div>
-              <p className="leading-snug">
+              <p className="leading-snug a4-numeric-wrap">
                 <strong>Step 1 (Letters to Chaldean Values):</strong>{' '}
-                <span className="font-mono text-amber-200">
+                <span className="font-mono text-amber-200 a4-numeric-wrap">
                   1 = A,I,J,Q,Y • 2 = B,K,R • 3 = C,G,L,S • 4 = D,M,T • 5 = E,H,N,X • 6 = U,V,W • 7 = O,Z • 8 = F,P
                 </span>{' '}
                 | <strong>Step 2 (Add Digits &amp; Letters):</strong> Add every letter value + every digit to get the <strong>Compound Number</strong>, then add its digits until you get a single <strong>Root Digit (1–9)</strong>. Match with your Friendly Roots (<strong className="text-emerald-300">{mPlanet.friendlyNumbers.join(', ')}</strong>).
               </p>
+              <div className="pt-1 border-t border-sky-500/30 text-amber-100 leading-snug a4-no-clip">
+                <strong className="text-amber-300">For more details, contact Healer:</strong>{' '}
+                <strong className="text-white">{healerDisplayName}</strong>
+                {brandTitle ? <> ({brandTitle})</> : null}
+                {healerDisplayMobile ? (
+                  <>
+                    {' '}• <strong className="text-emerald-300 font-mono">📞 {healerDisplayMobile}</strong>
+                  </>
+                ) : null}
+                {healerDisplayEmail ? (
+                  <>
+                    {' '}• <strong className="text-sky-300 font-mono">✉️ {healerDisplayEmail}</strong>
+                  </>
+                ) : null}
+              </div>
             </div>
 
-            <div className="p-2 rounded-xl bg-slate-900/90 border border-emerald-500/35 text-[8.6px] text-slate-200 space-y-1">
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-emerald-500/35 text-[8.6px] text-slate-200 space-y-1 a4-list-wrap">
               <h5 className="font-serif text-[10px] font-bold text-emerald-300 uppercase">
                 2. Master Selection Rules for New Vehicles, Flats, Plots, Bank Accounts &amp; Business / Brand Names (Company &amp; Trade)
               </h5>
-              <p>
+              <p className="a4-numeric-wrap">
                 <strong>• A. Ideal Vehicle Last-4 Plate Sum &amp; Full Plate Sum:</strong> Choose registration numbers summing to <strong className="text-amber-200">{mPlanet.friendlyNumbers.join(', ')}</strong> (Compound 19, 23, 24, 27, 32, 37, 41, 45, 46). Avoid enemy roots ({mPlanet.enemyNumbers.join(', ')}).
               </p>
-              <p>
+              <p className="a4-numeric-wrap">
                 <strong>• B. Ideal Flat / House / Plot Door Number:</strong> Select door or plot numbers reducing to <strong className="text-amber-200">{bPlanet.friendlyNumbers.join(', ')}</strong>. Place a brass/copper sticker of digit <strong className="text-emerald-300">{mPlanet.friendlyNumbers[0] || m}</strong> inside the doorframe if needed.
               </p>
-              <p>
+              <p className="a4-numeric-wrap">
                 <strong>• C. Business / Brand Name (Company &amp; Trade):</strong> Ensure your company, trade, startup, or shop name sums to Compound <strong className="text-emerald-300">19 (Sun), 23 (Mercury), 24 (Venus), 32 (Mercury), 37 (Sun-Ketu), 41 (Mercury), 45 (Jupiter), or 46 (Sun)</strong> reducing to friendly roots <strong className="text-amber-200">{Array.from(new Set([m, b, ...mPlanet.friendlyNumbers])).join(', ')}</strong>.
               </p>
-              <p>
+              <p className="a4-numeric-wrap">
                 <strong>• D. Bank Account, Locker &amp; Demat Selection Rule:</strong> Prioritize bank accounts or lockers whose last 4 digits or full account sum reduce to <strong className="text-amber-200">6 (Venus), 5 (Mercury), 3 (Jupiter), or {b} (Destiny)</strong>.
               </p>
             </div>
           </div>
         ),
       });
+      trackModuleEnd('nameAndCareer', modStart_nameAndCareer);
     }
 
-    // PAGES 6–10: Advance Mobile Audit, Combined Triad, Virtual SIMs, 3x3 Grid, Present/Missing Remedies & 10-Cycle Maha Dasha
+    // MODULE 2: Advance Mobile Audit, Combined Triad, Virtual SIMs, 3x3 Grid, Present/Missing Remedies & Maha Dasha
     if (selectedSections.advanceMobileAudit) {
+      const modStart_advanceMobileAudit = trackModuleStart();
       // PAGE 6: Advance Mobile Audit, All 9 Pairs, Combined Pair Prediction & Concrete Examples
       pages.push({
         title: 'Page 6: Advance Mobile Numerology Audit, All 9 Sequential Digit Pairs & Concrete Examples',
@@ -2960,27 +3112,27 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 a4-print-grid-2">
-              <div className="p-2 rounded-xl bg-slate-950/90 border border-amber-500/30 text-[9px] space-y-1">
-                <span className="font-bold text-amber-300 uppercase block">
+            <div className="grid grid-cols-2 gap-2 a4-print-grid-2 a4-grid-safe">
+              <div className="p-2 rounded-xl bg-slate-950/90 border border-amber-500/30 text-[9px] space-y-1 a4-no-clip">
+                <span className="font-bold text-amber-300 uppercase block a4-numeric-wrap">
                   Compound {advMobile.mobileCompound} & Root {advMobile.mobileTotal} Prediction
                 </span>
-                <p className="text-slate-200 leading-snug">{advMobile.mobileTotalPrediction}</p>
-                <p className="text-emerald-300">
+                <p className="text-slate-200 leading-snug a4-no-clip">{advMobile.mobileTotalPrediction}</p>
+                <p className="text-emerald-300 a4-numeric-wrap">
                   <strong>Lucky Totals:</strong> {advMobile.recommendedMobileTotals.join(', ')} | <strong>Lucky Digits:</strong> {advMobile.luckyNumbers.join(', ')} | <strong>Unlucky:</strong> {advMobile.unluckyNumbers.join(', ')} | <strong>Neutral:</strong> {advMobile.neutralNumbers.join(', ')}
                 </p>
-                <p className="text-sky-200 leading-snug">
+                <p className="text-sky-200 leading-snug a4-no-clip">
                   <strong>Combined Pair Summary:</strong> {advMobile.combinedPairPrediction}
                 </p>
               </div>
 
-              <div className="p-2 rounded-xl bg-slate-950/90 border border-amber-500/30 text-[8.5px] space-y-0.5">
-                <span className="font-bold text-amber-300 uppercase block">
+              <div className="p-2 rounded-xl bg-slate-950/90 border border-amber-500/30 text-[8.5px] space-y-0.5 a4-list-wrap">
+                <span className="font-bold text-amber-300 uppercase block a4-numeric-wrap">
                   All {advMobile.mobileCombinations.length} Adjacent 2-Digit Cellular Pairs in {activeProfile.mobile}
                 </span>
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 a4-list-wrap">
                   {advMobile.mobileCombinations.map((pa, idx) => (
-                    <div key={idx} className="text-slate-200 leading-tight">
+                    <div key={idx} className="text-slate-200 leading-tight a4-numeric-wrap">
                       <strong className="font-mono text-amber-300">#{idx + 1} [{pa.pair}] ({pa.status.toUpperCase()}):</strong> {pa.prediction}
                     </div>
                   ))}
@@ -2988,30 +3140,30 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               </div>
             </div>
 
-            <div className="p-2 rounded-xl bg-slate-900/90 border border-emerald-500/35 space-y-1 text-[9px]">
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-emerald-500/35 space-y-1 text-[9px] a4-list-wrap">
               <h5 className="font-serif text-[10.5px] font-bold text-emerald-300 uppercase">
                 {advMobile.exampleRecommendedNumbers.length === 0
                   ? 'Perfect Mobile Frequency Result & Prescribed Wallpaper Remedy'
                   : 'Concrete Recommended Mobile Examples, Wallpaper Remedy & SIM Balancing Protocol'}
               </h5>
               {advMobile.exampleRecommendedNumbers.length === 0 ? (
-                <p className="text-emerald-200">
+                <p className="text-emerald-200 a4-numeric-wrap">
                   <strong>• Perfect Mobile Frequency Result:</strong> Your mobile number <strong>{activeProfile.mobile}</strong> (Compound {advMobile.mobileCompound} ➔ Root {advMobile.mobileTotal}) already vibrates in auspicious harmony with Mulank {m} and Bhagyank {b}. No mobile number change or suggestion is required.
                 </p>
               ) : (
                 advMobile.exampleRecommendedNumbers.map((ex, idx) => (
-                  <p key={idx} className="text-slate-200">
+                  <p key={idx} className="text-slate-200 a4-numeric-wrap">
                     <strong>• Example {idx + 1} ({ex.number}):</strong> Compound {ex.compound} ➔ Root {ex.total} — {ex.benefit}
                   </p>
                 ))
               )}
-              <p className="text-amber-200">
+              <p className="text-amber-200 a4-no-clip">
                 <strong>• Prescribed Mobile Wallpaper ({advMobile.recommendedWallpaper.title}):</strong> {advMobile.recommendedWallpaper.description} ({advMobile.recommendedWallpaper.placementAdvice})
               </p>
               {mobileAnalysis.remedies.length > 0 && (
-                <div className="grid grid-cols-2 gap-1 pt-0.5 a4-print-grid-2">
+                <div className="grid grid-cols-2 gap-1 pt-0.5 a4-print-grid-2 a4-grid-safe">
                   {mobileAnalysis.remedies.map((rem, idx) => (
-                    <div key={idx} className="p-1 rounded bg-slate-950 border border-amber-500/20 text-[8.5px] text-amber-100">
+                    <div key={idx} className="p-1 rounded bg-slate-950 border border-amber-500/20 text-[8.5px] text-amber-100 a4-no-clip">
                       ✓ {rem}
                     </div>
                   ))}
@@ -3029,39 +3181,39 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headLabel: 'Triad & Mobile Result',
         content: (
           <div className="space-y-2 text-xs">
-            <div className="p-2.5 rounded-xl bg-slate-900/95 border-2 border-amber-500/45 space-y-1.5">
-              <div className="flex items-center justify-between">
+            <div className="p-2.5 rounded-xl bg-slate-900/95 border-2 border-amber-500/45 space-y-1.5 a4-no-clip">
+              <div className="a4-flex-safe">
                 <h4 className="font-serif text-[11px] font-bold text-amber-200 uppercase">
                   1. Live Combined Name + D.O.B + Mobile Triad Synergy Audit
                 </h4>
-                <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono font-bold text-[10px]">
+                <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono font-bold text-[10px] a4-badge-wrap a4-numeric-wrap">
                   Triad {triadCompound} ➔ {triadSingle} ({triadPlanet.planet}) • {combinedTriadScore}% Synergy
                 </span>
               </div>
-              <div className="grid grid-cols-4 gap-1.5 text-[8.5px] a4-print-grid-2">
-                <div className="p-1.5 rounded bg-slate-950 border border-amber-500/25">
+              <div className="grid grid-cols-4 gap-1.5 text-[8.5px] a4-print-grid-2 a4-grid-safe">
+                <div className="p-1.5 rounded bg-slate-950 border border-amber-500/25 a4-numeric-wrap">
                   <strong className="text-amber-300 block">Mulank ({m}) ↔ Mobile ({mobileAnalysis.singleDigit})</strong>
                   <span className="text-emerald-300 font-mono">{relMulankMobile} Relationship</span>
                 </div>
-                <div className="p-1.5 rounded bg-slate-950 border border-amber-500/25">
+                <div className="p-1.5 rounded bg-slate-950 border border-amber-500/25 a4-numeric-wrap">
                   <strong className="text-amber-300 block">Bhagyank ({b}) ↔ Mobile ({mobileAnalysis.singleDigit})</strong>
                   <span className="text-emerald-300 font-mono">{relBhagyankMobile} Relationship</span>
                 </div>
-                <div className="p-1.5 rounded bg-slate-950 border border-amber-500/25">
+                <div className="p-1.5 rounded bg-slate-950 border border-amber-500/25 a4-numeric-wrap">
                   <strong className="text-amber-300 block">Name ({nameAnalysis.chaldeanSingle}) ↔ Mobile ({mobileAnalysis.singleDigit})</strong>
                   <span className="text-emerald-300 font-mono">{relNameMobile} Relationship</span>
                 </div>
-                <div className="p-1.5 rounded bg-slate-950 border border-amber-500/25">
+                <div className="p-1.5 rounded bg-slate-950 border border-amber-500/25 a4-numeric-wrap">
                   <strong className="text-amber-300 block">Mulank ({m}) ↔ Name ({nameAnalysis.chaldeanSingle})</strong>
                   <span className="text-emerald-300 font-mono">{relMulankName} Relationship</span>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-[8.8px] a4-print-grid-2">
-                <div className="p-1.5 rounded bg-emerald-950/30 border border-emerald-500/30 text-slate-200">
+              <div className="grid grid-cols-2 gap-2 text-[8.8px] a4-print-grid-2 a4-grid-safe">
+                <div className="p-1.5 rounded bg-emerald-950/30 border border-emerald-500/30 text-slate-200 a4-list-wrap">
                   <strong className="text-emerald-300 block">Combined Triad Supreme Career Sectors:</strong>
                   {combinedCareerProfile.perfectBusinesses.map((cb) => `${cb.field} (${cb.successRate}%)`).join(' • ')}
                 </div>
-                <div className="p-1.5 rounded bg-rose-950/30 border border-rose-500/30 text-slate-200">
+                <div className="p-1.5 rounded bg-rose-950/30 border border-rose-500/30 text-slate-200 a4-list-wrap">
                   <strong className="text-rose-300 block">Combined Triad Sectors to Avoid:</strong>
                   {combinedCareerProfile.veryBadBusinesses.map((vb) => `${vb.field} (${vb.conflictPlanet})`).join(' • ')}
                 </div>
@@ -3071,11 +3223,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
             {advMobile.exampleRecommendedNumbers.length === 0 &&
             !activeProfile.selectedMobileA &&
             !activeProfile.selectedMobileB ? (
-              <div className="p-2.5 rounded-xl bg-emerald-950/30 border-2 border-emerald-500/45 space-y-1 text-[9.5px]">
+              <div className="p-2.5 rounded-xl bg-emerald-950/30 border-2 border-emerald-500/45 space-y-1 text-[9.5px] a4-no-clip">
                 <h4 className="font-serif text-[11px] font-bold text-emerald-300 uppercase">
                   ★ Perfect Mobile Number Frequency Result — No SIM Change Suggestion Required
                 </h4>
-                <p className="text-slate-200 leading-snug">
+                <p className="text-slate-200 leading-snug a4-numeric-wrap">
                   Your active mobile number <strong className="text-amber-200">{activeProfile.mobile}</strong> (Compound {advMobile.mobileCompound} ➔ Root {advMobile.mobileTotal} • {mobileAnalysis.overallScore}% Cosmic Harmony) is already in auspicious planetary alignment with your Mulank {m} and Bhagyank {b}. Only your complete Triad and Mobile frequency result is displayed — no new SIM suggestions are needed.
                 </p>
               </div>
@@ -3098,16 +3250,16 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                   const mobBRes = analyzeMobileNumber(selMobB, m, b);
 
                   return (
-                    <div className="p-2 rounded-xl bg-slate-900/95 border-2 border-amber-500/45 space-y-1 text-[8.4px]">
-                      <div className="flex items-center justify-between border-b border-amber-500/25 pb-0.5">
-                        <h4 className="font-serif text-[10px] font-bold text-amber-200 uppercase">
+                    <div className="p-2 rounded-xl bg-slate-900/95 border-2 border-amber-500/45 space-y-1 text-[8.4px] a4-no-clip">
+                      <div className="a4-flex-safe border-b border-amber-500/25 pb-0.5">
+                        <h4 className="font-serif text-[10px] font-bold text-amber-200 uppercase a4-numeric-wrap">
                           ★ 3-Way Mobile Comparison: Client Original Number vs Selected Number A &amp; B (Active: {activeProfile.mobile})
                         </h4>
-                        <span className="font-mono text-emerald-300 font-bold">
+                        <span className="font-mono text-emerald-300 font-bold a4-badge-wrap">
                           Cosmic Harmony Index % &amp; Losses vs Benefits
                         </span>
                       </div>
-                      <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
+                      <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3 a4-grid-safe">
                         {[
                           { label: '1. Original Mobile', num: origMob, res: origMobRes, isOrig: true },
                           { label: '2. Selected Number A', num: selMobA, res: mobARes, isOrig: false },
@@ -3117,30 +3269,30 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                           return (
                             <div
                               key={idx}
-                              className={`p-1.5 rounded-lg border space-y-0.5 ${
+                              className={`p-1.5 rounded-lg border space-y-0.5 a4-no-clip ${
                                 isCurrent
                                   ? 'bg-emerald-950/40 border-emerald-400'
                                   : 'bg-slate-950 border-amber-500/25'
                               }`}
                             >
-                              <div className="flex items-center justify-between font-bold text-amber-200">
+                              <div className="a4-flex-safe font-bold text-amber-200">
                                 <span>{item.label}</span>
-                                <span className="font-mono text-emerald-300">
+                                <span className="font-mono text-emerald-300 a4-numeric-wrap">
                                   Harmony: {item.res.overallScore}%
                                 </span>
                               </div>
-                              <div className="font-mono font-black text-white">
+                              <div className="font-mono font-black text-white a4-numeric-wrap">
                                 {item.num} ({item.res.compoundNumber}➔{item.res.singleDigit})
                               </div>
                               {item.isOrig ? (
-                                <p className="text-rose-200 leading-tight">
+                                <p className="text-rose-200 leading-tight a4-numeric-wrap">
                                   <strong>Loss / Drawback:</strong>{' '}
                                   {item.res.toxicPairsFound.length > 0
                                     ? `Negative pairs (${item.res.toxicPairsFound.map((tp) => tp.pair).join(', ')}) cause payment delays & stress.`
                                     : `Root ${item.res.singleDigit} gives ${item.res.overallScore}% Cosmic Harmony Index.`}
                                 </p>
                               ) : (
-                                <p className="text-emerald-200 leading-tight">
+                                <p className="text-emerald-200 leading-tight a4-no-clip">
                                   <strong>Benefit / Gain:</strong> Root {item.res.singleDigit} ({PLANETARY_PROFILES[item.res.singleDigit]?.planet}) boosts cashflow, authority &amp; client conversion ({item.res.overallScore}% Harmony).
                                 </p>
                               )}
@@ -3152,11 +3304,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                   );
                 })()}
 
-                <div className="p-2 rounded-xl bg-slate-900/95 border border-emerald-500/40 space-y-1">
+                <div className="p-2 rounded-xl bg-slate-900/95 border border-emerald-500/40 space-y-1 a4-no-clip">
                   <h4 className="font-serif text-[10.5px] font-bold text-emerald-300 uppercase">
                     2. Virtual Lucky SIM Architect — All 4 Life Goals Custom SIM Blueprints for {activeProfile.name}
                   </h4>
-                  <div className="grid grid-cols-2 gap-1.5 text-[8.4px] a4-print-grid-2">
+                  <div className="grid grid-cols-2 gap-1.5 text-[8.4px] a4-print-grid-2 a4-grid-safe">
                     {[
                       {
                         goal: '1. Business & Commercial Expansion SIM',
@@ -3187,15 +3339,15 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                         benefit: 'Harmonizes domestic relationships, emotional intuition, consultation wisdom & ancestral blessings.',
                       },
                     ].map((sim, idx) => (
-                      <div key={idx} className="p-1.5 rounded-lg bg-slate-950 border border-emerald-500/30 space-y-0.5">
-                        <div className="flex items-center justify-between font-bold text-amber-200">
+                      <div key={idx} className="p-1.5 rounded-lg bg-slate-950 border border-emerald-500/30 space-y-0.5 a4-no-clip">
+                        <div className="a4-flex-safe font-bold text-amber-200">
                           <span>{sim.goal}</span>
-                          <span className="font-mono text-emerald-300">Target Root {sim.targetRoot}</span>
+                          <span className="font-mono text-emerald-300 a4-badge-wrap">Target Root {sim.targetRoot}</span>
                         </div>
-                        <div className="text-sky-300 font-mono">
+                        <div className="text-sky-300 font-mono a4-numeric-wrap">
                           Power Pairs: {sim.pairs} | Blueprint: {sim.sample}
                         </div>
-                        <p className="text-slate-300 leading-tight">{sim.benefit}</p>
+                        <p className="text-slate-300 leading-tight a4-no-clip">{sim.benefit}</p>
                       </div>
                     ))}
                   </div>
@@ -3206,15 +3358,15 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         ),
       });
 
-      // PAGE 8: Sacred 3×3 Square Lo-Shu Grid, Present Number Readings (Sepharial Vedic Grid) & All Active Chart Yogas
+      // PAGE 8 (Printed Page 11): Sacred 3×3 Square Lo-Shu Grid, Present Number Readings (Sepharial Vedic Grid) & All Active Chart Yogas
       pages.push({
         title: 'Page 8: Sacred 3×3 Square Lo-Shu Grid, Present Number Readings & All Active Chart Yogas',
         headImg: mobileLoShuGridArt,
         headLabel: '3×3 Grid & Active Yogas',
         content: (
-          <div className="space-y-2 text-xs">
-            <div className="p-2.5 rounded-xl bg-slate-900/95 border-2 border-amber-500/45 flex flex-col sm:flex-row items-center gap-3">
-              <div className="w-48 min-h-[11rem] shrink-0 p-1.5 rounded-xl bg-slate-950 border-2 border-amber-400 shadow-xl grid grid-cols-3 grid-rows-3 gap-1 text-center font-mono">
+          <div className="space-y-2.5 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-900/95 border-2 border-amber-500/45 flex flex-row items-stretch gap-3 min-w-0 a4-no-clip">
+              <div className="w-52 min-h-[12.5rem] shrink-0 p-1.5 rounded-xl bg-slate-950 border-2 border-amber-400 shadow-xl grid grid-cols-3 grid-rows-3 gap-1.5 text-center font-mono a4-grid-safe">
                 {[
                   { num: 4, dir: 'SE', label: 'Rahu (Wealth)' },
                   { num: 9, dir: 'S', label: 'Mangal (Fame)' },
@@ -3230,54 +3382,56 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                   return (
                     <div
                       key={cell.num}
-                      className={`p-1 rounded-lg border flex flex-col items-center justify-between min-w-0 overflow-hidden ${
+                      className={`p-1 rounded-lg border flex flex-col items-center justify-between min-w-0 a4-no-clip ${
                         count > 0
                           ? 'bg-amber-500/25 border-amber-400 text-amber-100'
                           : 'bg-slate-900/90 border-rose-500/35 text-slate-400'
                       }`}
                     >
-                      <span className="text-[7px] font-bold text-amber-300 leading-none">
+                      <span className="text-[7.2px] font-bold text-amber-300 leading-none">
                         {cell.dir} [{cell.num}]
                       </span>
-                      <div className="text-xs font-black leading-none my-0.5">
+                      <div className="text-[11.5px] font-black leading-tight my-0.5 w-full a4-numeric-cell">
                         {count > 0 ? (
-                          <span className="text-emerald-300">{String(cell.num).repeat(count)}</span>
+                          <span className="text-emerald-300 a4-numeric-cell">{String(cell.num).repeat(count)}</span>
                         ) : (
                           <span className="text-rose-400 text-[7.5px]">MISSING</span>
                         )}
                       </div>
-                      <div className="text-[6.4px] leading-tight break-words w-full">{cell.label}</div>
+                      <div className="text-[6.6px] leading-tight a4-no-clip w-full">{cell.label}</div>
                     </div>
                   );
                 })}
               </div>
 
-              <div className="flex-1 space-y-1 text-[9px]">
-                <h5 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
-                  Present Numbers Repetition Impact in Birth Chart (Sepharial & Lo-Shu Analysis)
+              <div className="flex-1 min-w-0 space-y-1.5 text-[9.5px] flex flex-col justify-between a4-list-wrap">
+                <h5 className="font-serif text-[11px] font-bold text-amber-200 uppercase">
+                  Present Numbers Repetition Impact in Birth Chart (Sepharial &amp; Lo-Shu Analysis)
                 </h5>
-                {advMobile.presentNumberReadings.map((pr) => (
-                  <div key={pr.number} className="p-1 rounded bg-slate-950 border border-amber-500/25">
-                    <strong className="text-emerald-300">
-                      {pr.heading} ({pr.count}x in Grid):
-                    </strong>{' '}
-                    <span className="text-slate-200">{pr.description} {pr.repetitionNote || ''}</span>
-                  </div>
-                ))}
+                <div className="space-y-1.5 flex-1 flex flex-col justify-between a4-list-wrap">
+                  {advMobile.presentNumberReadings.map((pr) => (
+                    <div key={pr.number} className="p-1.5 rounded-lg bg-slate-950 border border-amber-500/30 leading-snug a4-no-clip">
+                      <strong className="text-emerald-300">
+                        {pr.heading} ({pr.count}x in Grid):
+                      </strong>{' '}
+                      <span className="text-slate-200">{pr.description} {pr.repetitionNote || ''}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-emerald-500/40 space-y-1">
-              <h5 className="font-serif text-[10.5px] font-bold text-emerald-300 uppercase">
-                All Active 2-Digit & 3-Digit Chart Combination Yogas (Directly Below Sacred 3×3 Square Grid)
+            <div className="p-2.5 rounded-xl bg-slate-900/90 border border-emerald-500/40 space-y-1.5 a4-no-clip">
+              <h5 className="font-serif text-[11px] font-bold text-emerald-300 uppercase">
+                All Active 2-Digit &amp; 3-Digit Chart Combination Yogas (Directly Below Sacred 3×3 Square Grid)
               </h5>
-              <div className="grid grid-cols-2 gap-1.5 text-[8.5px] a4-print-grid-2">
+              <div className="grid grid-cols-2 gap-2 text-[9px] a4-print-grid-2 a4-grid-safe">
                 {advMobile.chartCombinations.map((y, idx) => (
-                  <div key={idx} className="p-1.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-100">
-                    <strong className="text-amber-200 block">
+                  <div key={idx} className="p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/35 text-emerald-100 leading-snug a4-no-clip">
+                    <strong className="text-amber-200 block a4-numeric-wrap">
                       {idx + 1}. Active {y.type} ({y.combination} — {y.title}):
                     </strong>
-                    <span>{y.paragraphs.join(' ')}</span>
+                    <span className="a4-no-clip">{y.paragraphs.join(' ')}</span>
                   </div>
                 ))}
               </div>
@@ -3293,25 +3447,25 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headLabel: 'Missing Digits Remedies',
         content: (
           <div className="space-y-1.5 text-xs">
-            <div className="p-2 rounded-xl bg-slate-900/95 border border-rose-500/40 text-[9px] text-slate-200">
-              <strong className="text-amber-300 uppercase">
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-rose-500/40 text-[9px] text-slate-200 a4-no-clip">
+              <strong className="text-amber-300 uppercase a4-numeric-wrap">
                 Complete Missing Karmic Numbers Protocol ({advMobile.missingNumberRemedies.map((mItem) => mItem.number).join(', ')}):
               </strong>{' '}
               Every missing digit in your Lo-Shu Grid represents a karmic lesson. Activate all 3 pillars (1. Wear, 2. Vastu & Feng Shui, 3. Sacred Rituals + Mantra & Charity) below.
             </div>
-            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe">
               {advMobile.missingNumberRemedies.map((mr) => {
                 const dbRem = LO_SHU_VEDIC_REMEDIES_DB[mr.number];
                 return (
                   <div
                     key={mr.number}
-                    className="p-2 rounded-xl bg-slate-950/95 border border-rose-500/30 text-[8.3px] space-y-0.5"
+                    className="p-2 rounded-xl bg-slate-950/95 border border-rose-500/30 text-[8.3px] space-y-0.5 a4-list-wrap"
                   >
-                    <div className="flex items-center justify-between font-bold text-amber-200">
+                    <div className="a4-flex-safe font-bold text-amber-200">
                       <span>
                         Missing Digit {mr.number} — {mr.planet} ({dbRem?.planet || mr.planet})
                       </span>
-                      <span className="font-mono text-sky-300">
+                      <span className="font-mono text-sky-300 a4-badge-wrap">
                         {dbRem?.direction || ''} • {dbRem?.element || ''}
                       </span>
                     </div>
@@ -3320,20 +3474,20 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                         <strong>Missing Impact:</strong> {dbRem.missingImpact}
                       </div>
                     )}
-                    <div className="text-slate-200 leading-tight">
+                    <div className="text-slate-200 leading-tight a4-list-wrap">
                       <strong>1. Wear:</strong> {mr.wear.join(' • ')} {dbRem ? `• ${dbRem.rudrakshaAndCrystal}` : ''}
                     </div>
-                    <div className="text-emerald-300 leading-tight">
+                    <div className="text-emerald-300 leading-tight a4-list-wrap">
                       <strong>2. Vastu & Feng Shui:</strong> {mr.vastuAndFengShui.join(' • ')}
                     </div>
-                    <div className="text-amber-200 leading-tight">
+                    <div className="text-amber-200 leading-tight a4-list-wrap">
                       <strong>3. Sacred Rituals:</strong> {mr.rituals.join(' • ')}
                     </div>
-                    <div className="text-purple-200 font-mono leading-tight">
+                    <div className="text-purple-200 font-mono leading-tight a4-numeric-wrap">
                       <strong>4. Sound Frequency (Hz):</strong> 🔊 {mr.soundFrequency}
                     </div>
                     {dbRem && (
-                      <div className="text-sky-200 font-mono leading-tight">
+                      <div className="text-sky-200 font-mono leading-tight a4-no-clip">
                         <strong>Mantra:</strong> {dbRem.beejMantra} ({dbRem.mantraProtocol}) | <strong>Daan:</strong> {dbRem.dailyKarmaAndDaan}
                       </div>
                     )}
@@ -3350,29 +3504,28 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         ),
       });
 
-      // PAGE 10: Complete Vedic Numerology & Astrological Vimshottari Maha Dasha Timeline — Starting from Present Active Cycle
+      // PAGE 10A: 120-Year Classical Parashari Vimshottari Maha Dasha Timeline (Dedicated Spacious Page)
       const activeVimshottari =
         advMobile.vimshottariDashaTimeline?.find((d) => d.isCurrent) ||
         advMobile.vimshottariDashaTimeline?.[0];
       pages.push({
-        title: 'Page 10: Complete Vedic Astrological (120-Yr Vimshottari) & Numerology (45-Yr) Maha Dasha Timeline — Starting from Present Active Cycle',
+        title: 'Page 10A: 120-Year Classical Parashari Vimshottari Maha Dasha Timeline — Harmony % & Vedic Remedies',
         headImg: mobileLoShuGridArt,
-        headLabel: 'Maha Dasha Timeline',
+        headLabel: '120-Yr Vimshottari Dasha',
         content: (
-          <div className="space-y-1.5 text-xs">
-            {/* A. 120-Year Classical Parashari Vimshottari Maha Dasha (Matches AstroSage / Drik Panchang) */}
-            {advMobile.janmaNakshatraSummary && advMobile.vimshottariDashaTimeline && (
-              <div className="p-2 rounded-xl bg-slate-900/95 border border-emerald-500/45 text-[8.4px] text-slate-200 space-y-1">
-                <div className="flex flex-wrap items-center justify-between gap-1">
-                  <strong className="text-emerald-300 uppercase">
-                    A. 120-Year Classical Parashari Vimshottari Maha Dasha (Janma Nakshatra: {advMobile.janmaNakshatraSummary.nakshatra} Pada {advMobile.janmaNakshatraSummary.pada} • Moon {advMobile.janmaNakshatraSummary.moonDegreeSidereal.toFixed(2)}° • Lord: {advMobile.janmaNakshatraSummary.birthDashaLord}):
+          <div className="space-y-2 text-xs">
+            {advMobile.janmaNakshatraSummary && advMobile.vimshottariDashaTimeline ? (
+              <div className="p-2.5 rounded-xl bg-slate-900/95 border border-emerald-500/45 text-[8.8px] text-slate-200 space-y-2 a4-no-clip">
+                <div className="a4-flex-safe border-b border-emerald-500/25 pb-1.5">
+                  <strong className="text-emerald-300 uppercase a4-numeric-wrap">
+                    A. 120-Year Classical Parashari Vimshottari Maha Dasha (Janma Nakshatra: {advMobile.janmaNakshatraSummary.nakshatra} Pada {advMobile.janmaNakshatraSummary.pada} • Moon {advMobile.janmaNakshatraSummary.moonDegreeSidereal.toFixed(2)}° • Lord: {advMobile.janmaNakshatraSummary.birthDashaLord})
                   </strong>
-                  <span className="font-mono text-[7.8px] text-amber-300">
+                  <span className="font-mono text-[8px] text-amber-300 a4-badge-wrap a4-numeric-wrap">
                     Birth Balance (Bhogya): {advMobile.janmaNakshatraSummary.birthDashaBalanceLabel}
                   </span>
                 </div>
                 {activeVimshottari && (
-                  <div className="p-1.5 rounded bg-emerald-950/60 border border-emerald-400/60 text-emerald-100 space-y-0.5">
+                  <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-400/60 text-emerald-100 space-y-1 a4-numeric-wrap">
                     <div>
                       <strong className="text-amber-300">
                         ★ Present Active Astrological Vimshottari Maha Dasha:
@@ -3387,36 +3540,36 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                         </span>
                       ) : null}
                     </div>
-                    <div className="text-[7.5px] text-amber-100/95">
+                    <div className="text-[8.2px] text-amber-100/95 a4-no-clip">
                       <strong className="text-amber-300">Vedic Remedy:</strong> {activeVimshottari.remedy}
                     </div>
                   </div>
                 )}
-                <div className="grid grid-cols-3 gap-1 a4-print-grid-3 text-[7.6px]">
+                <div className="grid grid-cols-3 gap-2 a4-print-grid-3 a4-grid-safe text-[8.2px]">
                   {advMobile.vimshottariDashaTimeline.map((vd, vIdx) => (
                     <div
                       key={vIdx}
-                      className={`p-1.5 rounded border space-y-0.5 ${
+                      className={`p-2 rounded-lg border space-y-1 a4-no-clip ${
                         vd.isCurrent
                           ? 'bg-amber-500/20 border-amber-400 text-amber-100'
                           : 'bg-slate-950 border-emerald-500/30 text-slate-200'
                       }`}
                     >
-                      <div className="font-bold text-amber-200 flex items-center justify-between gap-1">
+                      <div className="font-bold text-amber-200 a4-flex-safe">
                         <span>{vd.isCurrent ? '★ NOW: ' : `${vIdx + 1}. `}{vd.planet} (#{vd.dashaNumber})</span>
-                        <span className="font-mono text-[7px] text-emerald-300">
+                        <span className="font-mono text-[7.5px] text-emerald-300 a4-badge-wrap a4-numeric-wrap">
                           {vd.harmonyPercent}% • {vd.durationYears}Y
                         </span>
                       </div>
-                      <div className="font-mono text-[7px] text-sky-200">{vd.startDate} – {vd.endDate}</div>
-                      <div className="text-[6.8px] text-amber-100/90 leading-tight">
+                      <div className="font-mono text-[7.5px] text-sky-200 a4-numeric-wrap">{vd.startDate} – {vd.endDate}</div>
+                      <div className="text-[7.6px] text-amber-100/90 leading-snug a4-no-clip">
                         <strong className="text-amber-300">Remedy:</strong> {vd.remedy}
                       </div>
                     </div>
                   ))}
                 </div>
                 {advMobile.vimshottariPastCycles && advMobile.vimshottariPastCycles.length > 0 && (
-                  <div className="text-[7.5px] text-slate-300 font-mono pt-0.5">
+                  <div className="p-2 rounded-lg bg-slate-950/85 border border-slate-700 text-[8px] text-slate-300 font-mono a4-list-wrap a4-numeric-wrap">
                     <strong className="text-amber-200">Past Completed Astrological Cycles Since Birth:</strong>{' '}
                     {advMobile.vimshottariPastCycles
                       .map((p) => `${p.planet} (${p.startDate} – ${p.endDate})`)
@@ -3424,30 +3577,43 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                   </div>
                 )}
               </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-slate-900/95 border border-amber-500/40 text-amber-200 a4-no-clip">
+                Birth Nakshatra Vimshottari Maha Dasha calculated directly from sidereal lunar coordinates for {activeProfile.name} (DOB: {activeProfile.dob}).
+              </div>
             )}
+          </div>
+        ),
+      });
 
-            {/* B. 45-Year Vedic Numerology Progressive Maha Dasha Timeline — Starting from Present Active Cycle */}
-            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40 text-[8.5px] text-slate-200 space-y-1">
-              <div>
+      // PAGE 10B: 45-Year Vedic Numerology Progressive Maha Dasha Timeline — Starting from Present Active Cycle (Dedicated Spacious Page)
+      pages.push({
+        title: 'Page 10B: 45-Year Vedic Numerology Progressive Maha Dasha Timeline — Harmony % & Remedies',
+        headImg: mobileLoShuGridArt,
+        headLabel: '45-Yr Numerology Dasha',
+        content: (
+          <div className="space-y-2 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-900/95 border border-amber-500/40 text-[8.6px] text-slate-200 space-y-1.5 a4-no-clip">
+              <div className="a4-numeric-wrap">
                 <strong className="text-amber-300 uppercase">
                   B. 45-Year Vedic Numerology Progressive Maha Dasha Timeline — Starting from Present Active Cycle (DOB: {activeProfile.dob}):
                 </strong>{' '}
                 Begins with Mulank #{m} at birth (1→1y, 2→2y ... 9→9y = 45-Year Cycle). Starts directly from your <strong>★ Present Active Cycle</strong> (Dasha #{activeDasha?.dashaNumber} {activeDasha?.planet}, {activeDasha?.startDate} – {activeDasha?.endDate} • Harmony: {activeDasha?.harmonyPercent}%).
               </div>
-              <div className="grid grid-cols-3 gap-1.5 text-[7.8px] a4-print-grid-3">
-                <div className="p-1.5 rounded bg-amber-500/20 border-2 border-amber-400 text-amber-100">
+              <div className="grid grid-cols-3 gap-1.5 text-[7.8px] a4-print-grid-3 a4-grid-safe">
+                <div className="p-1.5 rounded bg-amber-500/20 border-2 border-amber-400 text-amber-100 a4-numeric-wrap">
                   <strong className="text-amber-300 uppercase block">★ 1. Present Active Cycle (Harmony: {activeDasha?.harmonyPercent}%):</strong>
                   Dasha #{activeDasha?.dashaNumber} {activeDasha?.planet} ({activeDasha?.startDate} – {activeDasha?.endDate})
                   {activeDasha?.activeAntardasha ? ` • ${activeDasha.activeAntardasha}` : ''}
                 </div>
-                <div className="p-1.5 rounded bg-emerald-950/35 border border-emerald-500/40 text-emerald-200">
+                <div className="p-1.5 rounded bg-emerald-950/35 border border-emerald-500/40 text-emerald-200 a4-list-wrap a4-numeric-wrap">
                   <strong className="text-emerald-300 uppercase block">2. Upcoming Cycles (Sequential Future):</strong>
                   {advMobile.dashaTimeline
                     .filter((d) => !d.isCurrent)
                     .map((d) => `Dasha #${d.dashaNumber} (${d.harmonyPercent}% • ${d.startDate}–${d.endDate})`)
                     .join(' • ')}
                 </div>
-                <div className="p-1.5 rounded bg-slate-950 border border-slate-700 text-slate-300">
+                <div className="p-1.5 rounded bg-slate-950 border border-slate-700 text-slate-300 a4-list-wrap a4-numeric-wrap">
                   <strong className="text-slate-200 uppercase block">3. Past Cycles (Completed Since Birth):</strong>
                   {advMobile.pastDashaCycles && advMobile.pastDashaCycles.length > 0
                     ? advMobile.pastDashaCycles
@@ -3457,22 +3623,22 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe">
               {advMobile.dashaTimeline.map((md, idx) => (
                 <div
                   key={idx}
-                  className={`p-1.5 rounded-xl border text-[7.8px] space-y-0.5 ${
+                  className={`p-2 rounded-xl border text-[8px] space-y-0.5 a4-no-clip ${
                     md.isCurrent
                       ? 'bg-amber-500/20 border-2 border-amber-400 text-amber-100'
                       : 'bg-slate-950/95 border-emerald-500/30 text-slate-200'
                   }`}
                 >
-                  <div className="flex items-center justify-between font-bold text-amber-200 gap-1">
+                  <div className="a4-flex-safe font-bold text-amber-200">
                     <span>
                       {md.isCurrent ? '★ 1. PRESENT ACTIVE' : `Cycle ${idx + 1}`}: Dasha #{md.dashaNumber} ({md.planet} • {md.durationYears}Y)
                     </span>
                     <span
-                      className={`px-1.5 py-0.5 rounded font-mono text-[7px] shrink-0 ${
+                      className={`px-1.5 py-0.5 rounded font-mono text-[7.2px] a4-badge-wrap a4-numeric-wrap ${
                         md.isCurrent
                           ? 'bg-amber-400 text-slate-950 font-black'
                           : 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
@@ -3481,8 +3647,8 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                       Harmony {md.harmonyPercent}% • {md.startDate}–{md.endDate}
                     </span>
                   </div>
-                  <p className="leading-snug">{md.paragraphs.join(' ')}</p>
-                  <div className="text-[7.2px] text-amber-200/95 bg-slate-900/80 px-1.5 py-0.5 rounded border border-amber-500/25">
+                  <p className="leading-snug a4-no-clip">{md.paragraphs.join(' ')}</p>
+                  <div className="text-[7.4px] text-amber-200/95 bg-slate-900/80 px-1.5 py-0.5 rounded border border-amber-500/25 a4-no-clip">
                     <strong className="text-amber-300">Vedic Remedy ({md.harmonyVerdict}):</strong> {md.remedy}
                   </div>
                 </div>
@@ -3491,10 +3657,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           </div>
         ),
       });
+      trackModuleEnd('advanceMobileAudit', modStart_advanceMobileAudit);
     }
 
-    // PAGES 11–13: 12-Month Monthly Forecast & 7-Day Weekly Per-Day Forecast with Mantra Chants
+    // MODULE 3: 12-Month Monthly Forecast & 7-Day Weekly Per-Day Forecast with Mantra Chants
     if (selectedSections.forecast12Months) {
+      const modStart_forecast12Months = trackModuleStart();
       pages.push({
         title: `Page 11: 12-Month Personalized Forecast — Months 1 to 6 (${reportDateRange.startFormatted} – ${reportDateRange.endFormatted})`,
         headImg: spiritualReportBanner,
@@ -3507,17 +3675,17 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               </strong>
               Calculated from Mulank {m} ({mPlanet.planet}) &amp; Bhagyank {b} ({bPlanet.planet}) — includes monthly planetary harmony %, key karmic challenges, auspicious windows, and personalized Vedic remedies.
             </div>
-            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 items-stretch">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe items-stretch">
               {reportDateRange.twelveMonths.slice(0, 6).map((item, idx) => (
                 <div
                   key={idx}
-                  className="p-2 rounded-xl bg-slate-950/92 border border-amber-500/30 flex flex-col justify-between gap-1 text-[8px] h-full"
+                  className="p-2 rounded-xl bg-slate-950/92 border border-amber-500/30 flex flex-col justify-between gap-1 text-[8px] h-full a4-no-clip"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between gap-1 border-b border-amber-500/20 pb-0.5">
+                  <div className="space-y-1 a4-no-clip">
+                    <div className="a4-flex-safe border-b border-amber-500/20 pb-0.5">
                       <span className="font-bold text-amber-200 text-[9.5px] leading-tight">{item.monthLabel}</span>
                       <span
-                        className={`px-1.5 py-0.5 rounded font-mono text-[7.4px] font-bold shrink-0 border ${
+                        className={`px-1.5 py-0.5 rounded font-mono text-[7.4px] font-bold a4-badge-wrap a4-numeric-wrap border ${
                           item.harmonyPercent >= 82
                             ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
                             : item.harmonyPercent >= 68
@@ -3528,21 +3696,21 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                         Harmony {item.harmonyPercent}% • {item.harmonyVerdict}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between gap-1 text-[7.8px]">
+                    <div className="a4-flex-safe text-[7.8px]">
                       <span className="text-emerald-300 font-semibold">
                         PM #{item.personalMonthNum} • {item.rulingPlanet}
                       </span>
-                      <span className="font-mono text-amber-400 shrink-0">{item.periodRange}</span>
+                      <span className="font-mono text-amber-400 a4-numeric-wrap">{item.periodRange}</span>
                     </div>
-                    <p className="text-slate-300 leading-snug">{item.forecastSummary}</p>
-                    <div className="p-1 rounded bg-rose-950/35 border border-rose-500/30 text-rose-200 leading-tight">
+                    <p className="text-slate-300 leading-snug a4-no-clip">{item.forecastSummary}</p>
+                    <div className="p-1 rounded bg-rose-950/35 border border-rose-500/30 text-rose-200 leading-tight a4-no-clip">
                       <strong className="text-rose-300">Month Challenges:</strong> {item.challenges}
                     </div>
-                    <div className="p-1 rounded bg-emerald-950/35 border border-emerald-500/30 text-emerald-200 leading-tight">
+                    <div className="p-1 rounded bg-emerald-950/35 border border-emerald-500/30 text-emerald-200 leading-tight a4-no-clip">
                       <strong className="text-emerald-300">Monthly Remedy:</strong> {item.remedy}
                     </div>
                   </div>
-                  <div className="pt-0.5 border-t border-slate-800 flex items-center justify-between gap-1 text-[7.3px] text-sky-300 font-mono">
+                  <div className="pt-0.5 border-t border-slate-800 a4-flex-safe text-[7.3px] text-sky-300 font-mono a4-numeric-wrap">
                     <span>{item.moonPhaseDates}</span>
                     <span className="text-amber-300">Lucky: {item.luckyDays}</span>
                   </div>
@@ -3568,17 +3736,17 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               </strong>
               During Months 7 to 12, monitor each month&apos;s harmony %, watch for the highlighted planetary challenges, and apply the prescribed monthly Vedic remedy to protect asset growth and family peace.
             </div>
-            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 items-stretch">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe items-stretch">
               {reportDateRange.twelveMonths.slice(6, 12).map((item, idx) => (
                 <div
                   key={idx}
-                  className="p-2 rounded-xl bg-slate-950/92 border border-amber-500/30 flex flex-col justify-between gap-1 text-[8px] h-full"
+                  className="p-2 rounded-xl bg-slate-950/92 border border-amber-500/30 flex flex-col justify-between gap-1 text-[8px] h-full a4-no-clip"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between gap-1 border-b border-amber-500/20 pb-0.5">
+                  <div className="space-y-1 a4-no-clip">
+                    <div className="a4-flex-safe border-b border-amber-500/20 pb-0.5">
                       <span className="font-bold text-amber-200 text-[9.5px] leading-tight">{item.monthLabel}</span>
                       <span
-                        className={`px-1.5 py-0.5 rounded font-mono text-[7.4px] font-bold shrink-0 border ${
+                        className={`px-1.5 py-0.5 rounded font-mono text-[7.4px] font-bold a4-badge-wrap a4-numeric-wrap border ${
                           item.harmonyPercent >= 82
                             ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
                             : item.harmonyPercent >= 68
@@ -3589,21 +3757,21 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                         Harmony {item.harmonyPercent}% • {item.harmonyVerdict}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between gap-1 text-[7.8px]">
+                    <div className="a4-flex-safe text-[7.8px]">
                       <span className="text-emerald-300 font-semibold">
                         PM #{item.personalMonthNum} • {item.rulingPlanet}
                       </span>
-                      <span className="font-mono text-amber-400 shrink-0">{item.periodRange}</span>
+                      <span className="font-mono text-amber-400 a4-numeric-wrap">{item.periodRange}</span>
                     </div>
-                    <p className="text-slate-300 leading-snug">{item.forecastSummary}</p>
-                    <div className="p-1 rounded bg-rose-950/35 border border-rose-500/30 text-rose-200 leading-tight">
+                    <p className="text-slate-300 leading-snug a4-no-clip">{item.forecastSummary}</p>
+                    <div className="p-1 rounded bg-rose-950/35 border border-rose-500/30 text-rose-200 leading-tight a4-no-clip">
                       <strong className="text-rose-300">Month Challenges:</strong> {item.challenges}
                     </div>
-                    <div className="p-1 rounded bg-emerald-950/35 border border-emerald-500/30 text-emerald-200 leading-tight">
+                    <div className="p-1 rounded bg-emerald-950/35 border border-emerald-500/30 text-emerald-200 leading-tight a4-no-clip">
                       <strong className="text-emerald-300">Monthly Remedy:</strong> {item.remedy}
                     </div>
                   </div>
-                  <div className="pt-0.5 border-t border-slate-800 flex items-center justify-between gap-1 text-[7.3px] text-sky-300 font-mono">
+                  <div className="pt-0.5 border-t border-slate-800 a4-flex-safe text-[7.3px] text-sky-300 font-mono a4-numeric-wrap">
                     <span>{item.moonPhaseDates}</span>
                     <span className="text-amber-300">Lucky: {item.luckyDays}</span>
                   </div>
@@ -3685,25 +3853,27 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                   mantra: 'Om Pram Preem Proum Sah Shanaischaraya Namah (108x) • Til Oil Deepdaan at Sunset',
                 },
               ].map((d, idx) => (
-                <div key={idx} className="p-1.5 rounded-lg bg-slate-950/95 border border-amber-500/25 text-[8.5px]">
-                  <div className="flex items-center justify-between font-bold text-amber-200">
+                <div key={idx} className="p-1.5 rounded-lg bg-slate-950/95 border border-amber-500/25 text-[8.5px] a4-no-clip">
+                  <div className="a4-flex-safe font-bold text-amber-200">
                     <span>{d.day}</span>
-                    <span className="font-mono text-emerald-300 text-[8px]">{d.window}</span>
+                    <span className="font-mono text-emerald-300 text-[8px] a4-numeric-wrap">{d.window}</span>
                   </div>
-                  <div className="text-slate-200 mt-0.5">
+                  <div className="text-slate-200 mt-0.5 a4-no-clip">
                     <strong>Career:</strong> {d.career} | <strong>Love:</strong> {d.love} | <strong>Vitality:</strong> {d.vitality}
                   </div>
-                  <div className="text-amber-300 font-mono text-[8px] mt-0.5">🕉️ {d.mantra}</div>
+                  <div className="text-amber-300 font-mono text-[8px] mt-0.5 a4-no-clip">🕉️ {d.mantra}</div>
                 </div>
               ))}
             </div>
           </div>
         ),
       });
+      trackModuleEnd('forecast12Months', modStart_forecast12Months);
     }
 
-    // PAGES 14–15: Audited Life Path Calendar — Best Upcoming Muhurat Timings in Next 12 Months (with Nakshatra Yoga, Rahu Kaal & Choghadiya)
+    // MODULE 4: Audited Life Path Calendar — Best Upcoming Muhurat Timings in Next 12 Months
     if (selectedSections.auditedCalendar12Months) {
+      const modStart_auditedCalendar12Months = trackModuleStart();
       pages.push({
         title: `Page 14: Best Upcoming Muhurat Timings in Next 12 Months (Part 1: Events 1–6 • ${reportDateRange.startFormatted} – ${reportDateRange.endFormatted})`,
         headImg: planetaryTransitsArt,
@@ -3714,7 +3884,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               <strong>Vedic Astrology 12-Month Event Muhurat Calendar (Part 1 — Events 1 to 6):</strong> Calculated from <strong>{reportDateRange.startFormatted}</strong> through <strong>{reportDateRange.endFormatted}</strong> for {activeProfile.name}'s Janma Rashi (<strong>{astro.rashi}</strong>), Nakshatra (<strong>{astro.nakshatra}</strong>), Mulank {m}, and Bhagyank {b}.
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-amber-500/40 bg-slate-950/95">
+            <div className="a4-table-wrap rounded-xl border border-amber-500/40 bg-slate-950/95">
               <table className="w-full table-fixed border-collapse text-left text-[8px]">
                 <thead>
                   <tr className="bg-amber-950/70 text-amber-200 border-b border-amber-500/40">
@@ -3727,22 +3897,22 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 <tbody className="divide-y divide-slate-800 text-slate-200">
                   {bestEvents12M.events12M.slice(0, 6).map((ev, idx) => (
                     <tr key={ev.id} className="align-top">
-                      <td className="py-1.5 px-1.5 font-bold text-amber-200 break-words">
+                      <td className="py-1.5 px-1.5 font-bold text-amber-200 a4-no-clip">
                         <div>{idx + 1}. {ev.title}</div>
                         <div className="text-[7.5px] text-slate-400 font-normal">{ev.category}</div>
                       </td>
-                      <td className="py-1.5 px-1.5 font-mono break-words space-y-0.5">
+                      <td className="py-1.5 px-1.5 font-mono a4-numeric-wrap space-y-0.5">
                         <div className="text-emerald-300 font-bold">{ev.bestUpcomingDate}</div>
                         <div className="text-sky-300 text-[7.5px]">{ev.bestTimeWindow}</div>
                         <div className="text-amber-200 text-[7.5px]">{ev.choghadiyaAndHora}</div>
                         <div className="text-rose-300 text-[7.5px]">Avoid Rahu: {ev.rahuKaalToAvoid}</div>
                       </td>
-                      <td className="py-1.5 px-1.5 text-slate-200 leading-snug break-words">
+                      <td className="py-1.5 px-1.5 text-slate-200 leading-snug a4-no-clip">
                         <div className="text-amber-300 font-semibold text-[7.5px] mb-0.5">{ev.nakshatraYoga}</div>
                         {ev.vedicAstrologyReason}
                       </td>
-                      <td className="py-1.5 px-1.5 break-words">
-                        <div className="text-amber-300 font-mono text-[7.5px]">
+                      <td className="py-1.5 px-1.5 a4-list-wrap">
+                        <div className="text-amber-300 font-mono text-[7.5px] a4-numeric-wrap">
                           <strong>Alt:</strong> {ev.secondaryUpcomingDates.join(' • ')}
                         </div>
                         <div className="text-emerald-200 text-[7.5px] mt-0.5 leading-snug">
@@ -3768,7 +3938,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               <strong>Vedic Astrology 12-Month Event Muhurat Calendar (Part 2 — Events 7 to 12):</strong> Complete remaining 6 auspicious event windows with Nakshatra Yoga, Choghadiya, and Rahu Kaal precautions for {activeProfile.name}.
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-amber-500/40 bg-slate-950/95">
+            <div className="a4-table-wrap rounded-xl border border-amber-500/40 bg-slate-950/95">
               <table className="w-full table-fixed border-collapse text-left text-[8px]">
                 <thead>
                   <tr className="bg-amber-950/70 text-amber-200 border-b border-amber-500/40">
@@ -3781,22 +3951,22 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 <tbody className="divide-y divide-slate-800 text-slate-200">
                   {bestEvents12M.events12M.slice(6, 12).map((ev, idx) => (
                     <tr key={ev.id} className="align-top">
-                      <td className="py-1.5 px-1.5 font-bold text-amber-200 break-words">
+                      <td className="py-1.5 px-1.5 font-bold text-amber-200 a4-no-clip">
                         <div>{idx + 7}. {ev.title}</div>
                         <div className="text-[7.5px] text-slate-400 font-normal">{ev.category}</div>
                       </td>
-                      <td className="py-1.5 px-1.5 font-mono break-words space-y-0.5">
+                      <td className="py-1.5 px-1.5 font-mono a4-numeric-wrap space-y-0.5">
                         <div className="text-emerald-300 font-bold">{ev.bestUpcomingDate}</div>
                         <div className="text-sky-300 text-[7.5px]">{ev.bestTimeWindow}</div>
                         <div className="text-amber-200 text-[7.5px]">{ev.choghadiyaAndHora}</div>
                         <div className="text-rose-300 text-[7.5px]">Avoid Rahu: {ev.rahuKaalToAvoid}</div>
                       </td>
-                      <td className="py-1.5 px-1.5 text-slate-200 leading-snug break-words">
+                      <td className="py-1.5 px-1.5 text-slate-200 leading-snug a4-no-clip">
                         <div className="text-amber-300 font-semibold text-[7.5px] mb-0.5">{ev.nakshatraYoga}</div>
                         {ev.vedicAstrologyReason}
                       </td>
-                      <td className="py-1.5 px-1.5 break-words">
-                        <div className="text-amber-300 font-mono text-[7.5px]">
+                      <td className="py-1.5 px-1.5 a4-list-wrap">
+                        <div className="text-amber-300 font-mono text-[7.5px] a4-numeric-wrap">
                           <strong>Alt:</strong> {ev.secondaryUpcomingDates.join(' • ')}
                         </div>
                         <div className="text-emerald-200 text-[7.5px] mt-0.5 leading-snug">
@@ -3811,10 +3981,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           </div>
         ),
       });
+      trackModuleEnd('auditedCalendar12Months', modStart_auditedCalendar12Months);
     }
 
-    // PAGES 16–17: All 5 Planetary Transits & Complete 12-Month Shukla Purnima / Krishna Amavasya / Ekadashi
+    // MODULE 5: All 5 Planetary Transits & Complete 12-Month Shukla Purnima / Krishna Amavasya / Ekadashi
     if (selectedSections.transitsAndMoon12Months) {
+      const modStart_transitsAndMoon12Months = trackModuleStart();
       pages.push({
         title: `Page 16: All 5 Planetary Transits & Complete 12-Month Purnima / Amavasya / Ekadashi (Part 1: Months 1–6)`,
         headImg: planetaryTransitsArt,
@@ -3825,14 +3997,14 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
                 1. All 5 Major Planetary Transits (Navagraha Gochar) for {astro.rashi} ({astro.nakshatra})
               </h4>
-              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
+              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3 a4-grid-safe">
                 {CELESTIAL_TRANSITS.map((tr, idx) => (
-                  <div key={idx} className="p-1.5 rounded-lg bg-slate-950 border border-indigo-500/30 text-[8px]">
-                    <div className="flex items-center justify-between font-bold text-amber-200">
+                  <div key={idx} className="p-1.5 rounded-lg bg-slate-950 border border-indigo-500/30 text-[8px] a4-no-clip">
+                    <div className="a4-flex-safe font-bold text-amber-200">
                       <span>{tr.planet} in {tr.sign}</span>
-                      <span className="font-mono text-sky-300">{tr.impactLevel}</span>
+                      <span className="font-mono text-sky-300 a4-badge-wrap">{tr.impactLevel}</span>
                     </div>
-                    <div className="text-[7.5px] font-mono text-slate-400">{tr.startDate} ➔ {tr.endDate}</div>
+                    <div className="text-[7.5px] font-mono text-slate-400 a4-numeric-wrap">{tr.startDate} ➔ {tr.endDate}</div>
                     <p className="text-slate-300 leading-tight mt-0.5">{tr.summary}</p>
                     <div className="text-emerald-300 font-semibold mt-0.5">Remedy: {tr.recommendation}</div>
                   </div>
@@ -3840,12 +4012,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-amber-500/40 bg-slate-950/95">
-              <div className="flex items-center justify-between bg-amber-950/60 px-2.5 py-1 border-b border-amber-500/35">
+            <div className="a4-table-wrap rounded-xl border border-amber-500/40 bg-slate-950/95">
+              <div className="a4-flex-safe bg-amber-950/60 px-2.5 py-1 border-b border-amber-500/35">
                 <h4 className="font-serif text-[10px] font-bold text-amber-200 uppercase">
                   2. Complete 12-Month Shukla Purnima / Krishna Amavasya / Ekadashi &amp; Parallel Astro Remedies (Months 1–6)
                 </h4>
-                <span className="text-[8px] font-mono text-emerald-300 font-bold">
+                <span className="text-[8px] font-mono text-emerald-300 font-bold a4-numeric-wrap">
                   {reportDateRange.startFormatted} – {reportDateRange.endFormatted}
                 </span>
               </div>
@@ -3861,19 +4033,19 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 <tbody className="divide-y divide-slate-800 text-slate-200">
                   {lunar12Months.slice(0, 6).map((mp) => (
                     <tr key={mp.monthIndex} className="align-top">
-                      <td className="py-1 px-1.5 font-bold text-amber-200 break-words">
+                      <td className="py-1 px-1.5 font-bold text-amber-200 a4-no-clip">
                         <div>{mp.monthLabel}</div>
                         <div className="text-[7.2px] font-mono text-sky-300">{mp.rulingPlanet}</div>
                       </td>
-                      <td className="py-1 px-1.5 font-mono text-[7.5px] break-words space-y-0.5">
+                      <td className="py-1 px-1.5 font-mono text-[7.5px] a4-numeric-wrap space-y-0.5">
                         <div className="text-amber-100"><strong>Purnima:</strong> {mp.shuklaPurnima}</div>
                         <div className="text-rose-200"><strong>Amavasya:</strong> {mp.krishnaAmavasya}</div>
                         <div className="text-emerald-200"><strong>Ekadashi:</strong> {mp.shuklaEkadashi} • {mp.krishnaEkadashi}</div>
                       </td>
-                      <td className="py-1 px-1.5 text-slate-200 leading-snug break-words">
+                      <td className="py-1 px-1.5 text-slate-200 leading-snug a4-no-clip">
                         {mp.astrologicalPrediction}
                       </td>
-                      <td className="py-1 px-1.5 text-emerald-300 leading-snug break-words">
+                      <td className="py-1 px-1.5 text-emerald-300 leading-snug a4-no-clip">
                         {mp.parallelRemedy}
                       </td>
                     </tr>
@@ -3891,12 +4063,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headLabel: 'Lunar Phases (Months 7–12)',
         content: (
           <div className="space-y-2 text-xs">
-            <div className="overflow-hidden rounded-xl border border-amber-500/40 bg-slate-950/95">
-              <div className="flex items-center justify-between bg-amber-950/60 px-2.5 py-1.5 border-b border-amber-500/35">
+            <div className="a4-table-wrap rounded-xl border border-amber-500/40 bg-slate-950/95">
+              <div className="a4-flex-safe bg-amber-950/60 px-2.5 py-1.5 border-b border-amber-500/35">
                 <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
                   Complete 12-Month Shukla Purnima / Krishna Amavasya / Ekadashi &amp; Parallel Astro Remedies (Months 7–12)
                 </h4>
-                <span className="text-[8.5px] font-mono text-emerald-300 font-bold">
+                <span className="text-[8.5px] font-mono text-emerald-300 font-bold a4-numeric-wrap">
                   {reportDateRange.startFormatted} – {reportDateRange.endFormatted}
                 </span>
               </div>
@@ -3912,19 +4084,19 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 <tbody className="divide-y divide-slate-800 text-slate-200">
                   {lunar12Months.slice(6, 12).map((mp) => (
                     <tr key={mp.monthIndex} className="align-top">
-                      <td className="py-1.5 px-1.5 font-bold text-amber-200 break-words">
+                      <td className="py-1.5 px-1.5 font-bold text-amber-200 a4-no-clip">
                         <div>{mp.monthLabel}</div>
                         <div className="text-[7.5px] font-mono text-sky-300 mt-0.5">{mp.rulingPlanet}</div>
                       </td>
-                      <td className="py-1.5 px-1.5 font-mono text-[7.8px] break-words space-y-0.5">
+                      <td className="py-1.5 px-1.5 font-mono text-[7.8px] a4-numeric-wrap space-y-0.5">
                         <div className="text-amber-100"><strong>Purnima:</strong> {mp.shuklaPurnima}</div>
                         <div className="text-rose-200"><strong>Amavasya:</strong> {mp.krishnaAmavasya}</div>
                         <div className="text-emerald-200"><strong>Ekadashi:</strong> {mp.shuklaEkadashi} • {mp.krishnaEkadashi}</div>
                       </td>
-                      <td className="py-1.5 px-1.5 text-slate-200 leading-snug break-words">
+                      <td className="py-1.5 px-1.5 text-slate-200 leading-snug a4-no-clip">
                         {mp.astrologicalPrediction}
                       </td>
-                      <td className="py-1.5 px-1.5 text-emerald-300 leading-snug break-words">
+                      <td className="py-1.5 px-1.5 text-emerald-300 leading-snug a4-no-clip">
                         {mp.parallelRemedy}
                       </td>
                     </tr>
@@ -3956,10 +4128,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           </div>
         ),
       });
+      trackModuleEnd('transitsAndMoon12Months', modStart_transitsAndMoon12Months);
     }
 
-    // PAGE 18: Daily Vedic Mantras (All 4 Time-Phase Mantras with Mala, Mudra & Meaning) & Complete 9-Planet Navagraha Table
+    // MODULE 6: Daily Vedic Mantras & Complete 9-Planet Navagraha Table
     if (selectedSections.dailyMantras) {
+      const modStart_dailyMantras = trackModuleStart();
       pages.push({
         title: 'Page 18: All 4 Daily Time-Phase Vedic Mantras (Mala, Mudra, Meaning) & 9-Planet Navagraha Reference',
         headImg: chakraHealingArt,
@@ -4014,11 +4188,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                     <div className="text-sky-300 font-mono text-[7.8px] leading-snug">{mCard.malaMudra}</div>
                     <p className="text-slate-300 leading-snug">{mCard.meaning}</p>
                   </div>
-                  <div className="mt-auto pt-1 border-t border-purple-500/30 flex items-center justify-between gap-1.5">
+                  <div className="mt-auto pt-1 border-t border-purple-500/30 a4-flex-safe">
                     <span className="text-[7.2px] uppercase tracking-wider text-purple-300 font-bold">
                       Sound Frequency (Hz)
                     </span>
-                    <span className="px-1.5 py-0.5 rounded bg-purple-950 border border-purple-500/50 text-purple-100 font-mono text-[7.5px] font-bold">
+                    <span className="px-1.5 py-0.5 rounded bg-purple-950 border border-purple-500/50 text-purple-100 font-mono text-[7.5px] font-bold a4-badge-wrap a4-numeric-wrap">
                       🔊 {mCard.soundHz}
                     </span>
                   </div>
@@ -4026,26 +4200,26 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               ))}
             </div>
 
-            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 space-y-1">
+            <div className="p-2 rounded-xl bg-slate-900/90 border border-amber-500/35 space-y-1 a4-no-clip">
               <h4 className="font-serif text-[10.5px] font-bold text-amber-200">
                 Complete 9-Planet (Navagraha) Vedic Beej Mantra, Sound Frequency (Hz), Deity, Gemstone &amp; Lucky Day Table
               </h4>
-              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3 items-stretch">
+              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3 a4-grid-safe items-stretch">
                 {Object.values(PLANETARY_PROFILES).map((p) => (
                   <div
                     key={p.number}
-                    className="p-1.5 rounded-lg bg-slate-950 border border-amber-500/25 text-[7.9px] flex flex-col justify-between gap-1 h-full"
+                    className="p-1.5 rounded-lg bg-slate-950 border border-amber-500/25 text-[7.9px] flex flex-col justify-between gap-1 h-full a4-no-clip"
                   >
-                    <div className="space-y-0.5">
+                    <div className="space-y-0.5 a4-no-clip">
                       <div className="font-bold text-amber-200 leading-snug">
                         #{p.number} {p.planet} ({p.sanskritName}) • {p.deity}
                       </div>
                       <div className="text-emerald-300 font-serif leading-snug">{p.beejMantra}</div>
-                      <div className="text-slate-300 leading-snug">
+                      <div className="text-slate-300 leading-snug a4-list-wrap">
                         Stone: {p.gemstone} • Days: {p.luckyDays.join(', ')} • Color: {p.luckyColor}
                       </div>
                     </div>
-                    <div className="mt-auto pt-0.5 border-t border-purple-500/25 text-purple-200 font-mono text-[7.3px] font-semibold">
+                    <div className="mt-auto pt-0.5 border-t border-purple-500/25 text-purple-200 font-mono text-[7.3px] font-semibold a4-numeric-wrap">
                       🔊 {p.soundFrequencyHz || '432 Hz'}
                     </div>
                   </div>
@@ -4055,10 +4229,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           </div>
         ),
       });
+      trackModuleEnd('dailyMantras', modStart_dailyMantras);
     }
 
-    // PAGES: Vedic Yoga, Pranayama, Visual Posture Diagrams & 7-Day Weekly Planner
+    // MODULE 7: Vedic Yoga, Pranayama, Visual Posture Diagrams & 7-Day Weekly Planner
     if (selectedSections.yogaAndPranayama) {
+      const modStart_yogaAndPranayama = trackModuleStart();
       const galleryAsanas = yogaPlan.dailyAsanas.slice(0, 6);
       pages.push({
         title: `Page 18A: Vedic Yoga & Pranayama Blueprint — Visual Posture Gallery, Breathing & Health Remedies`,
@@ -4066,17 +4242,17 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headLabel: 'Yoga & Pranayama',
         content: (
           <div className="space-y-1.5 text-xs">
-            <div className="p-1.5 rounded-xl bg-slate-900/95 border border-emerald-500/40 text-[8.3px] text-slate-200 space-y-0.5">
-              <div className="flex items-center justify-between gap-2 font-bold text-amber-200">
+            <div className="p-1.5 rounded-xl bg-slate-900/95 border border-emerald-500/40 text-[8.3px] text-slate-200 space-y-0.5 a4-no-clip">
+              <div className="a4-flex-safe font-bold text-amber-200">
                 <span>
                   Vedic Chikitsa-Jyotish Yoga &amp; Pranayama Blueprint for {activeProfile.name}
                 </span>
-                <span className="font-mono text-emerald-300 shrink-0">
+                <span className="font-mono text-emerald-300 a4-badge-wrap">
                   {yogaPlan.primaryChakra} • {yogaPlan.secondaryChakra}
                 </span>
               </div>
               <p className="leading-snug text-slate-300">{yogaPlan.dominantDoshaConstitution}</p>
-              <div className="text-amber-300 font-mono text-[7.6px]">
+              <div className="text-amber-300 font-mono text-[7.6px] a4-list-wrap">
                 <strong>Selected Health Focus:</strong>{' '}
                 {yogaPlan.selectedHealthConcerns.length > 0
                   ? yogaPlan.selectedHealthConcerns.map((hc) => hc.label).join(' • ')
@@ -4088,29 +4264,29 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               <h5 className="font-serif text-[9.5px] font-bold text-amber-200 uppercase">
                 1. Visual Yoga Posture Card Gallery (Birth Chart &amp; Selected Health Prescriptions — All {galleryAsanas.length} Asanas)
               </h5>
-              <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 items-stretch">
+              <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe items-stretch">
                 {galleryAsanas.map((asana, idx) => (
                   <div
                     key={asana.id}
-                    className="p-1.5 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[7.5px] flex gap-2 items-start h-full"
+                    className="p-1.5 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[7.5px] flex gap-2 items-start h-full a4-no-clip"
                   >
                     <YogaPostureIllustration
                       diagramType={asana.diagramType}
                       chakraColor={asana.chakraColor}
                       className="w-14 h-14 shrink-0"
                     />
-                    <div className="space-y-0.5 min-w-0 flex-1 text-left">
+                    <div className="space-y-0.5 min-w-0 flex-1 text-left a4-no-clip">
                       <div className="font-bold text-amber-200 leading-tight">
                         {idx + 1}. {asana.sanskritName} ({asana.englishName})
                       </div>
-                      <div className="text-emerald-300 font-mono text-[7.1px]">
+                      <div className="text-emerald-300 font-mono text-[7.1px] a4-numeric-wrap">
                         {asana.durationOrReps} • {asana.targetChakra}
                       </div>
                       <div className="text-sky-200 leading-tight">{asana.astrologicalReason}</div>
-                      <div className="text-slate-300 leading-tight">
+                      <div className="text-slate-300 leading-tight a4-list-wrap">
                         <strong>Steps:</strong> {asana.stepByStepAlignment.slice(0, 2).join(' ')}
                       </div>
-                      <div className="text-amber-200 leading-tight">
+                      <div className="text-amber-200 leading-tight a4-list-wrap">
                         <strong>Benefits:</strong> {asana.therapeuticBenefits.join(' • ')}
                       </div>
                     </div>
@@ -4123,31 +4299,31 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               <h5 className="font-serif text-[10px] font-bold text-emerald-300 uppercase">
                 2. Prescribed Daily Pranayama Breathing &amp; Hasta Mudra Protocols
               </h5>
-              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3">
+              <div className="grid grid-cols-3 gap-1.5 a4-print-grid-3 a4-grid-safe">
                 {yogaPlan.dailyPranayamas.map((prana, idx) => (
                   <div
                     key={prana.id}
-                    className="p-1.5 rounded-xl bg-slate-950/95 border border-emerald-500/30 text-[8px] space-y-0.5"
+                    className="p-1.5 rounded-xl bg-slate-950/95 border border-emerald-500/30 text-[8px] space-y-0.5 a4-no-clip"
                   >
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <PranayamaIllustration
                         diagramType={prana.diagramType}
                         className="w-10 h-10 shrink-0"
                       />
-                      <div>
+                      <div className="min-w-0 flex-1 a4-no-clip">
                         <div className="font-bold text-amber-200">
                           {idx + 1}. {prana.sanskritName}
                         </div>
-                        <div className="text-[7.5px] text-emerald-300 font-mono">
+                        <div className="text-[7.5px] text-emerald-300 font-mono a4-numeric-wrap">
                           {prana.roundsAndDuration}
                         </div>
                       </div>
                     </div>
-                    <div className="text-sky-200 font-mono text-[7.5px]">
+                    <div className="text-sky-200 font-mono text-[7.5px] a4-numeric-wrap">
                       Ratio: {prana.breathingRatio} • {prana.mudraAndBandha}
                     </div>
-                    <p className="text-slate-300 leading-tight">{prana.stepByStepTechnique.join(' ')}</p>
-                    <div className="text-amber-300 font-mono text-[7.5px]">
+                    <p className="text-slate-300 leading-tight a4-no-clip">{prana.stepByStepTechnique.join(' ')}</p>
+                    <div className="text-amber-300 font-mono text-[7.5px] a4-no-clip">
                       Mantra: {prana.beejMantra}
                     </div>
                   </div>
@@ -4164,12 +4340,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headLabel: '7-Day Yoga Planner',
         content: (
           <div className="space-y-2 text-xs">
-            <div className="overflow-hidden rounded-xl border border-amber-500/40 bg-slate-950/95">
-              <div className="flex items-center justify-between bg-amber-950/60 px-2.5 py-1 border-b border-amber-500/35">
+            <div className="a4-table-wrap rounded-xl border border-amber-500/40 bg-slate-950/95">
+              <div className="a4-flex-safe bg-amber-950/60 px-2.5 py-1 border-b border-amber-500/35">
                 <h4 className="font-serif text-[10px] font-bold text-amber-200 uppercase">
                   7-Day Weekly Yoga &amp; Pranayama Schedule (Tailored to Mulank {m}, Bhagyank {b} &amp; {astro.rashi})
                 </h4>
-                <span className="text-[8px] font-mono text-emerald-300 font-bold">
+                <span className="text-[8px] font-mono text-emerald-300 font-bold a4-badge-wrap">
                   Daily Practice Tracker
                 </span>
               </div>
@@ -4185,22 +4361,22 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 <tbody className="divide-y divide-slate-800 text-slate-200">
                   {yogaPlan.weeklyPlanner.map((dayItem, idx) => (
                     <tr key={idx} className="align-top">
-                      <td className="py-1.5 px-1.5 font-bold text-amber-200 break-words">
+                      <td className="py-1.5 px-1.5 font-bold text-amber-200 a4-no-clip">
                         <div>☐ {dayItem.dayName}</div>
                         <div className="text-[7.2px] text-sky-300 font-mono">{dayItem.hindiDay} • {dayItem.rulingPlanet}</div>
                       </td>
-                      <td className="py-1.5 px-1.5 break-words">
+                      <td className="py-1.5 px-1.5 a4-list-wrap">
                         {dayItem.morningAsanas.map((ma, mIdx) => (
                           <div key={mIdx} className="text-emerald-300 font-semibold">
                             • {ma.sanskritName} ({ma.duration})
                           </div>
                         ))}
                       </td>
-                      <td className="py-1.5 px-1.5 break-words">
+                      <td className="py-1.5 px-1.5 a4-no-clip">
                         <div className="font-bold text-amber-100">{dayItem.pranayamaPractice.name} ({dayItem.pranayamaPractice.rounds})</div>
                         <div className="text-[7.2px] text-sky-300">{dayItem.mudraAndMantra.mudra}</div>
                       </td>
-                      <td className="py-1.5 px-1.5 break-words space-y-0.5">
+                      <td className="py-1.5 px-1.5 a4-no-clip space-y-0.5">
                         <div className="text-slate-200">{dayItem.themeTitle} — {dayItem.personalChartSynergy}</div>
                         <div className="text-amber-300 font-mono text-[7.2px]">{dayItem.mudraAndMantra.mantra}</div>
                       </td>
@@ -4210,13 +4386,13 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               </table>
             </div>
 
-            <div className="p-2 rounded-xl bg-emerald-950/25 border border-emerald-500/35 text-[8.8px] text-slate-200 space-y-1">
+            <div className="p-2 rounded-xl bg-emerald-950/25 border border-emerald-500/35 text-[8.8px] text-slate-200 space-y-1 a4-no-clip">
               <strong className="text-emerald-300 uppercase block">
                 Ayurvedic Dinacharya, Pranic Hydration &amp; Yoga Sadhana Rules for {activeProfile.name}:
               </strong>
-              <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+              <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe">
                 {yogaPlan.ayurvedicAharaTips.map((tip, idx) => (
-                  <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-emerald-500/25 text-[8.2px]">
+                  <div key={idx} className="p-1.5 rounded bg-slate-950/90 border border-emerald-500/25 text-[8.2px] a4-no-clip">
                     ✓ {tip}
                   </div>
                 ))}
@@ -4225,10 +4401,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           </div>
         ),
       });
+      trackModuleEnd('yogaAndPranayama', modStart_yogaAndPranayama);
     }
 
-    // PAGES 19–21: Complete Partner Milan (Groom & Bride Natal Table + Visual Ashtakoot Guna Milan Chart Box + All 8 Koota Details 1-8 + All 9 Chakras Full Diagnostics & Remedies)
+    // MODULE 8: Complete Partner Milan (Groom & Bride Natal Table + Visual Ashtakoot + All 9 Chakras + Couple Ratna)
     if (selectedSections.partnerMilanChakras) {
+      const modStart_partnerMilanChakras = trackModuleStart();
       // PAGE 19: Groom & Bride Complete Natal Details + Visual Ashtakoot Guna Milan Chart Box + Marital Name Harmonizer
       pages.push({
         title: `Page 19: Partner Milan — Groom (${groomProfile.name}) & Bride (${brideProfile.name}) Details & Ashtakoot Guna Milan Chart`,
@@ -4236,12 +4414,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headLabel: 'Ashtakoot Milan Chart',
         content: (
           <div className="space-y-1.5 text-xs">
-            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40">
-              <div className="flex items-center justify-between mb-1">
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40 a4-table-wrap">
+              <div className="a4-flex-safe mb-1">
                 <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
                   1. Groom ({groomProfile.name}) &amp; Bride ({brideProfile.name}) Complete Birth &amp; Astrological Details
                 </h4>
-                <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono font-bold text-[9.5px]">
+                <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono font-bold text-[9.5px] a4-badge-wrap a4-numeric-wrap">
                   Total Ashtakoot Score: {partnerMilan.totalPoints}/36 Gunas ({partnerMilan.overallPercentage}%) • {partnerMilan.verdict}
                 </span>
               </div>
@@ -4256,35 +4434,35 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 <tbody className="divide-y divide-slate-800 bg-slate-950/90 text-slate-200">
                   <tr>
                     <td className="py-0.5 px-1.5 font-semibold text-amber-400">Name &amp; Namank</td>
-                    <td className="py-0.5 px-1.5 font-mono">{groomProfile.name} (Comp {groomNameAnalysis.totalChaldeanCompound} ➔ Root {groomNameAnalysis.chaldeanSingle})</td>
-                    <td className="py-0.5 px-1.5 font-mono">{brideProfile.name} (Comp {brideNameAnalysis.totalChaldeanCompound} ➔ Root {brideNameAnalysis.chaldeanSingle})</td>
+                    <td className="py-0.5 px-1.5 font-mono a4-numeric-wrap">{groomProfile.name} (Comp {groomNameAnalysis.totalChaldeanCompound} ➔ Root {groomNameAnalysis.chaldeanSingle})</td>
+                    <td className="py-0.5 px-1.5 font-mono a4-numeric-wrap">{brideProfile.name} (Comp {brideNameAnalysis.totalChaldeanCompound} ➔ Root {brideNameAnalysis.chaldeanSingle})</td>
                   </tr>
                   <tr>
                     <td className="py-0.5 px-1.5 font-semibold text-amber-400">DOB, Time &amp; Place</td>
-                    <td className="py-0.5 px-1.5 font-mono">{groomProfile.dob} • {formatTime12HourAmPm(groomProfile.tob)} • {groomProfile.pob}</td>
-                    <td className="py-0.5 px-1.5 font-mono">{brideProfile.dob} • {formatTime12HourAmPm(brideProfile.tob)} • {brideProfile.pob}</td>
+                    <td className="py-0.5 px-1.5 font-mono a4-numeric-wrap">{groomProfile.dob} • {formatTime12HourAmPm(groomProfile.tob)} • {groomProfile.pob}</td>
+                    <td className="py-0.5 px-1.5 font-mono a4-numeric-wrap">{brideProfile.dob} • {formatTime12HourAmPm(brideProfile.tob)} • {brideProfile.pob}</td>
                   </tr>
                   <tr>
                     <td className="py-0.5 px-1.5 font-semibold text-amber-400">Mulank &amp; Bhagyank</td>
-                    <td className="py-0.5 px-1.5">Mulank {partnerMilan.p1Mulank} ({groomMulankPlanet.planet}) • Bhagyank {partnerMilan.p1Bhagyank} ({groomBhagyankPlanet.planet})</td>
-                    <td className="py-0.5 px-1.5">Mulank {partnerMilan.p2Mulank} ({brideMulankPlanet.planet}) • Bhagyank {partnerMilan.p2Bhagyank} ({brideBhagyankPlanet.planet})</td>
+                    <td className="py-0.5 px-1.5 a4-numeric-wrap">Mulank {partnerMilan.p1Mulank} ({groomMulankPlanet.planet}) • Bhagyank {partnerMilan.p1Bhagyank} ({groomBhagyankPlanet.planet})</td>
+                    <td className="py-0.5 px-1.5 a4-numeric-wrap">Mulank {partnerMilan.p2Mulank} ({brideMulankPlanet.planet}) • Bhagyank {partnerMilan.p2Bhagyank} ({brideBhagyankPlanet.planet})</td>
                   </tr>
                   <tr>
                     <td className="py-0.5 px-1.5 font-semibold text-amber-400">Rashi, Sun &amp; Nakshatra</td>
-                    <td className="py-0.5 px-1.5 text-emerald-300">{partnerMilan.p1Astrology.rashi} (Sun: {partnerMilan.p1Astrology.sunSign}) • {partnerMilan.p1Astrology.nakshatra} (Pada {partnerMilan.p1Astrology.pada})</td>
-                    <td className="py-0.5 px-1.5 text-emerald-300">{partnerMilan.p2Astrology.rashi} (Sun: {partnerMilan.p2Astrology.sunSign}) • {partnerMilan.p2Astrology.nakshatra} (Pada {partnerMilan.p2Astrology.pada})</td>
+                    <td className="py-0.5 px-1.5 text-emerald-300 a4-no-clip">{partnerMilan.p1Astrology.rashi} (Sun: {partnerMilan.p1Astrology.sunSign}) • {partnerMilan.p1Astrology.nakshatra} (Pada {partnerMilan.p1Astrology.pada})</td>
+                    <td className="py-0.5 px-1.5 text-emerald-300 a4-no-clip">{partnerMilan.p2Astrology.rashi} (Sun: {partnerMilan.p2Astrology.sunSign}) • {partnerMilan.p2Astrology.nakshatra} (Pada {partnerMilan.p2Astrology.pada})</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
             {/* Exact 7-Column Ashtakoot Guna Milan Summary Box */}
-            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40">
-              <div className="flex items-center justify-between mb-1">
+            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40 a4-table-wrap">
+              <div className="a4-flex-safe mb-1">
                 <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
                   2. Ashtakoot Koota (Dimension) + Marital Domain + Max Gunas + Obtained Gunas + Visual Guna Milan Chart + Verdict
                 </h4>
-                <span className="text-[8px] font-mono text-amber-300">
+                <span className="text-[8px] font-mono text-amber-300 a4-numeric-wrap">
                   18+ Gunas = Auspicious • 24+ = Very Good • 28+ = Uttam Milan
                 </span>
               </div>
@@ -4382,8 +4560,8 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                 brideProfile.name
               );
               return (
-                <div className="p-2 rounded-xl bg-purple-950/35 border border-purple-400/50 flex items-center justify-between gap-2 text-[8.2px]">
-                  <div>
+                <div className="p-2 rounded-xl bg-purple-950/35 border border-purple-400/50 a4-flex-safe text-[8.2px] a4-no-clip">
+                  <div className="min-w-0 flex-1 a4-list-wrap">
                     <strong className="text-purple-200 uppercase block text-[8.5px]">
                       9-Chakra Harmony Overall Score ({groomProfile.name} &amp; {brideProfile.name})
                     </strong>
@@ -4393,11 +4571,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                         : 'All 9 Chakras are naturally balanced and harmonious.'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="px-2 py-1 rounded-lg bg-slate-950 border border-purple-400/50 text-amber-200 font-mono font-black text-[9.5px]">
+                  <div className="flex flex-wrap items-center gap-1.5 a4-badge-wrap">
+                    <span className="px-2 py-1 rounded-lg bg-slate-950 border border-purple-400/50 text-amber-200 font-mono font-black text-[9.5px] a4-numeric-wrap">
                       {pInsights.overallNineChakraScore}% Harmony
                     </span>
-                    <span className="px-2 py-1 rounded-lg bg-rose-950/80 border border-rose-400/50 text-rose-200 font-mono font-bold text-[8.5px]">
+                    <span className="px-2 py-1 rounded-lg bg-rose-950/80 border border-rose-400/50 text-rose-200 font-mono font-bold text-[8.5px] a4-numeric-wrap">
                       {pInsights.chakrasNeedingRemediesCount} / 9 Chakras Need Remedies
                     </span>
                   </div>
@@ -4406,11 +4584,11 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
             })()}
 
             {/* Width-Wise 3-Column Marital Name Vibration Harmonizer */}
-            <div className="grid grid-cols-3 gap-1.5 text-[8px] a4-print-grid-3">
+            <div className="grid grid-cols-3 gap-1.5 text-[8px] a4-print-grid-3 a4-grid-safe">
               {partnerMilan.perfectNameSuggestions.slice(0, 2).map((item, idx) => (
                 <div
                   key={idx}
-                  className={`p-1.5 rounded-xl bg-slate-950/95 border text-slate-200 ${
+                  className={`p-1.5 rounded-xl bg-slate-950/95 border text-slate-200 a4-no-clip ${
                     idx === 0 ? 'border-amber-500/30' : 'border-rose-500/30'
                   }`}
                 >
@@ -4420,7 +4598,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                   Natal: {item.currentName} ➔ Comp {item.compound} (Root {item.root} • {item.title}) — {item.maritalBenefit}
                 </div>
               ))}
-              <div className="p-1.5 rounded-xl bg-emerald-950/35 border border-emerald-500/40 text-emerald-100">
+              <div className="p-1.5 rounded-xl bg-emerald-950/35 border border-emerald-500/40 text-emerald-100 a4-no-clip">
                 <strong className="text-emerald-300 uppercase block">Joint Couple Resonance Verdict:</strong>
                 {partnerMilan.summary}
               </div>
@@ -4436,39 +4614,39 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headLabel: '1–8 Koota Diagnostics',
         content: (
           <div className="space-y-1.5 text-xs">
-            <div className="p-1.5 rounded-xl bg-slate-900/95 border border-amber-500/40 text-[8.4px] text-slate-200">
+            <div className="p-1.5 rounded-xl bg-slate-900/95 border border-amber-500/40 text-[8.4px] text-slate-200 a4-no-clip">
               <strong className="text-amber-300 uppercase">
                 Complete 1 to 8 Ashtakoot Koota Deep Analysis &amp; Groom/Bride Remedies ({groomProfile.name} &amp; {brideProfile.name}):
               </strong>{' '}
               Includes Kootas 1 to 5 (<strong>1. Varna, 2. Vashya, 3. Tara, 4. Yoni, 5. Graha Maitri</strong>) and Kootas 6 to 8 (<strong>6. Gana, 7. Bhakoot, 8. Nadi</strong>) arranged width-wise in 2 columns with Groom, Bride, and Joint remedies.
             </div>
-            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe">
               {partnerMilan.dimensions.map((dim, idx) => {
                 const pct = Math.round((dim.obtainedPoints / Math.max(1, dim.maxPoints)) * 100);
                 return (
                   <div
                     key={idx}
-                    className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/35 text-[8px] space-y-0.5"
+                    className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/35 text-[8px] space-y-0.5 a4-no-clip"
                   >
-                    <div className="flex items-center justify-between font-bold text-amber-200">
+                    <div className="a4-flex-safe font-bold text-amber-200">
                       <span>
                         Koota {idx + 1}: {dim.name} ({dim.sanskritName})
                       </span>
-                      <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-amber-200 font-mono text-[7.5px]">
+                      <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/40 text-amber-200 font-mono text-[7.5px] a4-badge-wrap a4-numeric-wrap">
                         {dim.obtainedPoints}/{dim.maxPoints} Gunas ({pct}%) • {dim.verdict}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-amber-300/90 font-semibold">
+                    <div className="a4-flex-safe text-amber-300/90 font-semibold">
                       <span>Domain: {dim.description}</span>
                       {dim.soundFrequencyHz && (
-                        <span className="text-purple-300 font-mono text-[7.5px]">🔊 {dim.soundFrequencyHz}</span>
+                        <span className="text-purple-300 font-mono text-[7.5px] a4-numeric-wrap">🔊 {dim.soundFrequencyHz}</span>
                       )}
                     </div>
                     <p className="text-slate-200 leading-snug">{dim.detailedAnalysis}</p>
                     <div className="text-emerald-300 leading-snug">
                       <strong>Vedic Koota Remedy:</strong> {dim.remedy}
                     </div>
-                    <div className="grid grid-cols-2 gap-1 pt-0.5 text-[7.6px] a4-print-grid-2">
+                    <div className="grid grid-cols-2 gap-1 pt-0.5 text-[7.6px] a4-print-grid-2 a4-grid-safe">
                       <div className="p-1 rounded bg-sky-950/40 border border-sky-500/30 text-sky-200">
                         <strong className="text-sky-300">Groom ({groomProfile.name}):</strong> {dim.groomRemedy}
                       </div>
@@ -4494,15 +4672,15 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headLabel: 'Chakras 1–5 Diagnostics',
         content: (
           <div className="space-y-1.5 text-xs">
-            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 items-stretch">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe items-stretch">
               {partnerMilan.chakraChallenges.slice(0, 5).map((ch, idx) => (
                 <div
                   key={idx}
-                  className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/35 text-[7.8px] leading-snug flex flex-col justify-between gap-1 h-full text-left"
+                  className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/35 text-[7.8px] leading-snug flex flex-col justify-between gap-1 h-full text-left a4-no-clip"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-start justify-between gap-1.5 border-b border-amber-500/25 pb-1">
-                      <div className="min-w-0">
+                  <div className="space-y-1 a4-no-clip">
+                    <div className="a4-flex-safe items-start border-b border-amber-500/25 pb-1">
+                      <div className="min-w-0 flex-1">
                         <div className="font-serif font-bold text-amber-200 text-[8.8px] leading-tight">
                           {idx + 1}. {ch.chakraName}
                         </div>
@@ -4511,7 +4689,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                         </div>
                       </div>
                       <span
-                        className={`px-1.5 py-0.5 rounded font-mono text-[7.2px] font-bold shrink-0 border ${
+                        className={`px-1.5 py-0.5 rounded font-mono text-[7.2px] font-bold a4-badge-wrap a4-numeric-wrap border ${
                           ch.alignmentScore >= 75
                             ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
                             : ch.alignmentScore >= 55
@@ -4552,8 +4730,8 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                     </div>
                   </div>
 
-                  <div className="mt-auto pt-1 border-t border-amber-500/25 grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono text-[7.1px] text-amber-200">
-                    <div>
+                  <div className="mt-auto pt-1 border-t border-amber-500/25 grid grid-cols-2 gap-x-2 gap-y-0.5 font-mono text-[7.1px] text-amber-200 a4-grid-safe">
+                    <div className="a4-numeric-wrap">
                       <strong className="text-purple-300">Sound:</strong> 🔊 {ch.soundFrequencyHz || '528 Hz'}
                     </div>
                     <div>
@@ -4580,15 +4758,15 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headLabel: 'Chakras 6–9 Diagnostics',
         content: (
           <div className="space-y-1.5 text-xs">
-            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 items-stretch">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe items-stretch">
               {partnerMilan.chakraChallenges.slice(5, 9).map((ch, idx) => (
                 <div
                   key={idx}
-                  className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/35 text-[7.8px] leading-snug flex flex-col justify-between gap-1 h-full text-left"
+                  className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/35 text-[7.8px] leading-snug flex flex-col justify-between gap-1 h-full text-left a4-no-clip"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-start justify-between gap-1.5 border-b border-amber-500/25 pb-1">
-                      <div className="min-w-0">
+                  <div className="space-y-1 a4-no-clip">
+                    <div className="a4-flex-safe items-start border-b border-amber-500/25 pb-1">
+                      <div className="min-w-0 flex-1">
                         <div className="font-serif font-bold text-amber-200 text-[8.8px] leading-tight">
                           {idx + 6}. {ch.chakraName}
                         </div>
@@ -4597,7 +4775,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                         </div>
                       </div>
                       <span
-                        className={`px-1.5 py-0.5 rounded font-mono text-[7.2px] font-bold shrink-0 border ${
+                        className={`px-1.5 py-0.5 rounded font-mono text-[7.2px] font-bold a4-badge-wrap a4-numeric-wrap border ${
                           ch.alignmentScore >= 75
                             ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
                             : ch.alignmentScore >= 55
@@ -4668,144 +4846,230 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         ),
       });
 
-      // PAGE 21B: Precious Stone Recommendation for Relationship Harmony (Bride & Groom) with Complete Step-by-Step Guide & Joint Couple Relationship Harmony & Bedroom Crystal Synergy
+      // PAGE 21B: Partner Milan — Relationship Harmony Verdict & Groom's Full Step-by-Step Precious Stone Guide
       pages.push({
-        title: `Page 21B: Partner Milan — Precious Stone Recommendation for Relationship Harmony (Bride & Groom) & Complete Step-by-Step Guide`,
+        title: `Page 21B: Partner Milan — Relationship Harmony Verdict & Groom (${groomProfile.name}) Precious Stone Guide`,
         headImg: chakraHealingArt,
-        headLabel: 'Relationship Harmony Ratna',
+        headLabel: 'Groom Harmony Ratna',
         content: (
-          <div className="space-y-1.5 text-xs">
-            {/* Header & Who Needs To Wear For Harmony */}
-            <div className="p-2 rounded-xl bg-slate-900/95 border border-amber-500/40 flex items-center justify-between gap-2">
-              <div>
+          <div className="space-y-2 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-900/95 border border-amber-500/40 a4-flex-safe a4-no-clip">
+              <div className="min-w-0 flex-1">
                 <h4 className="font-serif text-[10.5px] font-bold text-amber-200 uppercase">
                   Precious Stone Recommendation for Relationship Harmony (Bride &amp; Groom)
                 </h4>
-                <p className="text-[8px] text-slate-300">
+                <p className="text-[8.2px] text-slate-300 mt-0.5">
                   Prescribed according to Vedic Sidereal Astrology (Janma Rashi, 7th House Kalatra/Mangalya Karaka, 36-Guna Ashtakoot Milan &amp; 9-Chakra Bio-Field Diagnostics).
                 </p>
               </div>
-              <span className="px-2 py-1 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-serif text-[8.5px] font-bold shrink-0">
+              <span className="px-2.5 py-1 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-serif text-[8.5px] font-bold a4-badge-wrap">
                 Who Needs To Wear: {partnerRatnaRec.whoNeedsItBadge}
               </span>
             </div>
 
-            {/* Vedic Astrological Harmony Verdict Banner */}
-            <div className="p-1.5 rounded-xl bg-slate-950/90 border border-amber-500/35 text-[8px] text-slate-200 leading-snug">
-              <strong className="text-amber-300 uppercase block text-[7.8px]">
+            <div className="p-2.5 rounded-xl bg-slate-950/90 border border-amber-500/35 text-[8.5px] text-slate-200 leading-relaxed a4-no-clip">
+              <strong className="text-amber-300 uppercase block text-[8px] mb-0.5">
                 Vedic Astrological Harmony Verdict (Bride vs Groom Requirement):
               </strong>
               {partnerRatnaRec.whoNeedsItSummary}
             </div>
 
-            {/* Groom & Bride Precious Stone Cards */}
-            <div className="grid grid-cols-2 gap-2 a4-print-grid-2">
-              {[
-                { rec: partnerRatnaRec.groomStone, isBride: false },
-                { rec: partnerRatnaRec.brideStone, isBride: true },
-              ].map(({ rec, isBride }, idx) => (
-                <div
-                  key={idx}
-                  className={`p-2 rounded-xl bg-slate-950/95 border text-[7.8px] space-y-1 ${
-                    isBride ? 'border-rose-500/45' : 'border-amber-500/45'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <span
-                      className={`px-1.5 py-0.5 rounded font-bold uppercase text-[7.2px] border ${
-                        isBride
-                          ? 'bg-rose-500/20 text-rose-200 border-rose-500/40'
-                          : 'bg-amber-500/20 text-amber-200 border-amber-500/40'
-                      }`}
-                    >
+            {(() => {
+              const rec = partnerRatnaRec.groomStone;
+              return (
+                <div className="p-3 rounded-xl bg-slate-950/95 border border-amber-500/45 text-[8.6px] space-y-2 a4-no-clip">
+                  <div className="a4-flex-safe">
+                    <span className="px-2 py-0.5 rounded font-bold uppercase text-[7.8px] border bg-amber-500/20 text-amber-200 border-amber-500/40 a4-badge-wrap">
                       {rec.priorityBadge}
                     </span>
-                    <span className="font-mono text-amber-300 font-bold text-[7.2px]">
+                    <span className="font-mono text-amber-300 font-bold text-[8.2px] a4-badge-wrap">
                       Planet: {rec.ratna.planet} ({rec.ratna.sanskritPlanet})
                     </span>
                   </div>
 
-                  <div>
-                    <div className="font-serif text-[9.2px] font-bold text-amber-100 leading-tight">
+                  <div className="a4-no-clip">
+                    <div className="font-serif text-[10.2px] font-bold text-amber-100 leading-tight">
                       {rec.purposeTitle}
                     </div>
-                    <div className="text-[7.2px] text-amber-300/80">{rec.purposeSubtitle}</div>
+                    <div className="text-[8px] text-amber-300/85 mt-0.5">{rec.purposeSubtitle}</div>
                   </div>
 
-                  <div className="p-1.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5">
-                    <div className="flex items-center justify-between">
-                      <strong className="text-emerald-300 text-[8.8px]">
+                  <div className="p-2 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5 a4-no-clip">
+                    <div className="a4-flex-safe">
+                      <strong className="text-emerald-300 text-[9.5px]">
                         Primary Stone: {rec.ratna.primaryGem} ({rec.ratna.sanskritGem})
                       </strong>
-                      <span className="font-mono text-amber-200 text-[7.2px] font-bold">
+                      <span className="font-mono text-amber-200 text-[8.2px] font-bold a4-badge-wrap a4-numeric-wrap">
                         {rec.idealRattiRange} ({rec.idealCaratRange})
                       </span>
                     </div>
-                    <div className="text-sky-200 text-[7.5px]">
+                    <div className="text-sky-200 text-[8.2px] a4-list-wrap">
                       <strong>Substitute Stone (Upratna):</strong> {rec.ratna.upratna}
                     </div>
                   </div>
 
-                  <div className="p-1.5 rounded-lg bg-slate-900/90 border border-amber-500/20 text-slate-200 leading-tight">
-                    <strong className="text-amber-300 uppercase block text-[7.2px]">
+                  <div className="p-2 rounded-lg bg-slate-900/90 border border-amber-500/20 text-slate-200 leading-snug a4-no-clip">
+                    <strong className="text-amber-300 uppercase block text-[7.8px]">
                       How It Creates Relationship &amp; Marital Harmony:
                     </strong>
                     {rec.astrologicalReason}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-1 a4-print-grid-2">
-                    <div className="p-1 rounded bg-slate-900 border border-amber-500/25">
-                      <strong className="text-amber-400 uppercase block text-[6.8px]">
+                  <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe">
+                    <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
+                      <strong className="text-amber-400 uppercase block text-[7.4px]">
                         1. Which Finger &amp; Hand to Wear
                       </strong>
                       <span className="text-amber-100 font-bold block">{rec.wearingHandAndFinger}</span>
-                      <span className="text-slate-400 text-[6.8px]">Chakra: {rec.ratna.chakra}</span>
+                      <span className="text-slate-400 text-[7.4px]">Chakra: {rec.ratna.chakra}</span>
                     </div>
-                    <div className="p-1 rounded bg-slate-900 border border-amber-500/25">
-                      <strong className="text-amber-400 uppercase block text-[6.8px]">
+                    <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
+                      <strong className="text-amber-400 uppercase block text-[7.4px]">
                         2. In Which Metal &amp; Setting
                       </strong>
                       <span className="text-amber-100 font-bold block">{rec.ratna.metal}</span>
-                      <span className="text-slate-400 text-[6.8px]">Open-back touching skin</span>
+                      <span className="text-slate-400 text-[7.4px]">Open-back touching skin</span>
                     </div>
-                    <div className="p-1 rounded bg-slate-900 border border-amber-500/25">
-                      <strong className="text-emerald-400 uppercase block text-[6.8px]">
+                    <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
+                      <strong className="text-emerald-400 uppercase block text-[7.4px]">
                         3. Auspicious Day, Time &amp; Nakshatra
                       </strong>
                       <span className="text-emerald-200 font-bold block">{rec.dayAndMuhurat}</span>
-                      <span className="text-slate-400 text-[6.8px]">{rec.pakshaAndNakshatra}</span>
+                      <span className="text-slate-400 text-[7.4px]">{rec.pakshaAndNakshatra}</span>
                     </div>
-                    <div className="p-1 rounded bg-slate-900 border border-amber-500/25">
-                      <strong className="text-sky-400 uppercase block text-[6.8px]">
+                    <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
+                      <strong className="text-sky-400 uppercase block text-[7.4px]">
                         4. Panchamrit Purification Liquid
                       </strong>
                       <span className="text-sky-200 font-bold block">{rec.purificationIngredients}</span>
-                      <span className="text-slate-400 text-[6.8px]">Soak 21–30 mins before sunrise</span>
+                      <span className="text-slate-400 text-[7.4px]">Soak 21–30 mins before sunrise</span>
                     </div>
                   </div>
 
-                  <div className="p-1 rounded bg-amber-950/35 border border-amber-500/35">
-                    <strong className="text-amber-400 uppercase block text-[6.8px]">
+                  <div className="p-2 rounded bg-amber-950/35 border border-amber-500/35">
+                    <strong className="text-amber-400 uppercase block text-[7.4px]">
+                      5. Prana-Pratishtha Beej Mantra (Chant 108 Times Before Wearing)
+                    </strong>
+                    <span className="font-serif font-bold text-amber-100 text-[9px]">{rec.beejMantra}</span>
+                  </div>
+
+                  <div className="p-2 rounded bg-emerald-950/25 border border-emerald-500/30 space-y-0.5">
+                    <strong className="text-emerald-300 uppercase block text-[7.6px]">
+                      Complete Step-by-Step Wearing Ritual (Ratna Dharan Vidhi):
+                    </strong>
+                    {rec.howToWearStepByStep.map((st, sIdx) => (
+                      <div key={sIdx} className="text-slate-200 leading-snug text-[8px]">
+                        • {st}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        ),
+      });
+
+      // PAGE 21C: Partner Milan — Bride's Full Step-by-Step Precious Stone Guide, Couple Strengths, Frictions, Rudraksha & Bedroom Crystal Synergy
+      pages.push({
+        title: `Page 21C: Partner Milan — Bride (${brideProfile.name}) Precious Stone Guide, Couple Strengths, Rudraksha & Bedroom Synergy`,
+        headImg: chakraHealingArt,
+        headLabel: 'Bride Ratna & Synergy',
+        content: (
+          <div className="space-y-2 text-xs">
+            {(() => {
+              const rec = partnerRatnaRec.brideStone;
+              return (
+                <div className="p-2.5 rounded-xl bg-slate-950/95 border border-rose-500/45 text-[8.2px] space-y-1.5 a4-no-clip">
+                  <div className="a4-flex-safe">
+                    <span className="px-2 py-0.5 rounded font-bold uppercase text-[7.5px] border bg-rose-500/20 text-rose-200 border-rose-500/40 a4-badge-wrap">
+                      {rec.priorityBadge}
+                    </span>
+                    <span className="font-mono text-amber-300 font-bold text-[7.8px] a4-badge-wrap">
+                      Planet: {rec.ratna.planet} ({rec.ratna.sanskritPlanet})
+                    </span>
+                  </div>
+
+                  <div className="a4-no-clip">
+                    <div className="font-serif text-[9.8px] font-bold text-amber-100 leading-tight">
+                      {rec.purposeTitle}
+                    </div>
+                    <div className="text-[7.6px] text-amber-300/85">{rec.purposeSubtitle}</div>
+                  </div>
+
+                  <div className="p-1.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5 a4-no-clip">
+                    <div className="a4-flex-safe">
+                      <strong className="text-emerald-300 text-[9px]">
+                        Primary Stone: {rec.ratna.primaryGem} ({rec.ratna.sanskritGem})
+                      </strong>
+                      <span className="font-mono text-amber-200 text-[7.8px] font-bold a4-badge-wrap a4-numeric-wrap">
+                        {rec.idealRattiRange} ({rec.idealCaratRange})
+                      </span>
+                    </div>
+                    <div className="text-sky-200 text-[7.8px] a4-list-wrap">
+                      <strong>Substitute Stone (Upratna):</strong> {rec.ratna.upratna}
+                    </div>
+                  </div>
+
+                  <div className="p-1.5 rounded-lg bg-slate-900/90 border border-amber-500/20 text-slate-200 leading-snug a4-no-clip">
+                    <strong className="text-amber-300 uppercase block text-[7.4px]">
+                      How It Creates Relationship &amp; Marital Harmony:
+                    </strong>
+                    {rec.astrologicalReason}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe">
+                    <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
+                      <strong className="text-amber-400 uppercase block text-[7px]">
+                        1. Which Finger &amp; Hand to Wear
+                      </strong>
+                      <span className="text-amber-100 font-bold block">{rec.wearingHandAndFinger}</span>
+                      <span className="text-slate-400 text-[7px]">Chakra: {rec.ratna.chakra}</span>
+                    </div>
+                    <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
+                      <strong className="text-amber-400 uppercase block text-[7px]">
+                        2. In Which Metal &amp; Setting
+                      </strong>
+                      <span className="text-amber-100 font-bold block">{rec.ratna.metal}</span>
+                      <span className="text-slate-400 text-[7px]">Open-back touching skin</span>
+                    </div>
+                    <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
+                      <strong className="text-emerald-400 uppercase block text-[7px]">
+                        3. Auspicious Day, Time &amp; Nakshatra
+                      </strong>
+                      <span className="text-emerald-200 font-bold block">{rec.dayAndMuhurat}</span>
+                      <span className="text-slate-400 text-[7px]">{rec.pakshaAndNakshatra}</span>
+                    </div>
+                    <div className="p-1.5 rounded bg-slate-900 border border-amber-500/25">
+                      <strong className="text-sky-400 uppercase block text-[7px]">
+                        4. Panchamrit Purification Liquid
+                      </strong>
+                      <span className="text-sky-200 font-bold block">{rec.purificationIngredients}</span>
+                      <span className="text-slate-400 text-[7px]">Soak 21–30 mins before sunrise</span>
+                    </div>
+                  </div>
+
+                  <div className="p-1.5 rounded bg-amber-950/35 border border-amber-500/35">
+                    <strong className="text-amber-400 uppercase block text-[7px]">
                       5. Prana-Pratishtha Beej Mantra (Chant 108 Times Before Wearing)
                     </strong>
                     <span className="font-serif font-bold text-amber-100">{rec.beejMantra}</span>
                   </div>
 
                   <div className="p-1.5 rounded bg-emerald-950/25 border border-emerald-500/30 space-y-0.5">
-                    <strong className="text-emerald-300 uppercase block text-[7.2px]">
+                    <strong className="text-emerald-300 uppercase block text-[7.4px]">
                       Complete Step-by-Step Wearing Ritual (Ratna Dharan Vidhi):
                     </strong>
                     {rec.howToWearStepByStep.map((st, sIdx) => (
-                      <div key={sIdx} className="text-slate-200 leading-tight text-[7.2px]">
+                      <div key={sIdx} className="text-slate-200 leading-snug text-[7.6px]">
                         • {st}
                       </div>
                     ))}
                   </div>
                 </div>
-              ))}
-            </div>
+              );
+            })()}
 
-            {/* Key Partner Strengths, Key Karmic Frictions & Sacred Rudraksha Remedies */}
             {(() => {
               const pInsights = buildPartnerMilanHarmonyInsights(
                 partnerMilan,
@@ -4814,8 +5078,8 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               );
               return (
                 <>
-                  <div className="grid grid-cols-2 gap-1.5 text-[7.4px] a4-print-grid-2">
-                    <div className="p-1.5 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-slate-200 space-y-0.5">
+                  <div className="grid grid-cols-2 gap-1.5 text-[7.6px] a4-print-grid-2">
+                    <div className="p-2 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-slate-200 space-y-0.5">
                       <strong className="text-emerald-300 uppercase block">
                         Key Partner Strengths ({groomProfile.name} &amp; {brideProfile.name})
                       </strong>
@@ -4823,7 +5087,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                         <div key={sI}>• {s}</div>
                       ))}
                     </div>
-                    <div className="p-1.5 rounded-xl bg-rose-950/30 border border-rose-500/40 text-slate-200 space-y-0.5">
+                    <div className="p-2 rounded-xl bg-rose-950/30 border border-rose-500/40 text-slate-200 space-y-0.5">
                       <strong className="text-rose-300 uppercase block">
                         Key Karmic Frictions &amp; Focus Areas ({pInsights.chakrasNeedingRemediesCount}/9 Chakras Need Remedies)
                       </strong>
@@ -4832,7 +5096,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                       ))}
                     </div>
                   </div>
-                  <div className="p-1.5 rounded-xl bg-amber-950/25 border border-amber-500/40 text-[7.5px] text-amber-100 leading-tight">
+                  <div className="p-2 rounded-xl bg-amber-950/25 border border-amber-500/40 text-[7.8px] text-amber-100 leading-snug">
                     <strong className="text-amber-300 uppercase">Sacred Rudraksha Remedies:</strong>{' '}
                     <strong>Couple Unity:</strong> {pInsights.rudrakshaRemedies.coupleUnityRudraksha} |{' '}
                     <strong>Groom:</strong> {pInsights.rudrakshaRemedies.groomRudraksha} |{' '}
@@ -4843,7 +5107,6 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               );
             })()}
 
-            {/* Joint Couple Relationship Harmony & Bedroom Crystal Synergy */}
             <div className="p-2 rounded-xl bg-emerald-950/30 border border-emerald-500/45 text-[8px] text-emerald-100 leading-snug space-y-1">
               <div>
                 <strong className="text-emerald-300 uppercase tracking-wider block mb-0.5">
@@ -4860,245 +5123,294 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           </div>
         ),
       });
+      trackModuleEnd('partnerMilanChakras', modStart_partnerMilanChakras);
     }
 
-    // PAGE 21C: PARIVAR MILAN 9-CHAKRA DIAGNOSTICS, VEDIC ASTROLOGY & GEMSTONE/RUDRAKSHA (INDEPENDENT OPT-IN MODULE)
+    // MODULE 9: PARIVAR MILAN 9-CHAKRA DIAGNOSTICS, VEDIC ASTROLOGY & GEMSTONE/RUDRAKSHA (MULTI-PAGE SPACIOUS LAYOUT — ZERO OVERFLOW)
     if (selectedSections.parivarMilan && parivarReport) {
+      const modStart_parivarMilan = trackModuleStart();
+
+      // PARIVAR OVERVIEW PAGE: Final Conclusive Family Harmony Graph + Collective Vastu & Gemstone/Rudraksha Plan
       pages.push({
-        title: `Page 21C: Parivar Milan — 9-Chakra Family Harmony Graph, Vedic Astrology & Remedies (${parivarReport.memberResults.length} Saved Family Members)`,
+        title: `Parivar Milan Overview — Family Harmony Graph, Collective Home Vastu & Rudraksha Charter (${parivarReport.memberResults.length} Saved Family Members)`,
         headImg: chakraHealingArt,
-        headLabel: 'Parivar Milan 9-Chakra',
+        headLabel: 'Parivar Harmony Graph',
         content: (
-          <div className="space-y-2 text-xs">
-            {/* 1. FINAL CONCLUSIVE RESULT • PARIVAR HARMONY GRAPH */}
-            <div className="p-2.5 rounded-xl bg-slate-950/95 border border-amber-500/45 space-y-1.5">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/30 pb-1">
-                <div>
-                  <span className="text-[7.5px] font-mono uppercase tracking-widest text-amber-400 font-bold block">
+          <div className="space-y-2.5 text-xs">
+            <div className="p-3 rounded-xl bg-slate-950/95 border border-amber-500/45 space-y-2 a4-no-clip">
+              <div className="a4-flex-safe border-b border-amber-500/30 pb-1.5">
+                <div className="min-w-0 flex-1">
+                  <span className="text-[8px] font-mono uppercase tracking-widest text-amber-400 font-bold block">
                     FINAL CONCLUSIVE RESULT • PARIVAR HARMONY GRAPH
                   </span>
-                  <h4 className="font-serif text-[10px] font-bold text-amber-100">
+                  <h4 className="font-serif text-[11px] font-bold text-amber-100">
                     Comparative 9-Chakra &amp; Vedic Harmony of {activeProfile.name} with {parivarReport.memberResults.length} Family Member(s)
                   </h4>
                 </div>
-                <div className="flex items-center gap-2 text-[7.8px] font-mono">
-                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold">
-                    Overall Harmony: {parivarReport.averageFamilyHarmony}%
-                  </span>
+                <span className="px-2.5 py-1 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-mono text-[8.5px] font-bold a4-badge-wrap a4-numeric-wrap">
+                  Overall Harmony: {parivarReport.averageFamilyHarmony}% ({parivarReport.familyCollectiveVerdict})
+                </span>
+              </div>
+
+              {parivarReport.memberResults.length > 0 ? (
+                <div className="space-y-2 a4-list-wrap">
+                  {parivarReport.memberResults.map((res, rIdx) => (
+                    <div key={res.member.id} className="p-2 rounded-lg bg-slate-900/90 border border-amber-500/25 space-y-1 a4-no-clip">
+                      <div className="a4-flex-safe text-[8.6px]">
+                        <span className="font-bold text-amber-100 a4-numeric-wrap">
+                          #{rIdx + 1} {res.member.name} ({res.member.relation}) • M:{res.memberMulank}/B:{res.memberBhagyank}/N:{res.memberNamank} • {res.memberAstrology.rashi}
+                        </span>
+                        <span className="font-mono font-bold text-emerald-300 a4-badge-wrap a4-numeric-wrap">
+                          {res.overallHarmonyScore}% ({res.harmonyVerdict})
+                        </span>
+                      </div>
+                      <div className="w-full h-2.5 rounded-full bg-slate-950 border border-slate-700 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            res.overallHarmonyScore >= 78
+                              ? 'bg-emerald-500'
+                              : res.overallHarmonyScore >= 64
+                              ? 'bg-amber-400'
+                              : 'bg-rose-500'
+                          }`}
+                          style={{ width: `${Math.max(8, Math.min(100, res.overallHarmonyScore))}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-slate-900 border border-amber-500/30 text-amber-200 text-[9px]">
+                  No individual family members have been saved yet. Save up to 5 family members in the Parivar Milan module to generate per-member 9-Chakra &amp; Vedic Astrology diagnostic sheets.
+                </div>
+              )}
 
-              <div className="space-y-1">
-                {parivarReport.memberResults.map((res, rIdx) => (
-                  <div key={res.member.id} className="space-y-0.5">
-                    <div className="flex items-center justify-between text-[7.8px]">
-                      <span className="font-bold text-amber-100">
-                        #{rIdx + 1} {res.member.name} ({res.member.relation}) • M:{res.memberMulank}/B:{res.memberBhagyank}/N:{res.memberNamank} • {res.memberAstrology.rashi.split(' ')[0]}
-                      </span>
-                      <span className="font-mono font-bold text-emerald-300">
-                        {res.overallHarmonyScore}% ({res.harmonyVerdict})
-                      </span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-900 border border-slate-700 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${
-                          res.overallHarmonyScore >= 78
-                            ? 'bg-emerald-500'
-                            : res.overallHarmonyScore >= 64
-                            ? 'bg-amber-400'
-                            : 'bg-rose-500'
-                        }`}
-                        style={{ width: `${Math.max(8, Math.min(100, res.overallHarmonyScore))}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="p-1.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-[7.6px] text-amber-100 leading-snug space-y-1">
+              <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-500/35 text-[8.6px] text-amber-100 leading-relaxed space-y-2">
                 <div>
-                  <strong className="text-amber-300 uppercase">Collective Family Synthesis &amp; Home Vastu Remedy:</strong>{' '}
+                  <strong className="text-amber-300 uppercase block text-[8px] mb-0.5">
+                    Collective Family Synthesis &amp; Home Vastu Remedy:
+                  </strong>
                   {parivarReport.collectiveHomeVastuAndParivarRemedy}
                 </div>
-                <div className="text-emerald-200 border-t border-amber-500/20 pt-1">
-                  <strong className="text-emerald-300 uppercase">Collective Parivar Gemstone &amp; Rudraksha Harmony Plan:</strong>{' '}
+                <div className="text-emerald-200 border-t border-amber-500/25 pt-2">
+                  <strong className="text-emerald-300 uppercase block text-[8px] mb-0.5">
+                    Collective Parivar Gemstone &amp; Rudraksha Harmony Plan:
+                  </strong>
                   {parivarReport.collectiveGemstoneAndRudrakshaRemedy}
                 </div>
               </div>
 
-              <div className="p-1.5 rounded-lg bg-amber-500/15 border border-amber-400/50 text-[7.2px] font-bold text-amber-200 uppercase tracking-wide leading-snug">
+              <div className="p-2 rounded-lg bg-amber-500/15 border border-amber-400/50 text-[8px] font-bold text-amber-200 uppercase tracking-wide leading-snug">
                 ⚠️ {parivarReport.importantDisclaimer}
               </div>
             </div>
-
-            {/* 2. PER-MEMBER COMPLETE 9-CHAKRA, VEDIC ASTROLOGY & GEMSTONE/RUDRAKSHA DIAGNOSTICS (ONLY CHAKRAS NEEDING HARMONY IN BREAKDOWN) */}
-            {parivarReport.memberResults.map((res, idx) => {
-              const chakrasNeedingHarmony = res.nineChakraDiagnostics.filter((ch) => ch.status !== 'Harmonious');
-              const allNineChakraPercentLine = res.nineChakraDiagnostics
-                .map((ch) => `#${ch.chakraNumber} ${ch.chakraName.replace(' Chakra', '')}: ${ch.alignmentScore}%`)
-                .join(' • ');
-
-              return (
-                <div
-                  key={res.member.id}
-                  className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/35 space-y-1.5 text-[7.8px]"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-1 border-b border-amber-500/25 pb-1">
-                    <span className="font-serif font-bold text-amber-200 text-[9px] uppercase">
-                      COMPLETE 9-CHAKRA PARIVAR DIAGNOSTICS — MEMBER #{idx + 1}: {res.member.name} ({res.member.relation})
-                    </span>
-                    <span className="font-mono text-emerald-300 font-bold">
-                      Harmony: {res.overallHarmonyScore}% ({res.harmonyVerdict})
-                    </span>
-                  </div>
-
-                  {/* 1st Paragraph: Executive Summary + All 9 Chakras % */}
-                  <p className="text-slate-200 leading-snug">
-                    {res.executiveSummary}{' '}
-                    <strong className="text-amber-300">All 9 Chakras Alignment % (#1 Earth Star to #9 Soul Star):</strong>{' '}
-                    <span className="text-emerald-200 font-mono">{allNineChakraPercentLine}</span>
-                  </p>
-
-                  {/* Key Parivar Strengths & Key Karmic Frictions Box */}
-                  <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
-                    <div className="p-1.5 rounded-lg bg-emerald-950/25 border border-emerald-500/35 space-y-0.5">
-                      <strong className="text-emerald-300 uppercase block text-[7.2px]">
-                        Key Parivar Strengths ({res.member.name}):
-                      </strong>
-                      {res.keyStrengths.map((st, sIdx) => (
-                        <div key={sIdx} className="text-slate-200 leading-tight">
-                          • {st}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="p-1.5 rounded-lg bg-rose-950/25 border border-rose-500/35 space-y-0.5">
-                      <strong className="text-rose-300 uppercase block text-[7.2px]">
-                        Key Karmic Frictions &amp; Focus Areas ({res.member.name}):
-                      </strong>
-                      {res.keyFrictions.map((fr, fIdx) => (
-                        <div key={fIdx} className="text-slate-200 leading-tight">
-                          • {fr}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Vedic Astrology Family Harmony & Gemstone / Rudraksha Remedies */}
-                  <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
-                    <div className="p-1.5 rounded-lg bg-indigo-950/35 border border-indigo-400/35 space-y-0.5 leading-tight">
-                      <strong className="text-indigo-200 uppercase block text-[7.2px]">
-                        Vedic Astrology Family Harmony ({res.vedicAstrologyHarmony.rashiHarmonyScore}%):
-                      </strong>
-                      <div className="text-amber-200">
-                        <strong>Bhakoot Axis:</strong> {res.vedicAstrologyHarmony.bhakootAxisLabel}
-                      </div>
-                      <div className="text-sky-200">
-                        <strong>Tara Bala:</strong> {res.vedicAstrologyHarmony.taraBalaName} ({res.vedicAstrologyHarmony.taraBalaFavorability})
-                      </div>
-                      <div className="text-slate-200">
-                        <strong>Rashi Lord Maitri:</strong> {res.vedicAstrologyHarmony.rashiLordMaitri} • {res.vedicAstrologyHarmony.sunSignSynergy}
-                      </div>
-                      <div className="text-emerald-200">
-                        <strong>Vedic Remedy:</strong> {res.vedicAstrologyHarmony.vedicRemedy}
-                      </div>
-                    </div>
-                    <div className="p-1.5 rounded-lg bg-amber-950/25 border border-amber-500/35 space-y-0.5 leading-tight">
-                      <strong className="text-amber-300 uppercase block text-[7.2px]">
-                        Gemstone (Ratna) &amp; Rudraksha Remedies:
-                      </strong>
-                      <div className="text-amber-100">
-                        <strong>Gemstone:</strong> Client: {res.gemstoneAndRudrakshaRemedy.clientGemstone} | {res.member.name}: {res.gemstoneAndRudrakshaRemedy.memberGemstone}
-                      </div>
-                      <div className="text-slate-200">
-                        <strong>Substitute &amp; Method:</strong> {res.gemstoneAndRudrakshaRemedy.gemstoneSubstitute} • {res.gemstoneAndRudrakshaRemedy.weightAndCarat} • {res.gemstoneAndRudrakshaRemedy.metalAndFinger} ({res.gemstoneAndRudrakshaRemedy.wearingDayAndTime})
-                      </div>
-                      <div className="text-emerald-200">
-                        <strong>Family Unity Rudraksha:</strong> {res.gemstoneAndRudrakshaRemedy.familyUnityRudraksha} • {res.gemstoneAndRudrakshaRemedy.clientRudraksha} &amp; {res.gemstoneAndRudrakshaRemedy.memberRudraksha}
-                      </div>
-                      <div className="text-sky-200">
-                        <strong>Mantra:</strong> {res.gemstoneAndRudrakshaRemedy.rudrakshaMantra}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Detailed Breakdown: ONLY Chakras that need Harmony */}
-                  {chakrasNeedingHarmony.length > 0 ? (
-                    <div className="space-y-1">
-                      <div className="text-[7.2px] font-mono uppercase tracking-wider text-amber-300 font-bold">
-                        Chakras Needing Harmony &amp; Remedies ({chakrasNeedingHarmony.length} of 9 — Harmonious Chakras Omitted to Save Space):
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
-                        {chakrasNeedingHarmony.map((ch) => (
-                          <div
-                            key={ch.chakraNumber}
-                            className="p-1.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5 leading-tight"
-                          >
-                            <div className="flex items-center justify-between font-bold text-amber-100">
-                              <span>
-                                #{ch.chakraNumber} {ch.sanskritName} ({ch.chakraName})
-                              </span>
-                              <span
-                                className={`font-mono ${
-                                  ch.status === 'Moderate Blockage' ? 'text-amber-300' : 'text-rose-300'
-                                }`}
-                              >
-                                {ch.alignmentScore}% ({ch.status})
-                              </span>
-                            </div>
-                            <div className="text-rose-200/95">
-                              <strong>Issue:</strong> {ch.mutualFamilyIssue}
-                            </div>
-                            <div className="text-amber-200">
-                              <strong>1. Aura &amp; Crystal ({ch.beejMantra}):</strong> {ch.auraScanRemedy}
-                            </div>
-                            <div className="text-sky-200">
-                              <strong>2. Client &amp; Member Action:</strong> {ch.clientRemedy} | {ch.memberRemedy}
-                            </div>
-                            <div className="text-emerald-200">
-                              <strong>3. Joint Family Remedy:</strong> {ch.jointFamilyRemedy}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-1.5 rounded-lg bg-emerald-950/30 border border-emerald-500/40 text-emerald-200 font-semibold">
-                      All 9 Chakras (#1 Earth Star to #9 Soul Star) with {res.member.name} ({res.member.relation}) are in natural harmony (78%+). Continue weekly family prayer &amp; gratitude sadhana.
-                    </div>
-                  )}
-                </div>
-              );
-            })}
           </div>
         ),
       });
+
+      // PER-MEMBER DEDICATED DIAGNOSTIC & CHAKRA REMEDY PAGES (1 Member Overview Page + 4 Chakras per Remedy Page)
+      parivarReport.memberResults.forEach((res, idx) => {
+        const chakrasNeedingHarmony = res.nineChakraDiagnostics.filter((ch) => ch.status !== 'Harmonious');
+        const allNineChakraPercentLine = res.nineChakraDiagnostics
+          .map((ch) => `#${ch.chakraNumber} ${ch.chakraName.replace(' Chakra', '')}: ${ch.alignmentScore}%`)
+          .join(' • ');
+
+        pages.push({
+          title: `Parivar Milan Member #${idx + 1}: ${res.member.name} (${res.member.relation}) — Vedic Astrology, 9-Chakra Summary & Ratna/Rudraksha`,
+          headImg: chakraHealingArt,
+          headLabel: `Parivar #${idx + 1} • ${res.member.relation}`,
+          content: (
+            <div className="space-y-2.5 text-xs">
+              <div className="p-3 rounded-xl bg-slate-950/95 border border-amber-500/40 space-y-2.5 text-[8.6px] a4-no-clip">
+                <div className="a4-flex-safe border-b border-amber-500/30 pb-1.5">
+                  <div className="min-w-0 flex-1">
+                    <span className="font-serif font-bold text-amber-200 text-[10.5px] uppercase block">
+                      COMPLETE 9-CHAKRA PARIVAR DIAGNOSTICS — MEMBER #{idx + 1}: {res.member.name} ({res.member.relation})
+                    </span>
+                    <span className="text-[8px] font-mono text-sky-300 a4-numeric-wrap block">
+                      DOB: {res.member.dob} • Mulank #{res.memberMulank} | Bhagyank #{res.memberBhagyank} | Namank #{res.memberNamank} • {res.memberAstrology.rashi} ({res.memberAstrology.nakshatra})
+                    </span>
+                  </div>
+                  <span className="px-2.5 py-1 rounded bg-emerald-950 border border-emerald-500/40 font-mono text-emerald-300 font-bold text-[8.5px] a4-badge-wrap a4-numeric-wrap">
+                    Harmony: {res.overallHarmonyScore}% ({res.harmonyVerdict})
+                  </span>
+                </div>
+
+                <div className="p-2 rounded-lg bg-slate-900/90 border border-amber-500/25 space-y-1.5 leading-relaxed a4-no-clip">
+                  <p className="text-slate-200">{res.executiveSummary}</p>
+                  <div className="pt-1 border-t border-amber-500/20 text-[8px] a4-list-wrap a4-numeric-wrap">
+                    <strong className="text-amber-300">All 9 Chakras Alignment % (#1 Earth Star to #9 Soul Star):</strong>{' '}
+                    <span className="text-emerald-200 font-mono a4-numeric-wrap">{allNineChakraPercentLine}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 a4-print-grid-2 a4-grid-safe">
+                  <div className="p-2 rounded-lg bg-emerald-950/25 border border-emerald-500/35 space-y-1 a4-list-wrap">
+                    <strong className="text-emerald-300 uppercase block text-[7.8px]">
+                      Key Parivar Strengths ({res.member.name}):
+                    </strong>
+                    {res.keyStrengths.map((st, sIdx) => (
+                      <div key={sIdx} className="text-slate-200 leading-snug">
+                        • {st}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-2 rounded-lg bg-rose-950/25 border border-rose-500/35 space-y-1">
+                    <strong className="text-rose-300 uppercase block text-[7.8px]">
+                      Key Karmic Frictions &amp; Focus Areas ({res.member.name}):
+                    </strong>
+                    {res.keyFrictions.map((fr, fIdx) => (
+                      <div key={fIdx} className="text-slate-200 leading-snug">
+                        • {fr}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 a4-print-grid-2">
+                  <div className="p-2 rounded-lg bg-indigo-950/35 border border-indigo-400/35 space-y-1 leading-snug">
+                    <strong className="text-indigo-200 uppercase block text-[7.8px]">
+                      Vedic Astrology Family Harmony ({res.vedicAstrologyHarmony.rashiHarmonyScore}%):
+                    </strong>
+                    <div className="text-amber-200">
+                      <strong>Bhakoot Axis:</strong> {res.vedicAstrologyHarmony.bhakootAxisLabel}
+                    </div>
+                    <div className="text-sky-200">
+                      <strong>Tara Bala:</strong> {res.vedicAstrologyHarmony.taraBalaName} ({res.vedicAstrologyHarmony.taraBalaFavorability})
+                    </div>
+                    <div className="text-slate-200">
+                      <strong>Rashi Lord Maitri:</strong> {res.vedicAstrologyHarmony.rashiLordMaitri} • {res.vedicAstrologyHarmony.sunSignSynergy}
+                    </div>
+                    <div className="text-emerald-200">
+                      <strong>Vedic Remedy:</strong> {res.vedicAstrologyHarmony.vedicRemedy}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-amber-950/25 border border-amber-500/35 space-y-1 leading-snug">
+                    <strong className="text-amber-300 uppercase block text-[7.8px]">
+                      Gemstone (Ratna) &amp; Rudraksha Remedies:
+                    </strong>
+                    <div className="text-amber-100">
+                      <strong>Gemstone:</strong> Client: {res.gemstoneAndRudrakshaRemedy.clientGemstone} | {res.member.name}: {res.gemstoneAndRudrakshaRemedy.memberGemstone}
+                    </div>
+                    <div className="text-slate-200">
+                      <strong>Substitute &amp; Method:</strong> {res.gemstoneAndRudrakshaRemedy.gemstoneSubstitute} • {res.gemstoneAndRudrakshaRemedy.weightAndCarat} • {res.gemstoneAndRudrakshaRemedy.metalAndFinger} ({res.gemstoneAndRudrakshaRemedy.wearingDayAndTime})
+                    </div>
+                    <div className="text-emerald-200">
+                      <strong>Family Unity Rudraksha:</strong> {res.gemstoneAndRudrakshaRemedy.familyUnityRudraksha} • {res.gemstoneAndRudrakshaRemedy.clientRudraksha} &amp; {res.gemstoneAndRudrakshaRemedy.memberRudraksha}
+                    </div>
+                    <div className="text-sky-200">
+                      <strong>Mantra:</strong> {res.gemstoneAndRudrakshaRemedy.rudrakshaMantra}
+                    </div>
+                  </div>
+                </div>
+
+                {chakrasNeedingHarmony.length === 0 ? (
+                  <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-500/40 text-emerald-200 font-semibold">
+                    All 9 Chakras (#1 Earth Star to #9 Soul Star) with {res.member.name} ({res.member.relation}) are in natural harmony (78%+). Continue weekly family prayer &amp; gratitude sadhana.
+                  </div>
+                ) : (
+                  <div className="p-2 rounded-lg bg-amber-950/30 border border-amber-500/35 text-amber-200 text-[8.2px]">
+                    <strong>Next Page(s) — Detailed Chakra Harmony Remedies:</strong> {chakrasNeedingHarmony.length} of 9 Chakras need active harmony remedies for {activeProfile.name} &amp; {res.member.name} ({chakrasNeedingHarmony.map((c) => `#${c.chakraNumber} ${c.chakraName.replace(' Chakra', '')} (${c.alignmentScore}%)`).join(', ')}).
+                  </div>
+                )}
+              </div>
+            </div>
+          ),
+        });
+
+        // Chunk chakras needing harmony into clean pages of up to 4 chakras each (2x2 grid — zero overflow)
+        for (let cOffset = 0; cOffset < chakrasNeedingHarmony.length; cOffset += 4) {
+          const chunk = chakrasNeedingHarmony.slice(cOffset, cOffset + 4);
+          const partNum = Math.floor(cOffset / 4) + 1;
+          const totalParts = Math.ceil(chakrasNeedingHarmony.length / 4);
+          pages.push({
+            title: `Parivar Milan Member #${idx + 1}: ${res.member.name} (${res.member.relation}) — Chakra Harmony Remedies${totalParts > 1 ? ` (Part ${partNum} of ${totalParts})` : ''}`,
+            headImg: chakraHealingArt,
+            headLabel: `Chakra Remedies • ${res.member.name}`,
+            content: (
+              <div className="space-y-2.5 text-xs">
+                <div className="p-2.5 rounded-xl bg-slate-900/95 border border-amber-500/40 a4-flex-safe a4-no-clip">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[8px] font-mono uppercase text-amber-300 font-bold">
+                      PARIVAR MILAN CHAKRA REMEDIES — MEMBER #{idx + 1}: {res.member.name.toUpperCase()} ({res.member.relation.toUpperCase()})
+                    </div>
+                    <div className="font-serif text-[10px] font-bold text-amber-100">
+                      Chakras Needing Harmony &amp; Prescribed Remedies ({chakrasNeedingHarmony.length} of 9 — Showing {cOffset + 1}–{cOffset + chunk.length})
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-500/40 font-mono text-[8px] font-bold text-emerald-300 a4-badge-wrap a4-numeric-wrap">
+                    Harmony: {res.overallHarmonyScore}%
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 a4-print-grid-2 a4-grid-safe">
+                  {chunk.map((ch) => (
+                    <div
+                      key={ch.chakraNumber}
+                      className="p-2.5 rounded-xl bg-slate-950/95 border border-amber-500/35 text-[8.4px] space-y-1.5 leading-snug a4-no-clip"
+                    >
+                      <div className="a4-flex-safe font-bold text-amber-100 border-b border-amber-500/25 pb-1">
+                        <span>
+                          #{ch.chakraNumber} {ch.sanskritName} ({ch.chakraName})
+                        </span>
+                        <span
+                          className={`font-mono a4-badge-wrap a4-numeric-wrap ${
+                            ch.status === 'Moderate Blockage' ? 'text-amber-300' : 'text-rose-300'
+                          }`}
+                        >
+                          {ch.alignmentScore}% ({ch.status})
+                        </span>
+                      </div>
+                      <div className="text-rose-200/95">
+                        <strong>Issue:</strong> {ch.mutualFamilyIssue}
+                      </div>
+                      <div className="text-amber-200">
+                        <strong>1. Aura &amp; Crystal ({ch.beejMantra}):</strong> {ch.auraScanRemedy}
+                      </div>
+                      <div className="text-sky-200">
+                        <strong>2. Client &amp; Member Action:</strong> {ch.clientRemedy} | {ch.memberRemedy}
+                      </div>
+                      <div className="text-emerald-200">
+                        <strong>3. Joint Family Remedy:</strong> {ch.jointFamilyRemedy}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ),
+          });
+        }
+      });
+
+      trackModuleEnd('parivarMilan', modStart_parivarMilan);
     }
 
-    // PAGES 22–24: Next 12 Months All-India Festivals (All 16 Festivals with Score %, All 4 Puja Windows, Diya, Aura Cleansing & Mantra)
+    // MODULE 10: Next 12 Months All-India Festivals (All 16 Festivals with Score %, All 4 Puja Windows, Diya, Aura Cleansing & Mantra)
     if (selectedSections.festivals12Months) {
+      const modStart_festivals12Months = trackModuleStart();
       pages.push({
         title: 'Page 22: Next 12 Months All-India Festivals — Complete 4-Window Puja Muhurats & Remedies (Part 1: 1–6)',
         headImg: spiritualReportBanner,
         headLabel: 'Festivals (Part 1)',
         content: (
           <div className="space-y-1.5 text-xs">
-            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe">
               {festivals.slice(0, 6).map((fest, idx) => (
-                <div key={fest.id} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.3px] space-y-0.5">
-                  <div className="flex items-center justify-between font-bold text-amber-100">
+                <div key={fest.id} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.3px] space-y-0.5 a4-no-clip">
+                  <div className="a4-flex-safe font-bold text-amber-100">
                     <span>
                       {idx + 1}. {fest.name} ({fest.hindiName})
                     </span>
-                    <span className="font-mono text-emerald-300">{fest.personalImpactScore}% ({fest.personalVerdictTag})</span>
+                    <span className="font-mono text-emerald-300 a4-badge-wrap a4-numeric-wrap">{fest.personalImpactScore}% ({fest.personalVerdictTag})</span>
                   </div>
-                  <div className="text-sky-300 font-mono">
+                  <div className="text-sky-300 font-mono a4-numeric-wrap">
                     {fest.date} ({fest.dayOfWeek}) • {fest.vikramSamvatTithi} • Planet #{fest.governingNumber} ({fest.governingPlanet})
                   </div>
                   <p className="text-slate-300 leading-tight">{fest.howFestivalWillBeForClient}</p>
-                  <div className="text-emerald-300 leading-tight">
+                  <div className="text-emerald-300 leading-tight a4-numeric-wrap">
                     <strong>1. Siddha Puja:</strong> {fest.auspiciousBestPoojaTime.window} | <strong>2. Punya Kaal:</strong> {fest.normalGoodPoojaTime.window}
                   </div>
-                  <div className="text-rose-300 leading-tight">
+                  <div className="text-rose-300 leading-tight a4-numeric-wrap">
                     <strong>3. Bhadra Caution:</strong> {fest.avoidBhadraPoojaTime.window} | <strong>4. Avoid Rahu:</strong> {fest.badPoojaTime.window}
                   </div>
                   <div className="text-amber-200 leading-tight">
@@ -5120,23 +5432,23 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headLabel: 'Festivals (Part 2)',
         content: (
           <div className="space-y-1.5 text-xs">
-            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2">
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe">
               {festivals.slice(6, 12).map((fest, idx) => (
-                <div key={fest.id} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.3px] space-y-0.5">
-                  <div className="flex items-center justify-between font-bold text-amber-100">
+                <div key={fest.id} className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/30 text-[8.3px] space-y-0.5 a4-no-clip">
+                  <div className="a4-flex-safe font-bold text-amber-100">
                     <span>
                       {idx + 7}. {fest.name} ({fest.hindiName})
                     </span>
-                    <span className="font-mono text-emerald-300">{fest.personalImpactScore}% ({fest.personalVerdictTag})</span>
+                    <span className="font-mono text-emerald-300 a4-badge-wrap a4-numeric-wrap">{fest.personalImpactScore}% ({fest.personalVerdictTag})</span>
                   </div>
-                  <div className="text-sky-300 font-mono">
+                  <div className="text-sky-300 font-mono a4-numeric-wrap">
                     {fest.date} ({fest.dayOfWeek}) • {fest.vikramSamvatTithi} • Planet #{fest.governingNumber} ({fest.governingPlanet})
                   </div>
                   <p className="text-slate-300 leading-tight">{fest.howFestivalWillBeForClient}</p>
-                  <div className="text-emerald-300 leading-tight">
+                  <div className="text-emerald-300 leading-tight a4-numeric-wrap">
                     <strong>1. Siddha Puja:</strong> {fest.auspiciousBestPoojaTime.window} | <strong>2. Punya Kaal:</strong> {fest.normalGoodPoojaTime.window}
                   </div>
-                  <div className="text-rose-300 leading-tight">
+                  <div className="text-rose-300 leading-tight a4-numeric-wrap">
                     <strong>3. Bhadra Caution:</strong> {fest.avoidBhadraPoojaTime.window} | <strong>4. Avoid Rahu:</strong> {fest.badPoojaTime.window}
                   </div>
                   <div className="text-amber-200 leading-tight">
@@ -5270,14 +5582,17 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           </div>
         ),
       });
+      trackModuleEnd('festivals12Months', modStart_festivals12Months);
     }
 
-    // PAGES 25–26: Islamic-Vedic Remedies (All 3 Personal Asma Cards, All 5 Quranic Surahs, 7-Day Schedule & Complete 1-to-9 Adad Reference)
+    // MODULE 11: Islamic-Vedic Remedies (Split into 3 Spacious Pages: Asma-ul-Husna + Surahs 1–2, Surahs 3–5, and 7-Day Dhikr & 1–9 Adad)
     if (selectedSections.islamicVedicRemedies) {
+      const modStart_islamicVedicRemedies = trackModuleStart();
+
       pages.push({
-        title: 'Page 25: Islamic-Vedic Remedies — 3 Personal Asma-ul-Husna Wazifas & All 5 Quranic Surah Remedies',
+        title: 'Page 25A: Islamic-Vedic Remedies — 3 Personal Asma-ul-Husna Wazifas & Quranic Surah Remedies (Part 1: #1–#2)',
         headImg: islamicNoorArt,
-        headLabel: 'Ilm-ul-Adad & Surahs',
+        headLabel: 'Ilm-ul-Adad & Wazifas',
         content: (
           <div
             className="space-y-2.5 text-xs a4-text-box-wrap a4-section-no-break"
@@ -5332,7 +5647,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               ].map((card, idx) => (
                 <div
                   key={idx}
-                  className="p-2.5 rounded-xl bg-slate-950 border border-emerald-500/35 text-[8px] space-y-1 min-w-0 break-words whitespace-normal overflow-hidden a4-section-no-break"
+                  className="p-2.5 rounded-xl bg-slate-950 border border-emerald-500/35 text-[8.2px] space-y-1 min-w-0 break-words whitespace-normal overflow-hidden a4-section-no-break"
                   style={{
                     pageBreakInside: 'avoid',
                     breakInside: 'avoid',
@@ -5341,141 +5656,131 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                     wordBreak: 'break-word',
                   }}
                 >
-                  <span
-                    className="text-[7.5px] font-bold uppercase text-emerald-400 block break-words whitespace-normal"
-                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
-                  >
+                  <span className="text-[7.6px] font-bold uppercase text-emerald-400 block">
                     {card.label} • {card.item.planetarySphere}
                   </span>
-                  <div
-                    className="font-serif text-[10.5px] font-bold text-amber-200 break-words whitespace-normal"
-                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
-                  >
+                  <div className="font-serif text-[11px] font-bold text-amber-200">
                     {card.item.arabicName}
                   </div>
-                  <div
-                    className="font-bold text-amber-100 break-words whitespace-normal"
-                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
-                  >
+                  <div className="font-bold text-amber-100">
                     {card.item.transliteration} ({card.item.meaning}) — Abjad {card.item.abjadCount}
                   </div>
-                  <div
-                    className="text-emerald-300 font-mono break-words whitespace-normal"
-                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
-                  >
+                  <div className="text-emerald-300 font-mono">
                     Tasbih: {card.item.recommendedDailyCount} • {card.item.bestPrayerTime}
                   </div>
-                  <p
-                    className="text-slate-200 leading-snug break-words whitespace-normal"
-                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
-                  >
-                    {card.item.spiritualBenefit}
-                  </p>
-                  <div
-                    className="text-sky-200 leading-snug break-words whitespace-normal"
-                    style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
-                  >
+                  <p className="text-slate-200 leading-snug">{card.item.spiritualBenefit}</p>
+                  <div className="text-sky-200 leading-snug">
                     <strong>Solves:</strong> {card.item.specificChallengeSolved}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div
-              className="space-y-1.5 min-w-0 break-words whitespace-normal a4-section-no-break"
-              style={{
-                pageBreakInside: 'avoid',
-                breakInside: 'avoid',
-                overflowWrap: 'break-word',
-                whiteSpace: 'normal',
-                wordBreak: 'break-word',
-              }}
-            >
-              <h5
-                className="font-serif text-[9.8px] font-bold text-amber-200 uppercase break-words whitespace-normal"
-                style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}
-              >
-                All 5 Prescribed Quranic Surah, Dua, Sadaqah &amp; Sunnah Stone/Attar Remedies
+            <div className="space-y-1.5 min-w-0">
+              <h5 className="font-serif text-[9.8px] font-bold text-amber-200 uppercase">
+                Prescribed Quranic Surah, Dua, Sadaqah &amp; Sunnah Stone/Attar Remedies (Part 1: #1–#2)
               </h5>
-              <div className="overflow-hidden rounded-xl border border-amber-500/35 bg-slate-950/95">
-                <div
-                  className="grid grid-cols-12 bg-amber-950/60 border-b border-amber-500/35 px-2.5 py-1.5 text-[7.6px] font-bold text-amber-200 uppercase"
-                  style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
-                >
-                  <div className="col-span-3 pr-2 min-w-0 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
-                    Life Area &amp; Challenge
-                  </div>
-                  <div className="col-span-4 px-2 border-l border-amber-500/25 min-w-0 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
-                    Surah / Dua &amp; Transliteration
-                  </div>
-                  <div className="col-span-2 px-2 border-l border-amber-500/25 min-w-0 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
-                    Protocol
-                  </div>
-                  <div className="col-span-3 pl-2 border-l border-amber-500/25 min-w-0 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
-                    Sadaqah &amp; Stone/Attar
-                  </div>
+              <div className="overflow-hidden rounded-xl border border-amber-500/35 bg-slate-950/95 a4-no-clip">
+                <div className="grid grid-cols-12 bg-amber-950/60 border-b border-amber-500/35 px-2.5 py-1.5 text-[7.8px] font-bold text-amber-200 uppercase a4-grid-safe">
+                  <div className="col-span-3 pr-2 min-w-0">Life Area &amp; Challenge</div>
+                  <div className="col-span-4 px-2 border-l border-amber-500/25 min-w-0">Surah / Dua &amp; Transliteration</div>
+                  <div className="col-span-2 px-2 border-l border-amber-500/25 min-w-0">Protocol</div>
+                  <div className="col-span-3 pl-2 border-l border-amber-500/25 min-w-0">Sadaqah &amp; Stone/Attar</div>
                 </div>
                 <div className="divide-y divide-amber-500/20">
-                  {islamicReport.quranicRemedies.map((qr, idx) => (
+                  {islamicReport.quranicRemedies.slice(0, 2).map((qr, idx) => (
                     <div
                       key={idx}
-                      className="grid grid-cols-12 px-2.5 py-1.5 text-[7.6px] leading-snug items-start a4-section-no-break"
-                      style={{
-                        pageBreakInside: 'avoid',
-                        breakInside: 'avoid',
-                        overflowWrap: 'break-word',
-                        whiteSpace: 'normal',
-                        wordBreak: 'break-word',
-                      }}
+                      className="grid grid-cols-12 px-2.5 py-2 text-[8px] leading-snug items-start a4-section-no-break a4-grid-safe"
                     >
-                      <div
-                        className="col-span-3 pr-2 min-w-0 break-words whitespace-normal overflow-hidden"
-                        style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
-                      >
-                        <div className="font-bold text-amber-200 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                      <div className="col-span-3 pr-2 min-w-0">
+                        <div className="font-bold text-amber-200">
                           {idx + 1}. {qr.lifeArea}
                         </div>
-                        <div className="text-rose-200/95 mt-0.5 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                        <div className="text-rose-200/95 mt-0.5">
                           <strong>Challenge:</strong> {qr.planetaryChallenge}
                         </div>
                       </div>
-                      <div
-                        className="col-span-4 px-2 border-l border-amber-500/20 min-w-0 break-words whitespace-normal overflow-hidden space-y-0.5"
-                        style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
-                      >
-                        <div className="font-bold text-amber-100 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
-                          {qr.surahOrDuaName}
-                        </div>
-                        <div className="text-amber-200/95 font-serif text-[8px] break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
-                          {qr.arabicSnippet}
-                        </div>
-                        <div className="text-sky-200 italic break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
-                          "{qr.transliteration}"
-                        </div>
-                        <div className="text-slate-300 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
-                          ({qr.translationSummary})
-                        </div>
+                      <div className="col-span-4 px-2 border-l border-amber-500/20 min-w-0 space-y-0.5">
+                        <div className="font-bold text-amber-100">{qr.surahOrDuaName}</div>
+                        <div className="text-amber-200/95 font-serif text-[8.5px]">{qr.arabicSnippet}</div>
+                        <div className="text-sky-200 italic">&ldquo;{qr.transliteration}&rdquo;</div>
+                        <div className="text-slate-300">({qr.translationSummary})</div>
                       </div>
-                      <div
-                        className="col-span-2 px-2 border-l border-amber-500/20 min-w-0 break-words whitespace-normal overflow-hidden text-emerald-200"
-                        style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
-                      >
+                      <div className="col-span-2 px-2 border-l border-amber-500/20 min-w-0 text-emerald-200">
                         {qr.recitationProtocol}
                       </div>
-                      <div
-                        className="col-span-3 pl-2 border-l border-amber-500/20 min-w-0 break-words whitespace-normal overflow-hidden space-y-0.5"
-                        style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
-                      >
-                        <div className="text-emerald-300 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                      <div className="col-span-3 pl-2 border-l border-amber-500/20 min-w-0 space-y-0.5">
+                        <div className="text-emerald-300">
                           <strong>Sadaqah:</strong> {qr.sadaqahCharityItem}
                         </div>
-                        <div className="text-amber-200 break-words whitespace-normal" style={{ overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                        <div className="text-amber-200">
                           <strong>Stone/Attar:</strong> {qr.halalStoneAndAttar}
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>
+        ),
+      });
+
+      pages.push({
+        title: 'Page 25B: Islamic-Vedic Remedies — Prescribed Quranic Surah, Dua, Sadaqah & Sunnah Remedies (Part 2: #3–#5)',
+        headImg: islamicNoorArt,
+        headLabel: 'Quranic Surahs (#3–#5)',
+        content: (
+          <div className="space-y-2.5 text-xs a4-text-box-wrap a4-section-no-break">
+            <div className="p-2.5 rounded-xl bg-slate-900/95 border border-emerald-500/40">
+              <div className="text-[8px] font-mono uppercase tracking-widest text-emerald-400 font-bold">
+                ISLAMIC-VEDIC QURANIC SURAH &amp; DUA REMEDIES (CONTINUED)
+              </div>
+              <h4 className="font-serif text-[10.5px] font-bold text-amber-100 mt-0.5">
+                Prescribed Quranic Surah, Dua, Sadaqah &amp; Sunnah Stone/Attar Remedies (Part 2: #3–#5 for {activeProfile.name})
+              </h4>
+            </div>
+            <div className="overflow-hidden rounded-xl border border-amber-500/35 bg-slate-950/95 a4-no-clip">
+              <div className="grid grid-cols-12 bg-amber-950/60 border-b border-amber-500/35 px-2.5 py-2 text-[8px] font-bold text-amber-200 uppercase a4-grid-safe">
+                <div className="col-span-3 pr-2 min-w-0">Life Area &amp; Challenge</div>
+                <div className="col-span-4 px-2 border-l border-amber-500/25 min-w-0">Surah / Dua &amp; Transliteration</div>
+                <div className="col-span-2 px-2 border-l border-amber-500/25 min-w-0">Protocol</div>
+                <div className="col-span-3 pl-2 border-l border-amber-500/25 min-w-0">Sadaqah &amp; Stone/Attar</div>
+              </div>
+              <div className="divide-y divide-amber-500/20">
+                {islamicReport.quranicRemedies.slice(2).map((qr, idx) => (
+                  <div
+                    key={idx + 2}
+                    className="grid grid-cols-12 px-2.5 py-2.5 text-[8.4px] leading-relaxed items-start a4-section-no-break a4-grid-safe"
+                  >
+                    <div className="col-span-3 pr-2 min-w-0">
+                      <div className="font-bold text-amber-200">
+                        {idx + 3}. {qr.lifeArea}
+                      </div>
+                      <div className="text-rose-200/95 mt-1">
+                        <strong>Challenge:</strong> {qr.planetaryChallenge}
+                      </div>
+                    </div>
+                    <div className="col-span-4 px-2 border-l border-amber-500/20 min-w-0 space-y-1">
+                      <div className="font-bold text-amber-100">{qr.surahOrDuaName}</div>
+                      <div className="text-amber-200/95 font-serif text-[9px]">{qr.arabicSnippet}</div>
+                      <div className="text-sky-200 italic">&ldquo;{qr.transliteration}&rdquo;</div>
+                      <div className="text-slate-300">({qr.translationSummary})</div>
+                    </div>
+                    <div className="col-span-2 px-2 border-l border-amber-500/20 min-w-0 text-emerald-200">
+                      {qr.recitationProtocol}
+                    </div>
+                    <div className="col-span-3 pl-2 border-l border-amber-500/20 min-w-0 space-y-1">
+                      <div className="text-emerald-300">
+                        <strong>Sadaqah:</strong> {qr.sadaqahCharityItem}
+                      </div>
+                      <div className="text-amber-200">
+                        <strong>Stone/Attar:</strong> {qr.halalStoneAndAttar}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -5588,6 +5893,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           </div>
         ),
       });
+      trackModuleEnd('islamicVedicRemedies', modStart_islamicVedicRemedies);
     }
 
     // FINAL CLOSING CHAPTER (1–2 PAGES): AI-Generated Complete Report Summary in Simple Paragraph Format
@@ -5602,6 +5908,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         language,
       });
 
+    const closingStartIdx = pages.length;
     pages.push({
       title: `Final Summary (Part 1 of 2): Complete Report Summary & Next 10 Years Future (${closingSummary.startYear}–${closingSummary.endYear})`,
       headImg: spiritualReportBanner,
@@ -5682,12 +5989,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
             </div>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-gradient-to-br from-amber-950/55 via-slate-950 to-amber-950/45 border-2 border-amber-400/60 space-y-2.5">
-            <div className="border-b border-amber-400/35 pb-1.5 flex items-center justify-between gap-2">
+          <div className="p-3.5 rounded-xl bg-gradient-to-br from-amber-950/55 via-slate-950 to-amber-950/45 border-2 border-amber-400/60 space-y-2.5 a4-no-clip">
+            <div className="border-b border-amber-400/35 pb-1.5 a4-flex-safe">
               <h3 className="font-serif text-[11px] font-black text-amber-300 uppercase tracking-wide">
                 2. Heartfelt Thank You From The TATHASTU Family &amp; Spiritual Blessings
               </h3>
-              <span className="text-[8px] font-mono text-amber-200 uppercase">
+              <span className="text-[8px] font-mono text-amber-200 uppercase a4-badge-wrap">
                 {TATHASTU_BRAND_NAME} • {TATHASTU_TAGLINE}
               </span>
             </div>
@@ -5747,6 +6054,13 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       ),
     });
 
+    const closingEndIdx = pages.length;
+    const actualClosingRange = {
+      startPage: closingStartIdx + 2,
+      endPage: closingEndIdx + 1,
+      pageCount: closingEndIdx - closingStartIdx,
+    };
+
     const isWhatsAppNotificationHubTab =
       sectionTitle.toLowerCase().includes('good/bad time') ||
       sectionTitle.toLowerCase().includes('whatsapp');
@@ -5757,10 +6071,178 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         headImg: spiritualReportBanner,
         headLabel: sectionTitle,
         isCover: pages.length === 0,
-        content: <div className="text-xs a4-section-no-break">{children}</div>,
+        content: <div className="text-xs a4-section-no-break a4-no-clip">{children}</div>,
       });
     }
 
+    // PAGE 1: DYNAMIC 'INDEX OF MODULES' BUILT FROM EXACT LIVE RENDERED PAGE RANGES (100% EXACT MATCH ACROSS PREVIEW, PRINT & DOWNLOAD PDF)
+    const actualTotalPages = pages.length + 1;
+    const indexPage = {
+      title: `Page 1: Index of Modules & Master Spiritual Dossier Guide (${selectedModuleEntries.length} Active Modules • ${actualTotalPages} Pages)`,
+      headImg: spiritualReportBanner,
+      headLabel: 'Index of Modules',
+      isCover: true,
+      content: (
+        <div className="space-y-1.5 text-xs a4-section-no-break a4-no-clip">
+          <div className="p-2 rounded-xl bg-gradient-to-r from-amber-950/80 via-slate-950 to-indigo-950/80 border-2 border-amber-400/60 a4-flex-safe a4-no-clip">
+            <div className="min-w-0 flex-1">
+              <span className="text-[7.5px] font-mono uppercase tracking-widest text-amber-300 font-bold block">
+                MASTER DOSSIER TABLE OF CONTENTS • ACTIVE MODULE DIRECTORY
+              </span>
+              <h3 className="font-serif text-[12px] font-black text-amber-100 leading-tight">
+                INDEX OF MODULES INCLUDED IN THIS PERSONALIZED REPORT ({selectedModuleEntries.length} ACTIVE MODULES)
+              </h3>
+              <p className="text-[8px] text-slate-200 mt-0.5 leading-snug a4-numeric-wrap">
+                Prepared exclusively for <strong className="text-amber-200">{activeProfile.name}</strong> (DOB: {activeProfile.dob} • Place: {activeProfile.pob || 'New Delhi'}) — Every page number below matches this Print Preview &amp; PDF 1:1.
+              </p>
+            </div>
+            <div className="px-2.5 py-1 rounded-xl bg-slate-950/90 border border-emerald-400/50 text-right a4-badge-wrap a4-numeric-wrap">
+              <div className="text-[7px] font-mono uppercase text-emerald-300 font-bold">
+                Total Dossier Length
+              </div>
+              <div className="font-mono text-xs font-black text-amber-200">
+                {actualTotalPages} A4 Pages
+              </div>
+              <div className="text-[6.8px] font-mono text-sky-300">
+                {selectedModuleEntries.length} Selected Module(s)
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-amber-500/45 bg-slate-950/95 a4-no-clip">
+            <div className="grid grid-cols-12 bg-amber-950/70 border-b border-amber-500/40 px-2 py-1 text-[7.4px] font-bold text-amber-200 uppercase a4-grid-safe">
+              <div className="col-span-3 pr-1.5">Module # &amp; Active Module Name</div>
+              <div className="col-span-4 px-1.5 border-l border-amber-500/25">
+                Chapters, Diagnostics &amp; Remedies Included
+              </div>
+              <div className="col-span-3 px-1.5 border-l border-amber-500/25">
+                Key Personalized Result ({activeProfile.name})
+              </div>
+              <div className="col-span-2 pl-1.5 border-l border-amber-500/25 text-right">
+                Page No.
+              </div>
+            </div>
+            <div className="divide-y divide-amber-500/20">
+              <div className="grid grid-cols-12 px-2 py-0.5 text-[7.2px] items-center bg-slate-900/70 leading-tight a4-grid-safe">
+                <div className="col-span-3 pr-1.5 font-bold text-amber-200">
+                  00. Index of Modules &amp; Executive Charter
+                </div>
+                <div className="col-span-4 px-1.5 border-l border-amber-500/20 text-slate-300">
+                  Master Table of Contents, Active Module Directory &amp; Core Natal/Remedy Quick Reference
+                </div>
+                <div className="col-span-3 px-1.5 border-l border-amber-500/20 text-emerald-300 font-mono a4-numeric-wrap">
+                  Mulank {m} ({mPlanet.planet}) | Bhagyank {b} ({bPlanet.planet}) • {astro.rashi}
+                </div>
+                <div className="col-span-2 pl-1.5 border-l border-amber-500/20 text-right font-mono font-bold text-amber-300 a4-numeric-wrap">
+                  Page 1 (1p)
+                </div>
+              </div>
+              {selectedModuleEntries.map((entry, idx) => {
+                const rng = modulePageRangesMap[entry.key];
+                const pgText =
+                  rng && rng.startPage > 0
+                    ? rng.startPage === rng.endPage
+                      ? `Page ${rng.startPage} (1p)`
+                      : `Pages ${rng.startPage}–${rng.endPage} (${rng.pageCount}p)`
+                    : `${modulePageCounts[entry.key] || 1}p`;
+                return (
+                  <div
+                    key={entry.key}
+                    className="grid grid-cols-12 px-2 py-0.5 text-[7.2px] items-center leading-tight a4-grid-safe"
+                  >
+                    <div className="col-span-3 pr-1.5 font-bold text-amber-100">
+                      {String(idx + 1).padStart(2, '0')}. {entry.title}
+                    </div>
+                    <div className="col-span-4 px-1.5 border-l border-amber-500/20 text-slate-300">
+                      {entry.chaptersAndScope}
+                    </div>
+                    <div className="col-span-3 px-1.5 border-l border-amber-500/20 text-emerald-200 a4-numeric-wrap">
+                      {entry.personalizedHighlight}
+                    </div>
+                    <div className="col-span-2 pl-1.5 border-l border-amber-500/20 text-right font-mono font-bold text-amber-300 a4-numeric-wrap">
+                      {pgText}
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="grid grid-cols-12 px-2 py-0.5 text-[7.2px] items-center leading-tight bg-amber-950/35 a4-grid-safe">
+                <div className="col-span-3 pr-1.5 font-bold text-amber-200">
+                  {String(selectedModuleEntries.length + 1).padStart(2, '0')}. Complete Report Summary, 10-Year Future (With vs. Without Remedies) &amp; Tathastu Blessings
+                </div>
+                <div className="col-span-4 px-1.5 border-l border-amber-500/20 text-slate-200">
+                  Simple Paragraph Summary (Vedic + Parashar Astrology &amp; Numerology), Next 10 Years Future Without vs. With Remedies, Thank You &amp; Spiritual Blessings
+                </div>
+                <div className="col-span-3 px-1.5 border-l border-amber-500/20 text-emerald-300 a4-numeric-wrap">
+                  Parashar Dasha: {closingSummary.parasharMahadashaLabel} • {closingSummary.startYear}–{closingSummary.endYear}
+                </div>
+                <div className="col-span-2 pl-1.5 border-l border-amber-500/20 text-right font-mono font-bold text-amber-300 a4-numeric-wrap">
+                  Pages {actualClosingRange.startPage}–{actualClosingRange.endPage} ({actualClosingRange.pageCount}p)
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-2 rounded-xl bg-slate-950/95 border border-amber-500/40 space-y-1 a4-no-clip">
+            <div className="a4-flex-safe border-b border-amber-500/25 pb-0.5">
+              <span className="font-serif text-[8.5px] font-bold text-amber-200 uppercase">
+                EXECUTIVE PERSONALIZED SNAPSHOT &amp; CORE REMEDIES AT A GLANCE ({activeProfile.name.toUpperCase()})
+              </span>
+              <span className="text-[7.2px] font-mono text-emerald-300 a4-numeric-wrap">
+                12-Month Validity: {reportDateRange.startFormatted} – {reportDateRange.endFormatted}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 a4-print-grid-2 a4-grid-safe text-[7.3px] leading-snug">
+              <div className="p-1.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5 a4-no-clip">
+                <div className="font-bold text-amber-300 uppercase">
+                  1. Core Numerology &amp; Vedic Natal Pillars
+                </div>
+                <div className="text-slate-200">
+                  <strong>Mulank:</strong> #{m} ({mPlanet.planet}) • <strong>Bhagyank:</strong> #{b} ({bPlanet.planet}) • <strong>Rashi:</strong> {astro.rashi} ({astro.nakshatra}, Pada {astro.pada})
+                </div>
+                <div className="text-emerald-300 font-mono a4-list-wrap a4-numeric-wrap">
+                  Friendly Nos: {mPlanet.friendlyNumbers.join(', ')} • Lucky Days: {mPlanet.luckyDays.join(', ')} • Color: {mPlanet.luckyColor}
+                </div>
+              </div>
+              <div className="p-1.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5 a4-no-clip">
+                <div className="font-bold text-amber-300 uppercase">
+                  2. Name &amp; Mobile Frequency Alignment
+                </div>
+                <div className="text-slate-200 a4-numeric-wrap">
+                  <strong>Current:</strong> {activeProfile.name} (#{nameAnalysis.totalChaldeanCompound} → #{nameAnalysis.chaldeanSingle}) • <strong>Best:</strong> {topPerfectChoice?.suggestedName || activeProfile.name} (#{topPerfectChoice?.compoundNumber ?? nameAnalysis.totalChaldeanCompound} → #{topPerfectChoice?.singleDigit ?? nameAnalysis.chaldeanSingle})
+                </div>
+                <div className="text-sky-300 font-mono a4-numeric-wrap">
+                  Mobile: {activeProfile.mobile || '9876543210'} → #{mobileAnalysis.singleDigit} ({mobileAnalysis.verdict}) • Career: {career.perfectBusinesses[0]?.field || career.favorableProfessions[0] || 'Leadership'}
+                </div>
+              </div>
+              <div className="p-1.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5 a4-no-clip">
+                <div className="font-bold text-amber-300 uppercase">
+                  3. Primary 5-Pillar Ratna &amp; Rudraksha Shield
+                </div>
+                <div className="text-slate-200">
+                  <strong>Primary Maharatna:</strong> {gemRecommend.lifeStone.primaryGem} ({gemRecommend.lifeStone.sanskritGem}) in {gemRecommend.lifeStone.metal} on {gemRecommend.lifeStone.finger} ({gemRecommend.lifeStone.wearingDay})
+                </div>
+                <div className="text-emerald-300">
+                  <strong>Destiny Stone:</strong> {gemRecommend.destinyStone.primaryGem} • <strong>Growth Stone:</strong> {nameAndGrowthRatna.personalGrowthStone.ratna.primaryGem}
+                </div>
+              </div>
+              <div className="p-1.5 rounded-lg bg-slate-900 border border-amber-500/30 space-y-0.5 a4-no-clip">
+                <div className="font-bold text-amber-300 uppercase">
+                  4. Daily Beej Mantra, Vastu &amp; Healer Attestation
+                </div>
+                <div className="text-slate-200">
+                  <strong>Daily Mantra:</strong> &ldquo;{bPlanet.beejMantra}&rdquo; (108x Morning) • <strong>Vastu Disha:</strong> East / North-East (Ishan Kon)
+                </div>
+                <div className="text-amber-200 a4-numeric-wrap">
+                  <strong>Authorized Healer:</strong> {healerDisplayName} ({brandTitle}) • 📞 {healerDisplayMobile}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    };
+
+    pages.unshift(indexPage);
     return pages;
   };
 
@@ -5768,10 +6250,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     sectionTitle.toLowerCase().includes('good/bad time') ||
     sectionTitle.toLowerCase().includes('whatsapp');
   const discreteA4Pages = buildDiscreteA4Pages();
-  const totalPageCount =
-    pdfPageCountInfo.totalPdfPages > 0
-      ? pdfPageCountInfo.totalPdfPages + (includeActiveTabInPrint && !isWhatsAppHubActiveScreen ? 1 : 0)
-      : discreteA4Pages.length;
+  const totalPageCount = discreteA4Pages.length;
 
   const SHREE_YANTRA_PLATE_IMAGE_PATH = '/assets/aistudio/wp8754154_d55216c3.jpg';
 
@@ -5794,16 +6273,16 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
 
     return (
       <div
-        className="a4-dynamic-page-spacer a4-section-no-break"
+        className="a4-dynamic-page-spacer a4-section-no-break a4-no-clip"
         style={{
           pageBreakInside: 'avoid',
           breakInside: 'avoid',
-          overflowWrap: 'break-word',
+          overflowWrap: 'anywhere',
           whiteSpace: 'normal',
           wordBreak: 'break-word',
         }}
       >
-        <div className="rounded-xl border border-amber-500/45 bg-slate-950/92 p-2.5 grid grid-cols-12 gap-2.5 items-center shadow-md">
+        <div className="rounded-xl border border-amber-500/45 bg-slate-950/92 p-2.5 grid grid-cols-12 gap-2.5 items-center shadow-md a4-grid-safe">
           {/* Left Highlighted Spiritual Key Box */}
           <div className="col-span-5 p-2 rounded-lg bg-amber-950/45 border border-amber-500/35 space-y-0.5 min-w-0">
             <div className="text-[7.5px] font-mono uppercase tracking-wider text-amber-300 font-bold">
@@ -5938,6 +6417,8 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
 
   const renderDiscreteA4PagesStack = (scaleFactor?: number) => {
     const useScaledSlots = typeof scaleFactor === 'number' && scaleFactor > 0 && scaleFactor < 0.999;
+    const sheetBaseW = isLandscapeReport ? 1123 : 794;
+    const sheetBaseH = isLandscapeReport ? 794 : 1123;
     return (
       <div className={useScaledSlots ? 'space-y-3 sm:space-y-5 flex flex-col items-center' : 'space-y-6 print:space-y-0'}>
         {discreteA4Pages.map((pg, idx) => {
@@ -5946,11 +6427,13 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           const isLastPage = idx === discreteA4Pages.length - 1;
           const sheetNode = (
             <div
-              className="a4-sheet-page rounded-2xl a4-text-box-wrap"
+              className={`a4-sheet-page rounded-2xl a4-text-box-wrap a4-no-clip ${
+                isLandscapeReport ? 'a4-landscape-sheet-page' : ''
+              }`}
               style={{
                 pageBreakInside: 'avoid',
                 breakInside: 'avoid',
-                overflowWrap: 'break-word',
+                overflowWrap: 'anywhere',
                 whiteSpace: 'normal',
                 wordBreak: 'break-word',
               }}
@@ -5958,27 +6441,24 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               {renderA4PageSpiritualBackground()}
               {renderCenteredBrandWatermark()}
               {renderA4PageTopHeader(dynamicTitle, pg.headImg, pg.headLabel, pg.isCover)}
-              <div
-                className="relative z-10 flex-1 my-1 a4-page-body-fill a4-text-box-wrap"
-                style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
-              >
+              <A4AutoFitBody orientationKey={`${reportOrientation}-${idx}-${totalPageCount}`}>
                 <div
-                  className="a4-section-no-break space-y-2"
+                  className="a4-page-main-content a4-section-no-break a4-no-clip space-y-2"
                   style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
                 >
-                  {pg.content}
+                  <A4HighlightedContent>{pg.content}</A4HighlightedContent>
                 </div>
                 {!isLastPage &&
                   renderContextualChapterVisualFiller(pg.headImg, pg.headLabel, cleanTitle, idx + 1)}
                 {isLastPage && renderSacredClosingBlessingBanner()}
-              </div>
+              </A4AutoFitBody>
               {renderA4PageHealerFooter(idx + 1)}
             </div>
           );
 
           if (useScaledSlots) {
-            const slotW = Math.floor(794 * scaleFactor);
-            const slotH = Math.floor(1123 * scaleFactor);
+            const slotW = Math.floor(sheetBaseW * scaleFactor);
+            const slotH = Math.floor(sheetBaseH * scaleFactor);
             return (
               <div
                 key={idx}
@@ -5992,8 +6472,8 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               >
                 <div
                   style={{
-                    width: '794px',
-                    height: '1123px',
+                    width: `${sheetBaseW}px`,
+                    height: `${sheetBaseH}px`,
                     transform: `scale(${scaleFactor})`,
                     transformOrigin: 'top left',
                   }}
@@ -6194,23 +6674,53 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         createPortal(
           <div className="fixed inset-0 z-[9990] bg-slate-950/95 backdrop-blur-md flex flex-col animate-fade-in no-print">
             <div className="w-full bg-slate-900 border-b-2 border-amber-400/50 px-3 sm:px-6 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 sm:py-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-2 sm:gap-3 shadow-xl shrink-0">
-              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-300 shrink-0">
-                  <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <h3 className="font-serif text-sm sm:text-lg font-black text-amber-100 truncate">
-                      <span className="sm:hidden">Print Preview — {activeProfile.name}</span>
-                      <span className="hidden sm:inline">A4 Portrait Print Preview — {activeProfile.name}</span>
-                    </h3>
-                    <span className="hidden sm:inline-flex px-2 py-0.5 rounded-md bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono text-[10px] font-bold shrink-0">
-                      {totalPageCount} A4 Pages (210mm × 297mm)
-                    </span>
+              <div className="flex items-center justify-between gap-2 sm:gap-3 min-w-0">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-300 shrink-0">
+                    <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
-                  <p className="hidden sm:block text-[11px] text-amber-200/80">
-                    Branding: <strong>{TATHASTU_BRAND_NAME} ({TATHASTU_TAGLINE})</strong> • Exact 1:1 WYSIWYG Parity across Print Preview, Print &amp; PDF Download
-                  </p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h3 className="font-serif text-sm sm:text-lg font-black text-amber-100 truncate">
+                        <span className="sm:hidden">Print Preview — {activeProfile.name}</span>
+                        <span className="hidden sm:inline">
+                          {isLandscapeReport ? 'A4 Landscape Print Preview' : 'A4 Portrait Print Preview'} — {activeProfile.name}
+                        </span>
+                      </h3>
+                      <span className="hidden sm:inline-flex px-2 py-0.5 rounded-md bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono text-[10px] font-bold shrink-0">
+                        {totalPageCount} A4 Pages ({isLandscapeReport ? '297mm × 210mm' : '210mm × 297mm'})
+                      </span>
+                    </div>
+                    <p className="hidden sm:block text-[11px] text-amber-200/80">
+                      Branding: <strong>{TATHASTU_BRAND_NAME} ({TATHASTU_TAGLINE})</strong> • Exact 1:1 WYSIWYG Parity across Print Preview, Print &amp; PDF Download
+                    </p>
+                  </div>
+                </div>
+
+                {/* Custom Portrait / Landscape Report Mode Toggle (Forces @page { size: landscape; } in Landscape Report mode) */}
+                <div className="flex items-center bg-slate-950 border border-amber-500/40 rounded-lg p-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setReportOrientation('portrait')}
+                    className={`px-2 py-1 rounded-md text-[10px] sm:text-[11px] font-bold cursor-pointer transition-all whitespace-nowrap ${
+                      !isLandscapeReport
+                        ? 'bg-amber-500 text-slate-950 shadow'
+                        : 'text-amber-200/80 hover:text-amber-100'
+                    }`}
+                  >
+                    Portrait
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReportOrientation('landscape')}
+                    className={`px-2 py-1 rounded-md text-[10px] sm:text-[11px] font-bold cursor-pointer transition-all whitespace-nowrap ${
+                      isLandscapeReport
+                        ? 'bg-amber-500 text-slate-950 shadow'
+                        : 'text-amber-200/80 hover:text-amber-100'
+                    }`}
+                  >
+                    Landscape Report
+                  </button>
                 </div>
               </div>
 
@@ -6287,10 +6797,22 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
               </div>
             </div>
 
-            <div className="report-a4-preview-viewport flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5 sm:p-6 flex justify-center bg-slate-950/95">
+            <div
+              ref={previewViewportRef}
+              className="report-a4-preview-viewport flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5 sm:p-6 flex justify-center bg-slate-950/95"
+            >
               {isMobileViewport ? (
                 <div className="w-full flex flex-col items-center">
-                  {renderDiscreteA4PagesStack(Math.max(0.32, Math.min(1, (viewportWidth - 16) / 794)))}
+                  {renderDiscreteA4PagesStack(
+                    Math.max(
+                      0.24,
+                      Math.min(
+                        1,
+                        (Math.max(240, previewViewportWidth > 200 ? previewViewportWidth : viewportWidth) - 16) /
+                          (isLandscapeReport ? 1123 : 794)
+                      )
+                    )
+                  )}
                 </div>
               ) : (
                 <div
@@ -6313,12 +6835,12 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         <div
           ref={pdfCaptureContainerRef}
           aria-hidden="true"
-          className="a4-pdf-capture-mode no-print"
+          className={`a4-pdf-capture-mode no-print ${isLandscapeReport ? 'a4-landscape-capture' : ''}`}
           style={{
             position: 'fixed',
             left: '-12000px',
             top: 0,
-            width: '794px',
+            width: isLandscapeReport ? '1123px' : '794px',
             pointerEvents: 'none',
             zIndex: -1,
           }}
@@ -6336,7 +6858,7 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
           {activeProfile && renderCenteredBrandWatermark()}
 
           <div
-            className={`report-snap-flow relative z-10 ${
+            className={`report-snap-flow a4-no-clip relative z-10 ${
               isWindowsFullPage ? 'p-5 lg:p-8 xl:p-10' : isMobileAppMode ? 'p-3 sm:p-5' : 'p-4 sm:p-6 lg:p-8'
             }`}
           >

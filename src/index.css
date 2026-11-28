@@ -174,16 +174,18 @@
     min-width: 0;
   }
 
-  body.tathastu-mobile-view .grid.grid-cols-1 {
+  body.tathastu-mobile-view main .grid.grid-cols-1:not(.a4-sheet-page *),
+  body.tathastu-mobile-app-mode main .grid.grid-cols-1:not(.a4-sheet-page *) {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 
-  body.tathastu-mobile-view .flex.flex-col[class*="flex-row"] {
+  body.tathastu-mobile-view main .flex.flex-col[class*="flex-row"]:not(.a4-sheet-page *),
+  body.tathastu-mobile-app-mode main .flex.flex-col[class*="flex-row"]:not(.a4-sheet-page *) {
     flex-direction: column !important;
     align-items: stretch !important;
   }
 
-  body.tathastu-mobile-view .hidden[class*="md:grid"] {
+  body.tathastu-mobile-view main .hidden[class*="md:grid"]:not(.a4-sheet-page *) {
     display: none !important;
   }
 
@@ -207,13 +209,13 @@
     word-break: break-word;
   }
 
-  body.tathastu-mobile-view main .whitespace-nowrap,
-  body.tathastu-mobile-app-mode main .whitespace-nowrap {
+  body.tathastu-mobile-view main .whitespace-nowrap:not(.a4-sheet-page *),
+  body.tathastu-mobile-app-mode main .whitespace-nowrap:not(.a4-sheet-page *) {
     white-space: normal !important;
   }
 
-  body.tathastu-mobile-view table,
-  body.tathastu-mobile-app-mode table {
+  body.tathastu-mobile-view main table:not(.a4-sheet-page *),
+  body.tathastu-mobile-app-mode main table:not(.a4-sheet-page *) {
     display: block;
     width: 100%;
     max-width: 100%;
@@ -226,38 +228,38 @@
     border-radius: 1.15rem;
   }
 
-  /* Clean mobile card padding & report alignment on narrow phone screens */
+  /* Clean mobile card padding & report alignment on narrow phone screens (NEVER affects discrete A4 print/preview sheets) */
   @media (max-width: 640px) {
-    body.tathastu-mobile-view main .p-6,
-    body.tathastu-mobile-view main .p-8,
-    body.tathastu-mobile-app-mode main .p-6,
-    body.tathastu-mobile-app-mode main .p-8 {
+    body.tathastu-mobile-view main .p-6:not(.a4-sheet-page *),
+    body.tathastu-mobile-view main .p-8:not(.a4-sheet-page *),
+    body.tathastu-mobile-app-mode main .p-6:not(.a4-sheet-page *),
+    body.tathastu-mobile-app-mode main .p-8:not(.a4-sheet-page *) {
       padding: 0.9rem !important;
     }
 
-    body.tathastu-mobile-view main .p-5,
-    body.tathastu-mobile-app-mode main .p-5 {
+    body.tathastu-mobile-view main .p-5:not(.a4-sheet-page *),
+    body.tathastu-mobile-app-mode main .p-5:not(.a4-sheet-page *) {
       padding: 0.8rem !important;
     }
 
-    body.tathastu-mobile-view main h1,
-    body.tathastu-mobile-app-mode main h1 {
+    body.tathastu-mobile-view main h1:not(.a4-sheet-page *),
+    body.tathastu-mobile-app-mode main h1:not(.a4-sheet-page *) {
       font-size: 1.25rem !important;
       line-height: 1.3 !important;
     }
 
-    body.tathastu-mobile-view main h2,
-    body.tathastu-mobile-app-mode main h2 {
+    body.tathastu-mobile-view main h2:not(.a4-sheet-page *),
+    body.tathastu-mobile-app-mode main h2:not(.a4-sheet-page *) {
       font-size: 1.08rem !important;
       line-height: 1.32 !important;
     }
 
-    body.tathastu-mobile-view .a4-print-grid-2,
-    body.tathastu-mobile-view .a4-print-grid-3,
-    body.tathastu-mobile-view .a4-print-grid-4,
-    body.tathastu-mobile-app-mode .a4-print-grid-2,
-    body.tathastu-mobile-app-mode .a4-print-grid-3,
-    body.tathastu-mobile-app-mode .a4-print-grid-4 {
+    body.tathastu-mobile-view main .a4-print-grid-2:not(.a4-sheet-page *),
+    body.tathastu-mobile-view main .a4-print-grid-3:not(.a4-sheet-page *),
+    body.tathastu-mobile-view main .a4-print-grid-4:not(.a4-sheet-page *),
+    body.tathastu-mobile-app-mode main .a4-print-grid-2:not(.a4-sheet-page *),
+    body.tathastu-mobile-app-mode main .a4-print-grid-3:not(.a4-sheet-page *),
+    body.tathastu-mobile-app-mode main .a4-print-grid-4:not(.a4-sheet-page *) {
       grid-template-columns: minmax(0, 1fr) !important;
       gap: 0.6rem !important;
     }
@@ -419,6 +421,20 @@
   overflow: hidden !important;
 }
 
+/* Custom Landscape Report Mode on Screen & PDF Capture (297mm × 210mm = 1123px × 794px) */
+body.tathastu-landscape-report-mode .a4-sheet-page,
+.a4-landscape-sheet-page {
+  width: 1123px !important;
+  min-width: 1123px !important;
+  max-width: 1123px !important;
+  height: 794px !important;
+  min-height: 794px !important;
+  max-height: 794px !important;
+  padding: 16px 22px !important;
+}
+
+/* Always Enforce Exact Multi-Column Grids & Proper Tables Inside Discrete A4 Sheets (Even on Mobile Screens!) */
+body .a4-sheet-page .a4-print-grid-2,
 .a4-pdf-capture-mode .a4-print-grid-2,
 .report-a4-preview-viewport .a4-print-grid-2 {
   display: grid !important;
@@ -426,6 +442,7 @@
   align-items: stretch !important;
 }
 
+body .a4-sheet-page .a4-print-grid-3,
 .a4-pdf-capture-mode .a4-print-grid-3,
 .report-a4-preview-viewport .a4-print-grid-3 {
   display: grid !important;
@@ -433,11 +450,19 @@
   align-items: stretch !important;
 }
 
+body .a4-sheet-page .a4-print-grid-4,
 .a4-pdf-capture-mode .a4-print-grid-4,
 .report-a4-preview-viewport .a4-print-grid-4 {
   display: grid !important;
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   align-items: stretch !important;
+}
+
+body .a4-sheet-page table {
+  display: table !important;
+  width: 100% !important;
+  table-layout: fixed !important;
+  overflow: visible !important;
 }
 
 .a4-sheet-page:last-child {
@@ -524,26 +549,153 @@
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
-  overflow-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
   word-wrap: break-word !important;
   word-break: break-word !important;
   white-space: normal !important;
 }
 
+/* Exempt A4AutoFitBody scaled inner wrapper so dynamic (100 / fitScale)% width is never capped */
+.a4-sheet-page .a4-autofit-inner {
+  max-width: none !important;
+}
+
+/* Neutralize accidental .truncate clipping anywhere inside A4 report pages */
+.a4-sheet-page .truncate,
+.a4-spiritual-report .truncate {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+
+/* Dedicated Anti-Clipping & Boundary-Safe Wrapping Utilities for A4SpiritualReportFrame */
+.a4-no-clip {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow-wrap: anywhere !important;
+  word-wrap: break-word !important;
+  word-break: break-word !important;
+  white-space: normal !important;
+}
+
+.a4-numeric-wrap {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+  word-wrap: break-word !important;
+  word-break: break-word !important;
+  white-space: normal !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.a4-numeric-cell {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-all !important;
+  white-space: normal !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.a4-list-wrap {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+  word-wrap: break-word !important;
+  word-break: break-word !important;
+  white-space: normal !important;
+}
+
+.a4-list-wrap > * {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  white-space: normal !important;
+}
+
+.a4-flex-safe {
+  display: flex;
+  flex-wrap: wrap !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px 8px;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.a4-flex-safe > * {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+
+.a4-badge-wrap {
+  max-width: 100% !important;
+  min-width: 0 !important;
+  flex-shrink: 1 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  line-height: 1.25;
+}
+
+.a4-grid-safe {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.a4-grid-safe > * {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+
+.a4-table-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden;
+  box-sizing: border-box !important;
+}
+
+.a4-table-wrap table,
 .a4-sheet-page table {
-  table-layout: fixed;
-  width: 100%;
+  table-layout: fixed !important;
+  width: 100% !important;
+  max-width: 100% !important;
   border-collapse: collapse;
 }
 
+.a4-table-wrap th,
+.a4-table-wrap td,
 .a4-sheet-page th,
 .a4-sheet-page td {
-  overflow-wrap: break-word !important;
+  min-width: 0 !important;
+  overflow-wrap: anywhere !important;
   word-wrap: break-word !important;
   word-break: break-word !important;
   white-space: normal !important;
   vertical-align: top;
   padding: 4.5px 6.5px;
+}
+
+/* Ensure interactive report frame content on screen also respects container boundaries */
+.report-snap-flow .grid > *,
+.report-snap-flow .flex > * {
+  min-width: 0;
+}
+
+.report-snap-flow p,
+.report-snap-flow li,
+.report-snap-flow td,
+.report-snap-flow th {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .a4-compact-footer {
@@ -556,6 +708,11 @@
   box-sizing: border-box;
   break-inside: avoid !important;
   page-break-inside: avoid !important;
+}
+
+.a4-page-num-pill {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 .a4-page-body-fill {
@@ -578,12 +735,148 @@
   gap: 5px;
 }
 
+/* Auto-fill vertical height alignment when a page has spare vertical room (eliminates blank bottom gaps) */
+.a4-autofit-inner.a4-fill-stretch {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+}
+
+.a4-autofit-inner.a4-fill-stretch > .a4-page-main-content {
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+}
+
+.a4-autofit-inner.a4-fill-stretch > .a4-page-main-content > div {
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+}
+
+.a4-autofit-inner.a4-fill-stretch > .a4-page-main-content > div > * {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.a4-autofit-inner.a4-fill-stretch > .a4-dynamic-page-spacer {
+  flex: 0 0 auto !important;
+  margin-top: 8px !important;
+}
+
+/* Important Spiritual & Diagnostic Keyword Highlights across all A4 Report Pages */
+.a4-hl-percent,
+.a4-hl-chakra,
+.a4-hl-dasha,
+.a4-hl-stone,
+.a4-hl-metal,
+.a4-hl-planet,
+.a4-hl-benefit,
+.a4-hl-loss {
+  display: inline !important;
+  border-radius: 3px;
+  padding: 0 3px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.a4-hl-percent {
+  color: #6ee7b7 !important;
+  background: rgba(16, 185, 129, 0.18) !important;
+  border: 0.5px solid rgba(52, 211, 153, 0.45);
+  font-weight: 800;
+}
+
+.a4-hl-chakra {
+  color: #f3e8ff !important;
+  background: rgba(168, 85, 247, 0.24) !important;
+  border-bottom: 1px solid rgba(192, 132, 252, 0.65);
+  font-weight: 700;
+}
+
+.a4-hl-dasha {
+  color: #fef08a !important;
+  background: rgba(245, 158, 11, 0.25) !important;
+  border-bottom: 1px solid rgba(251, 191, 36, 0.72);
+  font-weight: 800;
+}
+
+.a4-hl-stone {
+  color: #bae6fd !important;
+  background: rgba(14, 165, 233, 0.22) !important;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.65);
+  font-weight: 700;
+}
+
+.a4-hl-metal {
+  color: #fed7aa !important;
+  background: rgba(249, 115, 22, 0.2) !important;
+  border-bottom: 1px solid rgba(251, 146, 60, 0.6);
+  font-weight: 700;
+}
+
+.a4-hl-planet {
+  color: #fde68a !important;
+  background: rgba(234, 179, 8, 0.16) !important;
+  font-weight: 700;
+}
+
+.a4-hl-benefit {
+  color: #a7f3d0 !important;
+  background: rgba(16, 185, 129, 0.18) !important;
+  border-bottom: 1px solid rgba(52, 211, 153, 0.55);
+  font-weight: 700;
+}
+
+.a4-hl-loss {
+  color: #fecdd3 !important;
+  background: rgba(244, 63, 94, 0.18) !important;
+  border-bottom: 1px solid rgba(251, 113, 133, 0.55);
+  font-weight: 700;
+}
+
 @page {
   size: A4 portrait;
   margin: 0mm;
 }
 
+/* Custom 'Landscape Report' Mode Named Page Rule — Forces '@page { size: landscape; }' When Selected in Print Preview Controls */
+@page landscape-report {
+  size: landscape;
+  margin: 0mm;
+}
+
 @media print {
+  /* Force '@page { size: landscape; }' specifically when custom Landscape Report mode is active */
+  html.tathastu-landscape-report-mode,
+  body.tathastu-landscape-report-mode,
+  body.tathastu-landscape-report-mode #root {
+    width: 297mm !important;
+    min-height: 210mm !important;
+  }
+
+  body.tathastu-landscape-report-mode .a4-print-root,
+  body.tathastu-landscape-report-mode .a4-sheet-page,
+  .a4-landscape-sheet-page {
+    page: landscape-report !important;
+  }
+
+  body.tathastu-landscape-report-mode .a4-sheet-page,
+  .a4-landscape-sheet-page {
+    width: 297mm !important;
+    min-width: 297mm !important;
+    max-width: 297mm !important;
+    height: 210mm !important;
+    min-height: 210mm !important;
+    max-height: 210mm !important;
+    padding: 4.5mm 6mm !important;
+  }
+
   html,
   body,
   #root {
@@ -710,6 +1003,37 @@
     flex: 1 1 auto !important;
     margin-top: auto !important;
     justify-content: flex-end !important;
+  }
+
+  .a4-autofit-inner.a4-fill-stretch {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+  }
+
+  .a4-autofit-inner.a4-fill-stretch > .a4-page-main-content {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+  }
+
+  .a4-autofit-inner.a4-fill-stretch > .a4-page-main-content > div {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+  }
+
+  .a4-autofit-inner.a4-fill-stretch > .a4-page-main-content > div > * {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+
+  .a4-autofit-inner.a4-fill-stretch > .a4-dynamic-page-spacer {
+    flex: 0 0 auto !important;
+    margin-top: 8px !important;
   }
 
   .a4-sheet-page .a4-consistent-box,
