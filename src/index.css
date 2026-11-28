@@ -376,16 +376,17 @@
   position: relative;
 }
 
-/* Discrete A4 Portrait Page Sheet (210mm × 297mm — Exact 1:1 Parity Across Print Preview, Print & PDF Download) */
+/* Discrete A4 Portrait Page Sheet (794px × 1123px / 210mm × 297mm — Exact 1:1 Parity Across Mobile Print Preview, Desktop Print Preview, Print & PDF Download) */
 .a4-sheet-page {
-  width: 210mm;
-  min-width: 210mm;
-  max-width: 210mm;
-  height: 297mm;
-  min-height: 297mm;
+  width: 794px;
+  min-width: 794px;
+  max-width: 794px;
+  height: 1123px;
+  min-height: 1123px;
+  max-height: 1123px;
   margin-left: auto;
   margin-right: auto;
-  padding: 5.5mm 6.5mm;
+  padding: 18px 22px;
   box-sizing: border-box;
   position: relative;
   display: flex;
@@ -407,7 +408,8 @@
   max-width: 794px !important;
   height: 1123px !important;
   min-height: 1123px !important;
-  padding: 20px 24px !important;
+  max-height: 1123px !important;
+  padding: 18px 22px !important;
   display: flex !important;
   flex-direction: column !important;
   justify-content: flex-start !important;
@@ -417,19 +419,22 @@
   overflow: hidden !important;
 }
 
-.a4-pdf-capture-mode .a4-print-grid-2 {
+.a4-pdf-capture-mode .a4-print-grid-2,
+.report-a4-preview-viewport .a4-print-grid-2 {
   display: grid !important;
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   align-items: stretch !important;
 }
 
-.a4-pdf-capture-mode .a4-print-grid-3 {
+.a4-pdf-capture-mode .a4-print-grid-3,
+.report-a4-preview-viewport .a4-print-grid-3 {
   display: grid !important;
   grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   align-items: stretch !important;
 }
 
-.a4-pdf-capture-mode .a4-print-grid-4 {
+.a4-pdf-capture-mode .a4-print-grid-4,
+.report-a4-preview-viewport .a4-print-grid-4 {
   display: grid !important;
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   align-items: stretch !important;
@@ -442,44 +447,11 @@
 
 .a4-page-header {
   flex-shrink: 0;
-  padding-bottom: 6px;
-  margin-bottom: 6px;
+  padding-bottom: 5px;
+  margin-bottom: 5px;
   box-sizing: border-box;
   break-inside: avoid !important;
   page-break-inside: avoid !important;
-}
-
-/* Responsive alignment for A4 Report Sheets on Mobile & Tablet screens (Print retains exact 210mm A4) */
-@media screen and (max-width: 860px) {
-  .a4-sheet-page {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    height: auto !important;
-    min-height: auto !important;
-    max-height: none !important;
-    padding: 12px !important;
-    border-radius: 14px;
-    overflow: visible;
-  }
-
-  .a4-sheet-page .grid {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  .a4-sheet-page table {
-    display: block;
-    width: 100%;
-    overflow-x: auto;
-    table-layout: auto !important;
-  }
-
-  .a4-sheet-page th,
-  .a4-sheet-page td {
-    font-size: 11px !important;
-    line-height: 1.4 !important;
-    padding: 5px 6px !important;
-  }
 }
 
 .a4-print-module-block,

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, createContext, useContext } from 'react';
+import { createPortal } from 'react-dom';
 import { toJpeg } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import {
@@ -237,6 +238,9 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
   });
   const { isWindowsFullPage, isMobileAppMode } = usePlatformMode();
   const [windowsSpreadView, setWindowsSpreadView] = useState<boolean>(false);
+  const [viewportWidth, setViewportWidth] = useState<number>(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1024
+  );
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
@@ -248,13 +252,18 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
   useEffect(() => {
     const onResize = () => {
       const w = window.innerWidth;
+      setViewportWidth(w);
       setIsMobileViewport(w < 768);
-      if (w < 640) setPreviewScale(56);
+      if (w < 640) setPreviewScale(Math.round(Math.max(35, Math.min(100, ((w - 16) / 794) * 100))));
       else if (w < 1024) setPreviewScale(78);
       else setPreviewScale(100);
     };
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
   }, []);
 
   const reportQrDirectUrl = useMemo(() => {
@@ -1649,58 +1658,55 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
   ) => {
     if (!activeProfile || !multiSectionReportData) return null;
     return (
-      <div className="a4-page-header relative z-10 pb-2 mb-2 border-b-2 border-amber-500/45">
-        <div className="flex items-center justify-between text-[9.5px] font-serif text-amber-300/90 pb-1 mb-1.5 border-b border-amber-500/20">
-          <span>॥ श्री गणेशाय नमः • ॐ ऐं ह्रीं क्लीं चामुण्डायै विच्चे ॥</span>
-          <span className="font-mono uppercase tracking-widest text-amber-400 font-bold">
+      <div className="a4-page-header relative z-10 pb-1.5 mb-1.5 border-b-2 border-amber-500/45">
+        <div className="flex items-center justify-between gap-2 text-[8.5px] font-serif text-amber-300/90 px-4 pb-1 mb-1.5 border-b border-amber-500/20 leading-tight">
+          <span className="shrink-0">॥ श्री गणेशाय नमः • ॐ ऐं ह्रीं क्लीं चामुण्डायै विच्चे ॥</span>
+          <span className="font-mono uppercase tracking-wider text-amber-400 font-bold text-center flex-1">
             {TATHASTU_APP_NAME} • {TATHASTU_BRAND_NAME} ({TATHASTU_TAGLINE})
           </span>
-          <span>॥ तत् त्वम् असि • तथास्तु ॥</span>
+          <span className="shrink-0">॥ तत् त्वम् असि • तथास्तु ॥</span>
         </div>
 
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <img
               src={brandLogo}
               alt={brandTitle}
               referrerPolicy="no-referrer"
-              className="w-12 h-12 rounded-xl object-cover border-2 border-amber-400 shadow-lg shrink-0"
+              className="w-11 h-11 rounded-xl object-cover border-2 border-amber-400 shadow-lg shrink-0"
             />
             <div className="min-w-0 flex-1">
-              <div className="text-[9px] font-bold uppercase tracking-widest text-amber-400 break-words">
+              <div className="text-[8.5px] font-bold uppercase tracking-wider text-amber-400 leading-tight">
                 {TATHASTU_BRAND_NAME} — {TATHASTU_TAGLINE}
               </div>
-              <h2 className="font-serif text-base sm:text-lg font-black text-amber-100 tracking-wide leading-tight break-words">
+              <h2 className="font-serif text-base font-black text-amber-100 tracking-wide leading-tight">
                 {brandTitle}
               </h2>
-              <div className="text-[9.5px] text-emerald-300 font-bold break-words leading-tight">
+              <div className="text-[9px] text-emerald-300 font-bold leading-tight">
                 Healer Name: {healerDisplayName} • 📞 {healerDisplayMobile} • ✉️ {healerDisplayEmail}
               </div>
-              <p className="text-[10px] text-sky-300 font-semibold break-words leading-tight">{pageSubtitle}</p>
+              <p className="text-[9.5px] text-sky-300 font-semibold leading-tight">{pageSubtitle}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 bg-slate-950/90 border border-amber-500/40 rounded-xl px-2.5 py-1.5 shrink-0">
-            <div className="relative">
+          <div className="flex items-center gap-2 bg-slate-950/90 border border-amber-500/40 rounded-xl px-2 py-1.5 shrink-0">
+            <div className="relative shrink-0">
               <img
                 src={sectionHeadImage}
                 alt={sectionHeadLabel}
                 referrerPolicy="no-referrer"
-                className="w-16 h-11 rounded-lg object-cover border border-amber-400/60 shadow-md"
+                className="w-14 h-11 rounded-lg object-cover border border-amber-400/60 shadow-md"
               />
-              <span className="absolute bottom-0 inset-x-0 bg-slate-950/85 text-[7px] font-mono text-amber-300 text-center uppercase truncate px-0.5">
-                {sectionHeadLabel}
-              </span>
             </div>
             <div className="text-right">
-              <div className="text-xs font-black text-amber-100">{activeProfile.name}</div>
-              <div className="text-[9.5px] font-mono text-amber-300">
+              <div className="text-[11px] font-black text-amber-100 leading-tight">{activeProfile.name}</div>
+              <div className="text-[9px] font-mono text-amber-300 leading-tight">
                 DOB: {activeProfile.dob} • TOB: {formatTime12HourAmPm(activeProfile.tob || '09:30')}
               </div>
-              <div className="text-[9px] font-mono text-emerald-300">
+              <div className="text-[8.5px] font-mono text-emerald-300 leading-tight">
                 Mulank {multiSectionReportData.m} ({PLANETARY_PROFILES[multiSectionReportData.m]?.planet}) • Bhagyank {multiSectionReportData.b} ({PLANETARY_PROFILES[multiSectionReportData.b]?.planet})
               </div>
-              <div className="text-[8.5px] font-mono text-amber-200 font-bold">
+              <div className="text-[8px] font-mono text-amber-200 font-bold leading-tight">
                 Healer: {healerDisplayName}
               </div>
             </div>
@@ -1756,22 +1762,22 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
   ) => (
     <div
       className={`a4-compact-footer relative z-10 mt-auto border-t-2 border-amber-500/55 bg-slate-950/95 rounded-xl ${
-        isResponsiveScreen ? 'px-3.5 py-3 md:px-2.5 md:py-1.5' : 'px-2.5 py-1.5'
+        isResponsiveScreen ? 'px-3.5 py-2.5 md:px-2.5 md:py-1.5' : 'px-2 py-1'
       }`}
     >
       <div
         className={`grid items-stretch ${
           isResponsiveScreen
-            ? 'grid-cols-1 md:grid-cols-[1.55fr_0.75fr_1.1fr] gap-3 md:gap-2 text-xs md:text-[8px] leading-relaxed md:leading-snug'
-            : 'grid-cols-[1.55fr_0.75fr_1.1fr] gap-2 text-[8px] leading-snug'
+            ? 'grid-cols-1 md:grid-cols-[1.55fr_0.75fr_1.1fr] gap-2.5 md:gap-2 text-xs md:text-[8px] leading-snug'
+            : 'grid-cols-[1.6fr_0.65fr_1.15fr] gap-1.5 text-[7.4px] leading-tight'
         }`}
       >
-        {/* Left Column: Healer Emblem + Full Name, Brand, Phone, Email, Address (No Truncation) */}
+        {/* Left Column: Healer Emblem + Full Name, Brand, Phone, Email, Address */}
         <div
-          className={`flex items-start md:items-center gap-2.5 md:gap-2 min-w-0 self-stretch ${
+          className={`flex items-start md:items-center gap-2 min-w-0 self-stretch ${
             isResponsiveScreen
-              ? 'pb-2.5 border-b border-amber-500/30 md:pb-0 md:border-b-0 md:pr-2 md:border-r md:border-amber-500/40'
-              : 'pr-2 border-r border-amber-500/40'
+              ? 'pb-2 border-b border-amber-500/30 md:pb-0 md:border-b-0 md:pr-2 md:border-r md:border-amber-500/40'
+              : 'items-center pr-1.5 border-r border-amber-500/40'
           }`}
         >
           <img
@@ -1779,84 +1785,84 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
             alt={brandTitle}
             referrerPolicy="no-referrer"
             className={`${
-              isResponsiveScreen ? 'w-11 h-11 md:w-8 md:h-8' : 'w-8 h-8'
+              isResponsiveScreen ? 'w-10 h-10 md:w-8 md:h-8' : 'w-7 h-7'
             } rounded-lg object-cover border border-amber-400 shadow-sm shrink-0`}
           />
-          <div className="min-w-0 flex-1 space-y-1 md:space-y-0.5 break-words">
+          <div className={`min-w-0 flex-1 break-words ${isResponsiveScreen ? 'space-y-0.5' : 'space-y-[1px]'}`}>
             <div
-              className={`font-serif font-black text-amber-100 leading-snug md:leading-tight break-words ${
-                isResponsiveScreen ? 'text-sm md:text-[9.5px]' : 'text-[9.5px]'
+              className={`font-serif font-black text-amber-100 leading-tight break-words ${
+                isResponsiveScreen ? 'text-sm md:text-[9px]' : 'text-[8.5px]'
               }`}
             >
               Healer: {healerDisplayName} — <span className="text-amber-300">{brandTitle}</span>
             </div>
             <div
-              className={`text-slate-200 flex flex-wrap items-center gap-x-2 gap-y-1 md:gap-x-1.5 md:gap-y-0.5 leading-snug md:leading-tight break-words ${
-                isResponsiveScreen ? 'text-[11px] md:text-[7.5px]' : 'text-[7.5px]'
+              className={`text-slate-200 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 leading-tight break-words ${
+                isResponsiveScreen ? 'text-[11px] md:text-[7.5px]' : 'text-[7px]'
               }`}
             >
-              <span className="inline-flex items-center gap-1 md:gap-0.5 text-emerald-300 font-mono font-semibold">
+              <span className="inline-flex items-center gap-0.5 text-emerald-300 font-mono font-semibold">
                 <Phone className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0`} />{' '}
                 {healerDisplayMobile}
               </span>
-              <span className="text-amber-500/60 hidden sm:inline">|</span>
-              <span className="inline-flex items-center gap-1 md:gap-0.5 text-amber-200 font-mono break-all">
+              <span className="text-amber-500/60">|</span>
+              <span className="inline-flex items-center gap-0.5 text-amber-200 font-mono break-all">
                 <Mail className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0`} />{' '}
                 {healerDisplayEmail}
               </span>
             </div>
             <div
-              className={`text-sky-300 flex items-start gap-1 leading-snug md:leading-tight break-words ${
-                isResponsiveScreen ? 'text-[11px] md:text-[7.3px]' : 'text-[7.3px]'
+              className={`text-sky-300 flex items-start gap-0.5 leading-tight break-words ${
+                isResponsiveScreen ? 'text-[11px] md:text-[7.2px]' : 'text-[6.8px]'
               }`}
             >
-              <MapPin className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0 mt-0.5`} />
+              <MapPin className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0 mt-[1px]`} />
               <span className="break-words">{healerDisplayAddress}</span>
             </div>
           </div>
         </div>
 
-        {/* Center Column: Strictly Center-Aligned Single Page Number (Equal-Height Vertical Dividers) */}
+        {/* Center Column: Strictly Center-Aligned Single Page Number */}
         <div
           className={`flex items-center justify-center text-center self-stretch ${
             isResponsiveScreen
-              ? 'flex-row justify-between md:flex-col md:justify-center pb-2.5 border-b border-amber-500/30 md:pb-0 md:border-b-0 md:px-2 md:border-r md:border-amber-500/40'
-              : 'flex-col px-2 border-r border-amber-500/40'
+              ? 'flex-row justify-between md:flex-col md:justify-center pb-2 border-b border-amber-500/30 md:pb-0 md:border-b-0 md:px-2 md:border-r md:border-amber-500/40'
+              : 'flex-col px-1.5 border-r border-amber-500/40'
           }`}
         >
           <div
-            className={`inline-flex items-center justify-center px-3 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/65 text-amber-100 font-mono font-black shadow-sm whitespace-nowrap ${
-              isResponsiveScreen ? 'text-xs md:text-[9.2px]' : 'text-[9.2px]'
+            className={`inline-flex items-center justify-center px-2.5 py-[1px] rounded-md bg-amber-500/20 border border-amber-400/65 text-amber-100 font-mono font-black shadow-sm whitespace-nowrap ${
+              isResponsiveScreen ? 'text-xs md:text-[9px]' : 'text-[8.5px]'
             }`}
           >
             Page {pageNumber}
           </div>
           <div
             className={`font-serif font-bold tracking-wider uppercase text-amber-300/90 leading-tight break-words ${
-              isResponsiveScreen ? 'text-[10px] md:text-[7px] md:mt-1' : 'text-[7px] mt-1'
+              isResponsiveScreen ? 'text-[10px] md:text-[6.8px] md:mt-0.5' : 'text-[6.5px] mt-0.5'
             }`}
           >
             {TATHASTU_BRAND_NAME}
           </div>
         </div>
 
-        {/* Right Column: Social Handles Stacked Cleanly Without Truncation */}
+        {/* Right Column: Compact Social Handles */}
         <div
           className={`flex min-w-0 self-stretch ${
             isResponsiveScreen
-              ? 'flex-row flex-wrap md:flex-col md:items-end justify-start md:justify-center gap-1.5 md:gap-0.5 text-[10.5px] md:text-[7.2px] text-amber-200'
-              : 'flex-col items-end justify-center gap-0.5 text-[7.2px] text-amber-200'
+              ? 'flex-row flex-wrap md:flex-col md:items-end justify-start md:justify-center gap-1.5 md:gap-0.5 text-[10.5px] md:text-[7px] text-amber-200'
+              : 'flex-col items-end justify-center gap-[2px] text-[6.6px] text-amber-200'
           }`}
         >
-          <span className="inline-flex items-center gap-1 bg-pink-950/75 border border-pink-500/40 px-2 py-1 md:px-1.5 md:py-0.5 rounded max-w-full break-all">
+          <span className={`inline-flex items-center gap-1 bg-pink-950/75 border border-pink-500/40 rounded max-w-full break-all ${isResponsiveScreen ? 'px-2 py-0.5 md:px-1.5 md:py-[1px]' : 'px-1.5 py-[1px]'}`}>
             <Instagram className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} text-pink-400 shrink-0`} />
             <span className="font-mono break-all">{healerInstagram}</span>
           </span>
-          <span className="inline-flex items-center gap-1 bg-blue-950/75 border border-blue-500/40 px-2 py-1 md:px-1.5 md:py-0.5 rounded max-w-full break-all">
+          <span className={`inline-flex items-center gap-1 bg-blue-950/75 border border-blue-500/40 rounded max-w-full break-all ${isResponsiveScreen ? 'px-2 py-0.5 md:px-1.5 md:py-[1px]' : 'px-1.5 py-[1px]'}`}>
             <Facebook className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} text-blue-400 shrink-0`} />
             <span className="font-mono break-all">{healerFacebook}</span>
           </span>
-          <span className="inline-flex items-center gap-1 bg-emerald-950/75 border border-emerald-500/40 px-2 py-1 md:px-1.5 md:py-0.5 rounded max-w-full break-all">
+          <span className={`inline-flex items-center gap-1 bg-emerald-950/75 border border-emerald-500/40 rounded max-w-full break-all ${isResponsiveScreen ? 'px-2 py-0.5 md:px-1.5 md:py-[1px]' : 'px-1.5 py-[1px]'}`}>
             <Globe className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} text-emerald-400 shrink-0`} />
             <span className="font-mono break-all">{healerWebsite}</span>
           </span>
@@ -5850,9 +5856,6 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                     <circle cx="50" cy="50" r="16" fill="none" stroke="#FDE68A" strokeWidth="1.8" />
                   </svg>
                 </div>
-                <span className="text-[6px] font-mono font-bold text-emerald-300 uppercase mt-0.5 text-center leading-tight break-words w-full px-0.5">
-                  Adad Noor #{pageNum}
-                </span>
               </>
             ) : (
               <>
@@ -5864,9 +5867,6 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
                     className="w-full h-full object-contain"
                   />
                 </div>
-                <span className="text-[6px] font-mono font-bold text-amber-300 uppercase mt-0.5 text-center leading-tight break-words w-full px-0.5">
-                  Shree Yantra #{pageNum}
-                </span>
               </>
             )}
           </div>
@@ -5936,47 +5936,79 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     );
   };
 
-  const renderDiscreteA4PagesStack = () => (
-    <div className="space-y-6 print:space-y-0">
-      {discreteA4Pages.map((pg, idx) => {
-        const cleanTitle = pg.title.replace(/^Page\s+\d+[A-Z]?:\s*/i, '');
-        const dynamicTitle = `Page ${idx + 1}: ${cleanTitle}`;
-        const isLastPage = idx === discreteA4Pages.length - 1;
-        return (
-          <div
-            key={idx}
-            className="a4-sheet-page rounded-2xl a4-text-box-wrap"
-            style={{
-              pageBreakInside: 'avoid',
-              breakInside: 'avoid',
-              overflowWrap: 'break-word',
-              whiteSpace: 'normal',
-              wordBreak: 'break-word',
-            }}
-          >
-            {renderA4PageSpiritualBackground()}
-            {renderCenteredBrandWatermark()}
-            {renderA4PageTopHeader(dynamicTitle, pg.headImg, pg.headLabel, pg.isCover)}
+  const renderDiscreteA4PagesStack = (scaleFactor?: number) => {
+    const useScaledSlots = typeof scaleFactor === 'number' && scaleFactor > 0 && scaleFactor < 0.999;
+    return (
+      <div className={useScaledSlots ? 'space-y-3 sm:space-y-5 flex flex-col items-center' : 'space-y-6 print:space-y-0'}>
+        {discreteA4Pages.map((pg, idx) => {
+          const cleanTitle = pg.title.replace(/^Page\s+\d+[A-Z]?:\s*/i, '');
+          const dynamicTitle = `Page ${idx + 1}: ${cleanTitle}`;
+          const isLastPage = idx === discreteA4Pages.length - 1;
+          const sheetNode = (
             <div
-              className="relative z-10 flex-1 my-1 a4-page-body-fill a4-text-box-wrap"
-              style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
+              className="a4-sheet-page rounded-2xl a4-text-box-wrap"
+              style={{
+                pageBreakInside: 'avoid',
+                breakInside: 'avoid',
+                overflowWrap: 'break-word',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+              }}
             >
+              {renderA4PageSpiritualBackground()}
+              {renderCenteredBrandWatermark()}
+              {renderA4PageTopHeader(dynamicTitle, pg.headImg, pg.headLabel, pg.isCover)}
               <div
-                className="a4-section-no-break space-y-2"
-                style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+                className="relative z-10 flex-1 my-1 a4-page-body-fill a4-text-box-wrap"
+                style={{ overflowWrap: 'break-word', whiteSpace: 'normal', wordBreak: 'break-word' }}
               >
-                {pg.content}
+                <div
+                  className="a4-section-no-break space-y-2"
+                  style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+                >
+                  {pg.content}
+                </div>
+                {!isLastPage &&
+                  renderContextualChapterVisualFiller(pg.headImg, pg.headLabel, cleanTitle, idx + 1)}
+                {isLastPage && renderSacredClosingBlessingBanner()}
               </div>
-              {!isLastPage &&
-                renderContextualChapterVisualFiller(pg.headImg, pg.headLabel, cleanTitle, idx + 1)}
-              {isLastPage && renderSacredClosingBlessingBanner()}
+              {renderA4PageHealerFooter(idx + 1)}
             </div>
-            {renderA4PageHealerFooter(idx + 1)}
-          </div>
-        );
-      })}
-    </div>
-  );
+          );
+
+          if (useScaledSlots) {
+            const slotW = Math.floor(794 * scaleFactor);
+            const slotH = Math.floor(1123 * scaleFactor);
+            return (
+              <div
+                key={idx}
+                className="mx-auto shrink-0 shadow-2xl"
+                style={{
+                  width: `${slotW}px`,
+                  height: `${slotH}px`,
+                  overflow: 'hidden',
+                  borderRadius: '10px',
+                }}
+              >
+                <div
+                  style={{
+                    width: '794px',
+                    height: '1123px',
+                    transform: `scale(${scaleFactor})`,
+                    transformOrigin: 'top left',
+                  }}
+                >
+                  {sheetNode}
+                </div>
+              </div>
+            );
+          }
+
+          return <React.Fragment key={idx}>{sheetNode}</React.Fragment>;
+        })}
+      </div>
+    );
+  };
 
   const renderQuickCheckboxesPanel = () => {
     if (!activeProfile || !showExportOptionsPanel) return null;
@@ -6156,112 +6188,126 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         </div>
       )}
 
-      {activeProfile && isPrintPreviewOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/92 backdrop-blur-md flex flex-col animate-fade-in no-print">
-          <div className="w-full bg-slate-900 border-b-2 border-amber-400/50 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 shadow-xl">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-300">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-serif text-base sm:text-lg font-black text-amber-100">
-                    A4 Portrait Print Preview — {activeProfile.name}
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono text-[10px] font-bold">
-                    {totalPageCount} A4 Pages (210mm × 297mm)
-                  </span>
+      {activeProfile &&
+        isPrintPreviewOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed inset-0 z-[9990] bg-slate-950/95 backdrop-blur-md flex flex-col animate-fade-in no-print">
+            <div className="w-full bg-slate-900 border-b-2 border-amber-400/50 px-3 sm:px-6 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 sm:py-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-2 sm:gap-3 shadow-xl shrink-0">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-300 shrink-0">
+                  <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                <p className="text-[11px] text-amber-200/80">
-                  Branding: <strong>{TATHASTU_BRAND_NAME} ({TATHASTU_TAGLINE})</strong> • Exact 1:1 WYSIWYG Parity across Print Preview, Print &amp; PDF Download
-                </p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="font-serif text-sm sm:text-lg font-black text-amber-100 truncate">
+                      <span className="sm:hidden">Print Preview — {activeProfile.name}</span>
+                      <span className="hidden sm:inline">A4 Portrait Print Preview — {activeProfile.name}</span>
+                    </h3>
+                    <span className="hidden sm:inline-flex px-2 py-0.5 rounded-md bg-emerald-950 border border-emerald-400/50 text-emerald-300 font-mono text-[10px] font-bold shrink-0">
+                      {totalPageCount} A4 Pages (210mm × 297mm)
+                    </span>
+                  </div>
+                  <p className="hidden sm:block text-[11px] text-amber-200/80">
+                    Branding: <strong>{TATHASTU_BRAND_NAME} ({TATHASTU_TAGLINE})</strong> • Exact 1:1 WYSIWYG Parity across Print Preview, Print &amp; PDF Download
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-1.5 bg-slate-950 border border-amber-500/35 rounded-xl px-2.5 py-1">
-              <button
-                type="button"
-                onClick={() => setPreviewScale((s) => Math.max(60, s - 10))}
-                className="p-1 text-amber-300 hover:text-white cursor-pointer"
-              >
-                <ZoomOut className="w-4 h-4" />
-              </button>
-              <span className="text-xs font-mono font-bold text-amber-200 px-1.5">
-                {previewScale}%
-              </span>
-              <button
-                type="button"
-                onClick={() => setPreviewScale((s) => Math.min(isWindowsFullPage ? 135 : 115, s + 10))}
-                className="p-1 text-amber-300 hover:text-white cursor-pointer"
-              >
-                <ZoomIn className="w-4 h-4" />
-              </button>
-              {isWindowsFullPage && (
+              {/* Zoom +/- Box: Desktop only (mobile supports native screen pinch-zoom) */}
+              <div className="hidden sm:flex items-center gap-1.5 bg-slate-950 border border-amber-500/35 rounded-xl px-2.5 py-1">
                 <button
                   type="button"
-                  onClick={() => setWindowsSpreadView((prev) => !prev)}
-                  className={`ml-1.5 px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border cursor-pointer transition-all ${
-                    windowsSpreadView
-                      ? 'bg-amber-500 text-slate-950 border-amber-400'
-                      : 'bg-slate-900 text-amber-200 border-amber-500/40 hover:bg-slate-800'
-                  }`}
-                  title="Toggle Full-Page Single vs Side-by-Side 2-Page Spread on Windows"
+                  onClick={() => setPreviewScale((s) => Math.max(60, s - 10))}
+                  className="p-1 text-amber-300 hover:text-white cursor-pointer"
                 >
-                  <Columns2 className="w-3.5 h-3.5" />
-                  <span>{windowsSpreadView ? '2-Page Spread' : '1-Page Full'}</span>
+                  <ZoomOut className="w-4 h-4" />
                 </button>
+                <span className="text-xs font-mono font-bold text-amber-200 px-1.5">
+                  {previewScale}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewScale((s) => Math.min(isWindowsFullPage ? 135 : 115, s + 10))}
+                  className="p-1 text-amber-300 hover:text-white cursor-pointer"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+                {isWindowsFullPage && (
+                  <button
+                    type="button"
+                    onClick={() => setWindowsSpreadView((prev) => !prev)}
+                    className={`ml-1.5 px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border cursor-pointer transition-all ${
+                      windowsSpreadView
+                        ? 'bg-amber-500 text-slate-950 border-amber-400'
+                        : 'bg-slate-900 text-amber-200 border-amber-500/40 hover:bg-slate-800'
+                    }`}
+                    title="Toggle Full-Page Single vs Side-by-Side 2-Page Spread on Windows"
+                  >
+                    <Columns2 className="w-3.5 h-3.5" />
+                    <span>{windowsSpreadView ? '2-Page Spread' : '1-Page Full'}</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Action Buttons: Clean 1-line row on mobile (Download, Print without page count, Close Preview) */}
+              <div className="grid grid-cols-3 gap-1.5 w-full sm:w-auto sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+                <button
+                  type="button"
+                  disabled={isGeneratingPdf}
+                  onClick={handleDownloadPdfDirectly}
+                  className="px-2 py-2 sm:px-4 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 font-black text-[11px] sm:text-xs flex items-center justify-center gap-1 sm:gap-1.5 shadow-lg cursor-pointer whitespace-nowrap"
+                >
+                  <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span className="truncate">
+                    {isGeneratingPdf && pdfExportProgress
+                      ? `PDF ${pdfExportProgress.current}/${pdfExportProgress.total}`
+                      : 'Download PDF'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePrintPdfReport}
+                  className="px-2 py-2 sm:px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] sm:text-xs flex items-center justify-center gap-1 sm:gap-1.5 shadow-lg cursor-pointer whitespace-nowrap"
+                >
+                  <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span className="sm:hidden">Print</span>
+                  <span className="hidden sm:inline">Print All {totalPageCount} Pages</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPrintPreviewOpen(false)}
+                  className="px-2 py-2 sm:px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] sm:text-xs flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap"
+                >
+                  <X className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span className="truncate">Close Preview</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="report-a4-preview-viewport flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5 sm:p-6 flex justify-center bg-slate-950/95">
+              {isMobileViewport ? (
+                <div className="w-full flex flex-col items-center">
+                  {renderDiscreteA4PagesStack(Math.max(0.32, Math.min(1, (viewportWidth - 16) / 794)))}
+                </div>
+              ) : (
+                <div
+                  className={`origin-top transition-transform duration-200 ${
+                    isWindowsFullPage && windowsSpreadView
+                      ? '[&>div]:grid [&>div]:grid-cols-1 [&>div]:2xl:grid-cols-2 [&>div]:gap-6 [&>div]:space-y-0'
+                      : ''
+                  }`}
+                  style={{ transform: `scale(${previewScale / 100})` }}
+                >
+                  {renderDiscreteA4PagesStack()}
+                </div>
               )}
             </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={isGeneratingPdf}
-                onClick={handleDownloadPdfDirectly}
-                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-lg cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>
-                  {isGeneratingPdf && pdfExportProgress
-                    ? `Saving PDF (${pdfExportProgress.current}/${pdfExportProgress.total})...`
-                    : 'Download PDF'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handlePrintPdfReport}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 shadow-lg cursor-pointer"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Print All {totalPageCount} Pages</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsPrintPreviewOpen(false)}
-                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-                <span>Close Preview</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="report-a4-preview-viewport flex-1 overflow-y-auto p-3 sm:p-6 flex justify-center bg-slate-950/95">
-            <div
-              className={`origin-top transition-transform duration-200 ${
-                isWindowsFullPage && windowsSpreadView
-                  ? '[&>div]:grid [&>div]:grid-cols-1 [&>div]:2xl:grid-cols-2 [&>div]:gap-6 [&>div]:space-y-0'
-                  : ''
-              }`}
-              style={{ transform: `scale(${previewScale / 100})` }}
-            >
-              {renderDiscreteA4PagesStack()}
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {activeProfile && isGeneratingPdf && (
         <div
