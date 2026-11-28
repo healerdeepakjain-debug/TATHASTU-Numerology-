@@ -722,21 +722,28 @@ export const AdminAndProfilesPortal: React.FC<AdminAndProfilesPortalProps> = ({
       return;
     }
 
-    const duplicateAccount = accounts.find(
+    const duplicateSameRoleAccount = accounts.find(
       (a) =>
-        a.email.trim().toLowerCase() === cleanEmail ||
-        a.mobile.replace(/\D/g, '').slice(-10) === cleanMobile
+        a.role === adminRegRole &&
+        (a.email.trim().toLowerCase() === cleanEmail ||
+          a.mobile.replace(/\D/g, '').slice(-10) === cleanMobile)
     );
-    const duplicateProfile = profiles.find(
-      (p) =>
-        p.email.trim().toLowerCase() === cleanEmail ||
-        p.mobile.replace(/\D/g, '').slice(-10) === cleanMobile
-    );
+    const duplicateClientProfile =
+      adminRegRole === 'client'
+        ? profiles.find(
+            (p) =>
+              p.email.trim().toLowerCase() === cleanEmail ||
+              p.mobile.replace(/\D/g, '').slice(-10) === cleanMobile
+          )
+        : undefined;
 
-    if (duplicateAccount || duplicateProfile) {
+    if (duplicateSameRoleAccount || duplicateClientProfile) {
       setStatusFeedback({
         type: 'error',
-        text: 'This Email Address or 10-digit Mobile Number is already registered! Please use a unique Email and Mobile.',
+        text:
+          adminRegRole === 'healer'
+            ? 'This Email Address or 10-digit Mobile Number is already saved in the Healer block! Please use a unique Email and Mobile for a new Healer.'
+            : 'This Email Address or 10-digit Mobile Number is already saved in the Client Profile block! Same Email/Mobile cannot be saved twice in Client Profiles.',
       });
       return;
     }

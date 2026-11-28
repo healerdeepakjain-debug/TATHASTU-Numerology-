@@ -134,6 +134,9 @@ interface A4SpiritualReportFrameProps {
   onOpenEditProfileModal?: () => void;
 }
 
+// Persistent in-memory cache of Base64 data URLs for shared report assets so PDF export never re-encodes the same image 60+ times
+const pdfAssetDataUrlCache = new Map<string, string>();
+
 const A4_HL_SKIP_TAGS = new Set([
   'svg',
   'path',
@@ -173,7 +176,7 @@ const A4_HL_PATTERN = new RegExp(
   'gi'
 );
 
-function highlightA4TextString(text: string): React.ReactNode {
+function highlightA4TextString(text: string, keyPrefix: string): React.ReactNode {
   if (!text || text.length < 2) return text;
   A4_HL_PATTERN.lastIndex = 0;
   let match = A4_HL_PATTERN.exec(text);
@@ -200,7 +203,7 @@ function highlightA4TextString(text: string): React.ReactNode {
     else if (match[8]) cls = 'a4-hl-loss';
 
     out.push(
-      <span key={`hl-${partKey++}`} className={cls}>
+      <span key={`${keyPrefix}-hl-${partKey++}`} className={cls}>
         {token}
       </span>
     );
@@ -217,17 +220,27 @@ function highlightA4TextString(text: string): React.ReactNode {
   return out;
 }
 
-function highlightReportNode(node: React.ReactNode): React.ReactNode {
+function cloneWithHighlightedChildren(
+  element: React.ReactElement<{ children?: React.ReactNode; className?: string }>,
+  nextChildren: React.ReactNode
+): React.ReactElement {
+  if (Array.isArray(nextChildren)) {
+    return React.cloneElement(element, undefined, ...nextChildren);
+  }
+  return React.cloneElement(element, undefined, nextChildren);
+}
+
+function highlightReportNode(node: React.ReactNode, keyPrefix = 'r'): React.ReactNode {
   if (typeof node === 'string') {
-    return highlightA4TextString(node);
+    return highlightA4TextString(node, keyPrefix);
   }
   if (node == null || typeof node === 'boolean' || typeof node === 'number') {
     return node;
   }
   if (Array.isArray(node)) {
     let changed = false;
-    const mapped = node.map((child) => {
-      const next = highlightReportNode(child);
+    const mapped = node.map((child, idx) => {
+      const next = highlightReportNode(child, `${keyPrefix}-${idx}`);
       if (next !== child) changed = true;
       return next;
     });
@@ -236,9 +249,9 @@ function highlightReportNode(node: React.ReactNode): React.ReactNode {
   if (React.isValidElement<{ children?: React.ReactNode; className?: string }>(node)) {
     const elType = node.type;
     if (elType === React.Fragment) {
-      const nextChildren = highlightReportNode(node.props.children);
+      const nextChildren = highlightReportNode(node.props.children, `${keyPrefix}-f`);
       return nextChildren !== node.props.children
-        ? React.cloneElement(node, undefined, nextChildren)
+        ? cloneWithHighlightedChildren(node, nextChildren)
         : node;
     }
     if (typeof elType !== 'string') {
@@ -258,16 +271,19 @@ function highlightReportNode(node: React.ReactNode): React.ReactNode {
     if (node.props.children === undefined) {
       return node;
     }
-    const nextChildren = highlightReportNode(node.props.children);
+    const nextChildren = highlightReportNode(node.props.children, `${keyPrefix}-c`);
     return nextChildren !== node.props.children
-      ? React.cloneElement(node, undefined, nextChildren)
+      ? cloneWithHighlightedChildren(node, nextChildren)
       : node;
   }
   return node;
 }
 
 const A4HighlightedContent: React.FC<{ children: React.ReactNode }> = React.memo(({ children }) => {
-  const highlighted = useMemo(() => highlightReportNode(children), [children]);
+  const highlighted = useMemo(() => highlightReportNode(children, 'pg'), [children]);
+  if (Array.isArray(highlighted)) {
+    return React.createElement(React.Fragment, null, ...highlighted);
+  }
   return <>{highlighted}</>;
 });
 
@@ -1369,19 +1385,49 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
         throw new Error('No A4 preview sheets found for WYSIWYG capture.');
       }
 
-      // Ensure all images inside capture nodes are fully decoded before snapshot
+      // Pre-inline all unique non-data <img> URLs ONCE in parallel (cached across downloads)
+      // so html-to-image never re-fetches or re-encodes the same logo/watermark/yantra 300+ times.
       const imgs = Array.from(container!.querySelectorAll('img'));
+      const uniqueAssetUrls = Array.from(
+        new Set(
+          imgs
+            .map((img) => img.currentSrc || img.getAttribute('src') || '')
+            .filter((src) => Boolean(src) && !src.startsWith('data:'))
+        )
+      );
+
       await Promise.all(
-        imgs.map((img) => {
-          if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-          return new Promise<void>((resolve) => {
-            const done = () => resolve();
-            img.addEventListener('load', done, { once: true });
-            img.addEventListener('error', done, { once: true });
-            setTimeout(done, 1500);
-          });
+        uniqueAssetUrls.map(async (url) => {
+          if (pdfAssetDataUrlCache.has(url)) return;
+          try {
+            const resp = await fetch(url);
+            if (!resp.ok) return;
+            const imgBlob = await resp.blob();
+            const dataUrl = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () =>
+                resolve(typeof reader.result === 'string' ? reader.result : '');
+              reader.onerror = () => resolve('');
+              reader.readAsDataURL(imgBlob);
+            });
+            if (dataUrl) pdfAssetDataUrlCache.set(url, dataUrl);
+          } catch {
+            // Leave original URL if fetch blocked
+          }
         })
       );
+
+      const originalImgSrcs: Array<{ img: HTMLImageElement; src: string }> = [];
+      imgs.forEach((img) => {
+        const rawSrc = img.getAttribute('src') || '';
+        const resolvedSrc = img.currentSrc || rawSrc;
+        const cachedDataUrl =
+          pdfAssetDataUrlCache.get(resolvedSrc) || pdfAssetDataUrlCache.get(rawSrc);
+        if (cachedDataUrl && rawSrc !== cachedDataUrl) {
+          originalImgSrcs.push({ img, src: rawSrc });
+          img.src = cachedDataUrl;
+        }
+      });
 
       const pdfOrientation = isLandscapeReport ? 'landscape' : 'portrait';
       const pdf = new jsPDF({
@@ -1396,53 +1442,79 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
       const targetSheetW = isLandscapeReport ? 1123 : 794;
       const targetSheetH = isLandscapeReport ? 794 : 1123;
 
-      for (let idx = 0; idx < pageNodes.length; idx++) {
-        const sheetEl = pageNodes[idx];
-        setPdfExportProgress({ current: idx + 1, total: pageNodes.length });
+      const capturedJpegs: string[] = new Array(pageNodes.length);
+      let completedPages = 0;
+      const BATCH_SIZE = 4;
 
-        const sheetW = targetSheetW;
-        const sheetH = targetSheetH;
-
-        const dataUrl = await toJpeg(sheetEl, {
-          quality: 0.88,
-          pixelRatio: 1.65,
-          width: sheetW,
-          height: sheetH,
-          backgroundColor: '#060916',
-          cacheBust: false,
-          skipAutoScale: true,
+      try {
+        for (let batchStart = 0; batchStart < pageNodes.length; batchStart += BATCH_SIZE) {
+          const batchEnd = Math.min(pageNodes.length, batchStart + BATCH_SIZE);
+          const batchIndices = Array.from(
+            { length: batchEnd - batchStart },
+            (_, offset) => batchStart + offset
+          );
+          await Promise.all(
+            batchIndices.map(async (idx) => {
+              const sheetEl = pageNodes[idx];
+              const dataUrl = await toJpeg(sheetEl, {
+                quality: 0.78,
+                pixelRatio: 1.25,
+                width: targetSheetW,
+                height: targetSheetH,
+                backgroundColor: '#060916',
+                cacheBust: false,
+                skipAutoScale: true,
+                skipFonts: true,
+                fontEmbedCSS: '',
+              });
+              capturedJpegs[idx] = dataUrl;
+              completedPages += 1;
+              setPdfExportProgress({ current: completedPages, total: pageNodes.length });
+            })
+          );
+        }
+      } finally {
+        originalImgSrcs.forEach(({ img, src }) => {
+          img.src = src;
         });
+      }
 
+      const aspectRatio = targetSheetH / targetSheetW;
+      const a4Ratio = A4_H_MM / A4_W_MM;
+      let drawW = A4_W_MM;
+      let drawH = A4_W_MM * aspectRatio;
+      let drawX = 0;
+      let drawY = 0;
+
+      if (aspectRatio > a4Ratio) {
+        drawH = A4_H_MM;
+        drawW = A4_H_MM / aspectRatio;
+        drawX = (A4_W_MM - drawW) / 2;
+      } else {
+        drawY = (A4_H_MM - drawH) / 2;
+      }
+
+      for (let idx = 0; idx < capturedJpegs.length; idx++) {
         if (idx > 0) {
           pdf.addPage('a4', pdfOrientation);
         }
-
         // Fill A4 page canvas with cosmic dark base so edges never show white strips
         pdf.setFillColor(6, 9, 22);
         pdf.rect(0, 0, A4_W_MM, A4_H_MM, 'F');
-
-        const aspectRatio = sheetH / sheetW;
-        const a4Ratio = A4_H_MM / A4_W_MM;
-        let drawW = A4_W_MM;
-        let drawH = A4_W_MM * aspectRatio;
-        let drawX = 0;
-        let drawY = 0;
-
-        if (aspectRatio > a4Ratio) {
-          drawH = A4_H_MM;
-          drawW = A4_H_MM / aspectRatio;
-          drawX = (A4_W_MM - drawW) / 2;
-        } else {
-          drawY = (A4_H_MM - drawH) / 2;
-        }
-
-        pdf.addImage(dataUrl, 'JPEG', drawX, drawY, drawW, drawH, undefined, 'FAST');
+        pdf.addImage(capturedJpegs[idx], 'JPEG', drawX, drawY, drawW, drawH, undefined, 'FAST');
       }
 
       const blob = pdf.output('blob');
 
       if (mode === 'download') {
+        // Trigger local file download immediately without blocking on cloud upload
         triggerCrossPlatformPdfBlobDownload(blob, fileName);
+        void uploadReportPdfAndGetSignedUrl(activeProfile.id, fileName, blob)
+          .then((bgUrl) => {
+            if (bgUrl) void persistSignedPdfUrlToSharedReport(bgUrl);
+          })
+          .catch(() => {});
+        return { blob, fileName, signedUrl: null };
       }
 
       let signedUrl: string | null = null;
@@ -2046,117 +2118,151 @@ export const A4SpiritualReportFrame: React.FC<A4SpiritualReportFrameProps> = ({
     pageNumber: number,
     _totalPages?: number,
     isResponsiveScreen = false
-  ) => (
-    <div
-      className={`a4-compact-footer relative z-10 mt-auto border-t-2 border-amber-500/55 bg-slate-950/95 rounded-xl ${
-        isResponsiveScreen ? 'px-3.5 py-2.5 md:px-2.5 md:py-1.5' : 'px-2 py-1'
-      }`}
-    >
+  ) => {
+    // Strip duplicate mobile/email fragments from address so mobile number is NEVER repeated twice
+    const cleanPhoneDigits = (healerDisplayMobile || '').replace(/\D/g, '').slice(-10);
+    const cleanEmailLower = (healerDisplayEmail || '').trim().toLowerCase();
+    const cleanFooterAddress =
+      (healerDisplayAddress || '')
+        .split(/[•|]+/)
+        .map((part) => part.trim())
+        .filter((part) => {
+          if (!part) return false;
+          const digits = part.replace(/\D/g, '');
+          if (cleanPhoneDigits.length === 10 && digits.includes(cleanPhoneDigits)) return false;
+          if (cleanEmailLower && part.toLowerCase().includes(cleanEmailLower)) return false;
+          return true;
+        })
+        .join(' • ') || 'TATHASTU — THE DIVINE LIGHT • Vedic, Chaldean & Pranic Energy Healing Center';
+
+    const rawWeb = (healerWebsite || '').trim();
+    const cleanFooterWebsite =
+      !rawWeb ||
+      rawWeb.toUpperCase() === TATHASTU_BRAND_NAME.toUpperCase() ||
+      rawWeb.toUpperCase().includes('TATHASTU NUMEROLOGY')
+        ? 'www.tathastulight.com'
+        : rawWeb;
+
+    const rawInsta = (healerInstagram || '').trim();
+    const cleanFooterInstagram =
+      !rawInsta ||
+      rawInsta.toLowerCase() === '@tathastu_thedivinelight' ||
+      rawInsta.toLowerCase() === '@tathastudivinelight'
+        ? '@healer_mr_ddeepak.jain'
+        : rawInsta;
+
+    return (
       <div
-        className={`grid items-stretch ${
-          isResponsiveScreen
-            ? 'grid-cols-1 md:grid-cols-[1.55fr_0.75fr_1.1fr] gap-2.5 md:gap-2 text-xs md:text-[8px] leading-snug'
-            : 'grid-cols-[1.6fr_0.65fr_1.15fr] gap-1.5 text-[7.4px] leading-tight'
+        className={`a4-compact-footer relative z-10 mt-auto border-t-2 border-amber-500/55 bg-slate-950/95 rounded-xl ${
+          isResponsiveScreen ? 'px-3.5 py-2.5 md:px-2.5 md:py-1.5' : 'px-2.5 py-1.5'
         }`}
       >
-        {/* Left Column: Healer Emblem + Full Name, Brand, Phone, Email, Address */}
         <div
-          className={`flex items-start md:items-center gap-2 min-w-0 self-stretch ${
+          className={`grid items-stretch ${
             isResponsiveScreen
-              ? 'pb-2 border-b border-amber-500/30 md:pb-0 md:border-b-0 md:pr-2 md:border-r md:border-amber-500/40'
-              : 'items-center pr-1.5 border-r border-amber-500/40'
+              ? 'grid-cols-1 md:grid-cols-[1.65fr_0.65fr_1.1fr] gap-2.5 md:gap-2 text-xs md:text-[8px] leading-snug'
+              : 'grid-cols-[1.7fr_0.58fr_1.12fr] gap-2 text-[7.4px] leading-tight'
           }`}
         >
-          <img
-            src={brandLogo}
-            alt={brandTitle}
-            referrerPolicy="no-referrer"
-            className={`${
-              isResponsiveScreen ? 'w-10 h-10 md:w-8 md:h-8' : 'w-7 h-7'
-            } rounded-lg object-cover border border-amber-400 shadow-sm shrink-0`}
-          />
-          <div className={`min-w-0 flex-1 break-words ${isResponsiveScreen ? 'space-y-0.5' : 'space-y-[1px]'}`}>
-            <div
-              className={`font-serif font-black text-amber-100 leading-tight break-words ${
-                isResponsiveScreen ? 'text-sm md:text-[9px]' : 'text-[8.5px]'
-              }`}
-            >
-              Healer: {healerDisplayName} — <span className="text-amber-300">{brandTitle}</span>
-            </div>
-            <div
-              className={`text-slate-200 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 leading-tight break-words ${
-                isResponsiveScreen ? 'text-[11px] md:text-[7.5px]' : 'text-[7px]'
-              }`}
-            >
-              <span className="inline-flex items-center gap-0.5 text-emerald-300 font-mono font-semibold">
-                <Phone className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0`} />{' '}
-                {healerDisplayMobile}
-              </span>
-              <span className="text-amber-500/60">|</span>
-              <span className="inline-flex items-center gap-0.5 text-amber-200 font-mono break-all">
-                <Mail className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0`} />{' '}
-                {healerDisplayEmail}
-              </span>
-            </div>
-            <div
-              className={`text-sky-300 flex items-start gap-0.5 leading-tight break-words ${
-                isResponsiveScreen ? 'text-[11px] md:text-[7.2px]' : 'text-[6.8px]'
-              }`}
-            >
-              <MapPin className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0 mt-[1px]`} />
-              <span className="break-words">{healerDisplayAddress}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Center Column: Strictly Center-Aligned Single Page Number */}
-        <div
-          className={`flex items-center justify-center text-center self-stretch min-w-0 ${
-            isResponsiveScreen
-              ? 'flex-row justify-between md:flex-col md:justify-center pb-2 border-b border-amber-500/30 md:pb-0 md:border-b-0 md:px-2 md:border-r md:border-amber-500/40'
-              : 'flex-col px-1.5 border-r border-amber-500/40'
-          }`}
-        >
+          {/* Left Column: Width-aligned Healer Emblem, Name/Brand, Single Phone + Email Row, Clean Location */}
           <div
-            className={`a4-page-num-pill inline-flex items-center justify-center px-2.5 py-[1px] rounded-md bg-amber-500/20 border border-amber-400/65 text-amber-100 font-mono font-black shadow-sm ${
-              isResponsiveScreen ? 'text-xs md:text-[9px]' : 'text-[8.5px]'
+            className={`flex items-center gap-2.5 min-w-0 w-full self-stretch ${
+              isResponsiveScreen
+                ? 'pb-2 border-b border-amber-500/30 md:pb-0 md:border-b-0 md:pr-2.5 md:border-r md:border-amber-500/40'
+                : 'pr-2 border-r border-amber-500/40'
             }`}
           >
-            Page {pageNumber}
+            <img
+              src={brandLogo}
+              alt={brandTitle}
+              referrerPolicy="no-referrer"
+              className={`${
+                isResponsiveScreen ? 'w-11 h-11 md:w-8 md:h-8' : 'w-8 h-8'
+              } rounded-lg object-cover border border-amber-400 shadow-sm shrink-0`}
+            />
+            <div className={`min-w-0 flex-1 w-full a4-no-clip ${isResponsiveScreen ? 'space-y-1' : 'space-y-0.5'}`}>
+              <div
+                className={`font-serif font-black text-amber-100 leading-tight a4-no-clip ${
+                  isResponsiveScreen ? 'text-[13px] sm:text-sm md:text-[8.8px]' : 'text-[8.3px]'
+                }`}
+              >
+                Healer: {healerDisplayName} — <span className="text-amber-300">{brandTitle}</span>
+              </div>
+              <div
+                className={`text-slate-200 flex flex-wrap items-center gap-x-2 gap-y-0.5 leading-tight w-full a4-no-clip ${
+                  isResponsiveScreen ? 'text-[11px] md:text-[7.5px]' : 'text-[7.1px]'
+                }`}
+              >
+                <span className="inline-flex items-center gap-1 text-emerald-300 font-mono font-bold">
+                  <Phone className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0`} />
+                  <span>{healerDisplayMobile}</span>
+                </span>
+                <span className="text-amber-500/60">|</span>
+                <span className="inline-flex items-center gap-1 text-amber-200 font-mono a4-no-clip">
+                  <Mail className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0`} />
+                  <span>{healerDisplayEmail}</span>
+                </span>
+              </div>
+              <div
+                className={`text-sky-300 flex items-center gap-1 leading-tight w-full a4-no-clip ${
+                  isResponsiveScreen ? 'text-[10.5px] md:text-[7.2px]' : 'text-[6.8px]'
+                }`}
+              >
+                <MapPin className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} shrink-0`} />
+                <span className="a4-no-clip">{cleanFooterAddress}</span>
+              </div>
+            </div>
           </div>
+
+          {/* Center Column: Strictly Center-Aligned Single Page Number */}
           <div
-            className={`font-serif font-bold tracking-wider uppercase text-amber-300/90 leading-tight break-words ${
-              isResponsiveScreen ? 'text-[10px] md:text-[6.8px] md:mt-0.5' : 'text-[6.5px] mt-0.5'
+            className={`flex items-center justify-center text-center self-stretch min-w-0 ${
+              isResponsiveScreen
+                ? 'flex-row justify-between md:flex-col md:justify-center pb-2 border-b border-amber-500/30 md:pb-0 md:border-b-0 md:px-2 md:border-r md:border-amber-500/40'
+                : 'flex-col px-1.5 border-r border-amber-500/40'
             }`}
           >
-            {TATHASTU_BRAND_NAME}
+            <div
+              className={`a4-page-num-pill inline-flex items-center justify-center px-2.5 py-[1px] rounded-md bg-amber-500/20 border border-amber-400/65 text-amber-100 font-mono font-black shadow-sm ${
+                isResponsiveScreen ? 'text-xs md:text-[9px]' : 'text-[8.5px]'
+              }`}
+            >
+              Page {pageNumber}
+            </div>
+            <div
+              className={`font-serif font-bold tracking-wider uppercase text-amber-300/90 leading-tight a4-no-clip ${
+                isResponsiveScreen ? 'text-[10px] md:text-[6.8px] md:mt-0.5' : 'text-[6.4px] mt-0.5'
+              }`}
+            >
+              {TATHASTU_BRAND_NAME}
+            </div>
           </div>
-        </div>
 
-        {/* Right Column: Compact Social Handles */}
-        <div
-          className={`flex min-w-0 self-stretch ${
-            isResponsiveScreen
-              ? 'flex-row flex-wrap md:flex-col md:items-end justify-start md:justify-center gap-1.5 md:gap-0.5 text-[10.5px] md:text-[7px] text-amber-200'
-              : 'flex-col items-end justify-center gap-[2px] text-[6.6px] text-amber-200'
-          }`}
-        >
-          <span className={`inline-flex items-center gap-1 bg-pink-950/75 border border-pink-500/40 rounded max-w-full break-all ${isResponsiveScreen ? 'px-2 py-0.5 md:px-1.5 md:py-[1px]' : 'px-1.5 py-[1px]'}`}>
-            <Instagram className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} text-pink-400 shrink-0`} />
-            <span className="font-mono break-all">{healerInstagram}</span>
-          </span>
-          <span className={`inline-flex items-center gap-1 bg-blue-950/75 border border-blue-500/40 rounded max-w-full break-all ${isResponsiveScreen ? 'px-2 py-0.5 md:px-1.5 md:py-[1px]' : 'px-1.5 py-[1px]'}`}>
-            <Facebook className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} text-blue-400 shrink-0`} />
-            <span className="font-mono break-all">{healerFacebook}</span>
-          </span>
-          <span className={`inline-flex items-center gap-1 bg-emerald-950/75 border border-emerald-500/40 rounded max-w-full break-all ${isResponsiveScreen ? 'px-2 py-0.5 md:px-1.5 md:py-[1px]' : 'px-1.5 py-[1px]'}`}>
-            <Globe className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} text-emerald-400 shrink-0`} />
-            <span className="font-mono break-all">{healerWebsite}</span>
-          </span>
+          {/* Right Column: Compact Social Handles & Official Website */}
+          <div
+            className={`flex min-w-0 self-stretch ${
+              isResponsiveScreen
+                ? 'flex-row flex-wrap md:flex-col md:items-end justify-start md:justify-center gap-1.5 md:gap-0.5 text-[10.5px] md:text-[7px] text-amber-200'
+                : 'flex-col items-end justify-center gap-[2px] text-[6.7px] text-amber-200'
+            }`}
+          >
+            <span className={`inline-flex items-center gap-1 bg-pink-950/75 border border-pink-500/40 rounded max-w-full a4-no-clip ${isResponsiveScreen ? 'px-2 py-0.5 md:px-1.5 md:py-[1px]' : 'px-1.5 py-[1px]'}`}>
+              <Instagram className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} text-pink-400 shrink-0`} />
+              <span className="font-mono">{cleanFooterInstagram}</span>
+            </span>
+            <span className={`inline-flex items-center gap-1 bg-blue-950/75 border border-blue-500/40 rounded max-w-full a4-no-clip ${isResponsiveScreen ? 'px-2 py-0.5 md:px-1.5 md:py-[1px]' : 'px-1.5 py-[1px]'}`}>
+              <Facebook className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} text-blue-400 shrink-0`} />
+              <span className="font-mono">{healerFacebook}</span>
+            </span>
+            <span className={`inline-flex items-center gap-1 bg-emerald-950/75 border border-emerald-500/40 rounded max-w-full a4-no-clip ${isResponsiveScreen ? 'px-2 py-0.5 md:px-1.5 md:py-[1px]' : 'px-1.5 py-[1px]'}`}>
+              <Globe className={`${isResponsiveScreen ? 'w-3 h-3 md:w-2 md:h-2' : 'w-2 h-2'} text-emerald-400 shrink-0`} />
+              <span className="font-mono text-emerald-200 font-semibold">{cleanFooterWebsite}</span>
+            </span>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const buildDiscreteA4Pages = () => {
     if (!activeProfile || !multiSectionReportData) return [];

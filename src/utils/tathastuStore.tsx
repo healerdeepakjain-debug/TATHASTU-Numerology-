@@ -476,11 +476,11 @@ const INITIAL_ACCOUNTS: AccountRecord[] = [
     subscriptionExpiry: '2099-12-31',
     healerBrandName: 'TATHASTU NUMEROLOGY — TATHASTU THE DIVINE LIGHT',
     healerLogoUrl: TATHASTU_LOGO_PATH,
-    healerInstagram: '@tathastu_thedivinelight',
+    healerInstagram: '@healer_mr_ddeepak.jain',
     healerFacebook: 'facebook.com/tathastuthedivinelight',
     healerYoutube: 'youtube.com/@tathastuthedivinelight',
     healerWebsite: 'www.tathastulight.com',
-    healerAddress: 'TATHASTU NUMEROLOGY • TATHASTU THE DIVINE LIGHT • healer.ddeepak.jain@gmail.com • +91 8899444444',
+    healerAddress: 'TATHASTU — THE DIVINE LIGHT • Vedic, Chaldean & Pranic Energy Healing Center',
     notificationPrefsJson: JSON.stringify(DEFAULT_SIX_NOTIFICATION_CHANNELS),
     createdAtIso: '2026-01-01T00:00:00.000Z',
   },
@@ -666,12 +666,21 @@ function loadLocalAccounts(): AccountRecord[] {
       if (Array.isArray(parsed) && parsed.length > 0) {
         const migrated = parsed.map((a) => {
           if (a.id === 'admin_tathastu_master' || a.role === 'admin') {
+            const oldInsta = (a.healerInstagram || '').trim().toLowerCase();
+            const normalizedInsta =
+              !oldInsta ||
+              oldInsta === '@tathastu_thedivinelight' ||
+              oldInsta === '@tathastudivinelight'
+                ? '@healer_mr_ddeepak.jain'
+                : a.healerInstagram;
             return {
               ...a,
               name: a.name === 'TATHASTU Master Admin' ? TATHASTU_DEFAULT_HEALER_NAME : a.name,
               email: TATHASTU_ADMIN_EMAIL,
+              healerInstagram: normalizedInsta,
+              healerWebsite: 'www.tathastulight.com',
               healerAddress:
-                'TATHASTU NUMEROLOGY • TATHASTU THE DIVINE LIGHT • healer.ddeepak.jain@gmail.com • +91 8899444444',
+                'TATHASTU — THE DIVINE LIGHT • Vedic, Chaldean & Pranic Energy Healing Center',
             };
           }
           return a;
@@ -718,6 +727,22 @@ export function resolveReportHealerAttribution(
       ? currentAccount
       : accounts.find((a) => a.role === 'admin') || INITIAL_ACCOUNTS[0];
 
+  const sanitizeHealerAddress = (rawAddr?: string, mobileStr?: string, emailStr?: string) => {
+    const cleanDigits = (mobileStr || '').replace(/\D/g, '').slice(-10);
+    const cleanEmail = (emailStr || '').trim().toLowerCase();
+    const parts = (rawAddr || '')
+      .split(/[•|]+/)
+      .map((seg) => seg.trim())
+      .filter((seg) => {
+        if (!seg) return false;
+        const segDigits = seg.replace(/\D/g, '');
+        if (cleanDigits.length === 10 && segDigits.includes(cleanDigits)) return false;
+        if (cleanEmail && seg.toLowerCase().includes(cleanEmail)) return false;
+        return true;
+      });
+    return parts.join(' • ');
+  };
+
   if (isCreatedByHealer && healerAcc) {
     const hName = healerAcc.name?.trim() || TATHASTU_DEFAULT_HEALER_NAME;
     const hBrand = healerAcc.healerBrandName?.trim() || hName;
@@ -729,17 +754,22 @@ export function resolveReportHealerAttribution(
       : `+91 ${TATHASTU_ADMIN_PHONE}`;
     const hEmail = healerAcc.email?.trim() || TATHASTU_ADMIN_EMAIL;
     const hAddress =
-      healerAcc.healerAddress?.trim() ||
-      healerAcc.healerWebsite?.trim() ||
-      `${hBrand} • ${hMobile}`;
-    const hInsta = healerAcc.healerInstagram?.trim() || `@${hName.toLowerCase().replace(/\s+/g, '')}`;
+      sanitizeHealerAddress(healerAcc.healerAddress, hMobile, hEmail) ||
+      'Vedic, Chaldean & Pranic Energy Healing Center';
+    const rawInsta = healerAcc.healerInstagram?.trim() || '';
+    const hInsta =
+      !rawInsta ||
+      rawInsta.toLowerCase() === '@tathastu_thedivinelight' ||
+      rawInsta.toLowerCase() === '@tathastudivinelight'
+        ? `@${hName.toLowerCase().replace(/\s+/g, '')}`
+        : rawInsta;
     const hFb = healerAcc.healerFacebook?.trim() || `fb.com/${hName.toLowerCase().replace(/\s+/g, '')}`;
     const hYt = healerAcc.healerYoutube?.trim() || `youtube.com/@${hName.toLowerCase().replace(/\s+/g, '')}`;
+    const rawWeb = healerAcc.healerWebsite?.trim() || '';
     const hWeb =
-      healerAcc.healerWebsite?.trim() &&
-      healerAcc.healerWebsite.trim().toLowerCase() !== 'www.tathastulight.com'
-        ? healerAcc.healerWebsite.trim()
-        : hBrand;
+      rawWeb && rawWeb.toUpperCase() !== TATHASTU_BRAND_NAME.toUpperCase()
+        ? rawWeb
+        : 'www.tathastulight.com';
 
     return {
       isHealerReport: true,
@@ -770,7 +800,7 @@ export function resolveReportHealerAttribution(
     healerDisplayEmail: TATHASTU_ADMIN_EMAIL,
     healerDisplayAddress:
       'TATHASTU — THE DIVINE LIGHT • Vedic, Chaldean & Pranic Energy Healing Center',
-    healerInstagram: '@tathastudivinelight',
+    healerInstagram: '@healer_mr_ddeepak.jain',
     healerFacebook: 'fb.com/tathastudivinelight',
     healerYoutube: 'youtube.com/@tathastudivinelight',
     healerWebsite: 'www.tathastulight.com',
@@ -1202,8 +1232,15 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                   ? {
                       ...ra,
                       email: TATHASTU_ADMIN_EMAIL,
+                      healerInstagram:
+                        !ra.healerInstagram ||
+                        ra.healerInstagram.toLowerCase() === '@tathastu_thedivinelight' ||
+                        ra.healerInstagram.toLowerCase() === '@tathastudivinelight'
+                          ? '@healer_mr_ddeepak.jain'
+                          : ra.healerInstagram,
+                      healerWebsite: 'www.tathastulight.com',
                       healerAddress:
-                        'TATHASTU NUMEROLOGY • TATHASTU THE DIVINE LIGHT • healer.ddeepak.jain@gmail.com • +91 8899444444',
+                        'TATHASTU — THE DIVINE LIGHT • Vedic, Chaldean & Pranic Energy Healing Center',
                     }
                   : ra;
               map.set(ra.id, normalized);
@@ -2007,23 +2044,31 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { ok: false, error: 'Date of Birth is mandatory for Client registration and cannot be changed after saving.' };
     }
 
-    // Check uniqueness: 1 mobile number or 1 email address can only create 1 account/profile
-    const duplicateAccount = accounts.find(
+    // Scoped block uniqueness:
+    // - Same Email/Mobile CANNOT be saved again in the SAME block (Healer in Healer block, Client in Client block / Client Profiles)
+    // - Same Email/Mobile CAN be saved in a DIFFERENT block (e.g., already in Client Profile -> allowed in Healer Profile, and vice versa)
+    const duplicateSameRoleAccount = accounts.find(
       (a) =>
-        a.email.trim().toLowerCase() === cleanEmail ||
-        a.mobile.replace(/\D/g, '').slice(-10) === cleanMobile
+        a.role === params.role &&
+        (a.email.trim().toLowerCase() === cleanEmail ||
+          a.mobile.replace(/\D/g, '').slice(-10) === cleanMobile)
     );
-    const duplicateProfile = profiles.find(
-      (p) =>
-        p.email.trim().toLowerCase() === cleanEmail ||
-        p.mobile.replace(/\D/g, '').slice(-10) === cleanMobile
-    );
+    const duplicateClientProfile =
+      params.role === 'client'
+        ? profiles.find(
+            (p) =>
+              p.email.trim().toLowerCase() === cleanEmail ||
+              p.mobile.replace(/\D/g, '').slice(-10) === cleanMobile
+          )
+        : undefined;
 
-    if (duplicateAccount || duplicateProfile) {
+    if (duplicateSameRoleAccount || duplicateClientProfile) {
       return {
         ok: false,
         error:
-          'Only 1 profile/account can be created per Email Address or Mobile Number! This Email or Mobile Number is already registered.',
+          params.role === 'healer'
+            ? 'This Email Address or Mobile Number is already saved in the Healer block! Please use a unique Email & Mobile for a new Healer.'
+            : 'This Email Address or Mobile Number is already saved in the Client Profile block! The same Email/Mobile cannot be saved twice in Client Profiles (it can be saved in another block like Healer).',
       };
     }
 
@@ -2591,7 +2636,8 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { ok: false, error: 'Valid 10-digit Mobile Number is required for every profile.' };
     }
 
-    // Uniqueness rule: 1 mobile number or 1 email address can never be used on a 2nd profile or another account
+    // Scoped block uniqueness: Email/Mobile cannot be duplicated within the Client Profiles block,
+    // but IS allowed if it already exists in another block (such as Healer or Admin account).
     const duplicateProfile = profiles.find(
       (p) =>
         p.email.trim().toLowerCase() === cleanEmail ||
@@ -2600,23 +2646,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (duplicateProfile) {
       return {
         ok: false,
-        error: `This Email Address or Mobile Number is already linked to profile "${duplicateProfile.name}". 1 Email Address & 1 Mobile Number cannot be used on a second profile!`,
-      };
-    }
-
-    const isSelfForTargetAcc =
-      params.relationTag === 'self' && existingForAccount.length === 0;
-    const duplicateAccount = accounts.find((a) => {
-      if (isSelfForTargetAcc && a.id === targetAcc.id) return false;
-      return (
-        a.email.trim().toLowerCase() === cleanEmail ||
-        a.mobile.replace(/\D/g, '').slice(-10) === cleanMobile
-      );
-    });
-    if (duplicateAccount) {
-      return {
-        ok: false,
-        error: `This Email Address or Mobile Number is already registered to account "${duplicateAccount.name}". Each profile must have a unique Email Address & 10-digit Mobile Number!`,
+        error: `This Email Address or Mobile Number is already saved in Client Profiles ("${duplicateProfile.name}"). The same Email or Mobile cannot be saved twice in the Client Profile block!`,
       };
     }
 
@@ -2724,6 +2754,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { ok: false, error: 'A valid 10-digit Mobile Number is required.' };
     }
 
+    // Scoped block uniqueness: only disallow duplicates within the Client Profiles block
     const duplicateProfile = profiles.find(
       (p) =>
         p.id !== updatedProfile.id &&
@@ -2733,20 +2764,7 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (duplicateProfile) {
       return {
         ok: false,
-        error: `Email or Mobile Number is already used by profile "${duplicateProfile.name}". 1 Email & 1 Mobile cannot be shared across profiles!`,
-      };
-    }
-
-    const duplicateAccount = accounts.find(
-      (a) =>
-        a.id !== updatedProfile.accountId &&
-        (a.email.trim().toLowerCase() === cleanEmail ||
-          a.mobile.replace(/\D/g, '').slice(-10) === cleanMobile)
-    );
-    if (duplicateAccount) {
-      return {
-        ok: false,
-        error: `Email or Mobile Number is already used by account "${duplicateAccount.name}".`,
+        error: `Email or Mobile Number is already saved in Client Profiles ("${duplicateProfile.name}"). Same Email or Mobile cannot be saved twice in the Client Profile block!`,
       };
     }
 
@@ -2826,29 +2844,18 @@ export const TathastuProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { ok: false, error: 'A valid 10-digit Mobile Number is required.' };
     }
 
+    // Scoped block uniqueness: only disallow duplicates within the same account role block (Healer vs Client vs Admin)
     const duplicateAccount = accounts.find(
       (a) =>
         a.id !== updatedAccount.id &&
+        a.role === updatedAccount.role &&
         (a.email.trim().toLowerCase() === cleanEmail ||
           a.mobile.replace(/\D/g, '').slice(-10) === cleanMobile)
     );
     if (duplicateAccount) {
       return {
         ok: false,
-        error: `Email or Mobile Number is already registered to account "${duplicateAccount.name}".`,
-      };
-    }
-
-    const duplicateProfile = profiles.find(
-      (p) =>
-        p.accountId !== updatedAccount.id &&
-        (p.email.trim().toLowerCase() === cleanEmail ||
-          p.mobile.replace(/\D/g, '').slice(-10) === cleanMobile)
-    );
-    if (duplicateProfile) {
-      return {
-        ok: false,
-        error: `Email or Mobile Number is already linked to profile "${duplicateProfile.name}".`,
+        error: `Email or Mobile Number is already saved in the ${updatedAccount.role.toUpperCase()} block ("${duplicateAccount.name}").`,
       };
     }
 

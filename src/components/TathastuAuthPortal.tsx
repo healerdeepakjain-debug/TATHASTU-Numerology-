@@ -370,20 +370,26 @@ export const TathastuAuthPortal: React.FC<TathastuAuthPortalProps> = ({
       return;
     }
 
-    const duplicateAccount = accounts.find(
+    const duplicateSameRoleAccount = accounts.find(
       (a) =>
-        a.email.trim().toLowerCase() === cleanEmail ||
-        a.mobile.replace(/\D/g, '').slice(-10) === cleanMobile
+        a.role === selectedRole &&
+        (a.email.trim().toLowerCase() === cleanEmail ||
+          a.mobile.replace(/\D/g, '').slice(-10) === cleanMobile)
     );
-    const duplicateProfile = profiles.find(
-      (p) =>
-        p.email.trim().toLowerCase() === cleanEmail ||
-        p.mobile.replace(/\D/g, '').slice(-10) === cleanMobile
-    );
+    const duplicateClientProfile =
+      selectedRole === 'client'
+        ? profiles.find(
+            (p) =>
+              p.email.trim().toLowerCase() === cleanEmail ||
+              p.mobile.replace(/\D/g, '').slice(-10) === cleanMobile
+          )
+        : undefined;
 
-    if (duplicateAccount || duplicateProfile) {
+    if (duplicateSameRoleAccount || duplicateClientProfile) {
       setErrorMessage(
-        'Only 1 profile/account can be created per Email Address or Mobile Number! This Email or Mobile Number is already registered.'
+        selectedRole === 'healer'
+          ? 'This Email Address or Mobile Number is already saved in the Healer block! Please use a unique Email & Mobile for a new Healer.'
+          : 'This Email Address or Mobile Number is already saved in the Client Profile block! Same Email/Mobile cannot be saved twice in Client Profiles (it can be saved in another block like Healer).'
       );
       return;
     }
